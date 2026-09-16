@@ -3,6 +3,30 @@
 Notable Re-Etched changes are documented here. Re-Etched uses independent
 versioning beginning with version 4.0.0 and is based on Etched 3.0.4.
 
+## [4.0.0] - 2026-09-16
+
+### Changed
+
+- Moved potentially blocking radio network and audio resource disposal to
+  dedicated daemon cleanup workers.
+- Stopped attaching the upstream JLayer source archive to release assets;
+  source provenance and checksums remain documented in
+  `THIRD_PARTY_NOTICES.md`.
+
+### Fixed
+
+- Ensured stopping a radio cancels its upstream network stream after audio has
+  been handed off to the SoundEngine, including streams blocked on reads.
+- Ensured HTTP response bodies are still closed when disconnecting the
+  underlying connection fails.
+- Prevented stale track preparation from taking ownership after cancellation.
+- Disabled Play while a radio is starting or active, and disabled Stop while
+  it is idle or already stopping.
+- Kept Play and Stop controls synchronized with the actual radio state without
+  allowing stale updates to override pending actions.
+- Preserved the last known radio URL when an Etched 3.0.4 server represents a
+  stopped radio with an empty `Url`.
+
 ## [4.0.0-beta.1] - 2026-09-12
 
 ### Added

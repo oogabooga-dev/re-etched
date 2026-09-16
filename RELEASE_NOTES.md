@@ -1,4 +1,4 @@
-# Re-Etched 4.0.0-beta.1 for Forge 1.20.1
+# Re-Etched 4.0.0 for Forge 1.20.1
 
 Re-Etched is an unofficial, community-maintained fork of
 [Etched 3.0.4](https://github.com/jacksonhardaway/etched). It is not affiliated
@@ -13,6 +13,10 @@ with or endorsed by Moonflower Studio.
   destination controls.
 - Preserved the Etched 3.0.4 mod ID, network protocol, registry namespace, and
   active-radio state for compatibility.
+- Kept potentially blocking network and audio cleanup off the Minecraft client
+  thread and ensured stopping playback releases its upstream connection.
+- Synchronized Play and Stop controls with actual radio state and retained the
+  last known station when connected to an Etched 3.0.4 server.
 
 ## Requirements
 
@@ -23,14 +27,14 @@ with or endorsed by Moonflower Studio.
 
 Mixed Re-Etched and original Etched 3.0.4 client/server deployments are a
 compatibility target, but using the same Re-Etched version on both sides is the
-recommended beta configuration.
+recommended configuration.
 
 ## Installation
 
-Back up the world before installing this beta. Remove the original Etched JAR
-and any older Re-Etched JAR before adding `re-etched-4.0.0-beta.1.jar` to the
-client and server `mods` directories. Etched and Re-Etched cannot be installed
-together because both use the `etched` mod ID.
+Back up the world before replacing Etched. Remove the original Etched JAR and
+any older Re-Etched JAR before adding `re-etched-4.0.0.jar` to the client and
+server `mods` directories. Etched and Re-Etched cannot be installed together
+because both use the `etched` mod ID.
 
 ## Known Limitations
 
@@ -39,5 +43,5 @@ together because both use the `etched` mod ID.
 - Radio inputs must be absolute HTTP or HTTPS URLs.
 - Downgrading to original Etched may discard Re-Etched's stopped-radio state.
 
-See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.0.0-beta.1/CHANGELOG.md)
-and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.0.0-beta.1).
+See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.0.0/CHANGELOG.md)
+and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.0.0).
