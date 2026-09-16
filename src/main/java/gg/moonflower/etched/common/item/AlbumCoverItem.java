@@ -216,7 +216,7 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
     @Override
     public Optional<TrackData[]> getMusic(ItemStack stack) {
         List<ItemStack> records = getRecords(stack);
-        return records.isEmpty() ? Optional.empty() : Optional.of(records.stream().filter(record -> record.getItem() instanceof PlayableRecord).flatMap(record -> Arrays.stream(((PlayableRecord) record.getItem()).getMusic(record).orElseGet(() -> new TrackData[0]))).toArray(TrackData[]::new));
+        return records.isEmpty() ? Optional.empty() : Optional.of(flattenMusic(records));
     }
 
     @Override
@@ -239,6 +239,10 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
             return Optional.empty();
         }
 
+        return readCoverStack(stack);
+    }
+
+    static Optional<ItemStack> readCoverStack(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
         if (nbt == null || !nbt.contains("CoverRecord", Tag.TAG_COMPOUND)) {
             return Optional.empty();
@@ -253,6 +257,10 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
             return Collections.emptyList();
         }
 
+        return readRecords(stack);
+    }
+
+    static List<ItemStack> readRecords(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
         if (nbt == null || !nbt.contains("Records", Tag.TAG_LIST)) {
             return Collections.emptyList();
@@ -279,6 +287,10 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
             return;
         }
 
+        writeCover(stack, record);
+    }
+
+    static void writeCover(ItemStack stack, ItemStack record) {
         if (record.isEmpty()) {
             stack.removeTagKey("CoverRecord");
             return;
@@ -287,7 +299,16 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
     }
 
     public static void setRecords(ItemStack stack, Collection<ItemStack> records) {
-        if (stack.getItem() != EtchedItems.ALBUM_COVER.get() || records.isEmpty()) {
+        if (stack.getItem() != EtchedItems.ALBUM_COVER.get()) {
+            return;
+        }
+
+        writeRecords(stack, records);
+    }
+
+    static void writeRecords(ItemStack stack, Collection<ItemStack> records) {
+        if (records.isEmpty()) {
+            stack.removeTagKey("Records");
             return;
         }
 
@@ -305,5 +326,19 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
             i++;
         }
         nbt.put("Records", recordsNbt);
+    }
+
+    static TrackData[] flattenMusic(Collection<ItemStack> records) {
+        return flattenPrograms(records.stream()
+                .filter(record -> record.getItem() instanceof PlayableRecord)
+                .map(record -> ((PlayableRecord) record.getItem()).getMusic(record)
+                        .orElseGet(() -> new TrackData[0]))
+                .toList());
+    }
+
+    static TrackData[] flattenPrograms(Collection<TrackData[]> programs) {
+        return programs.stream()
+                .flatMap(Arrays::stream)
+                .toArray(TrackData[]::new);
     }
 }
