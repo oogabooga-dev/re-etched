@@ -9,8 +9,8 @@ game content and compatibility identifiers while replacing the client-side
 internet radio path with a bounded, cancellable, and security-hardened
 implementation.
 
-Re-Etched has independent versioning beginning with `4.0.0`. Version
-`4.0.0-beta.1` is a pre-release.
+Re-Etched has independent versioning beginning with `4.0.0`. The current stable
+release is `4.0.0`.
 
 ## Requirements
 
@@ -28,10 +28,10 @@ decoder, so no separate library mod is required.
 
 ## Installation And Migration
 
-1. Back up the world before replacing Etched or testing this beta.
+1. Back up the world before replacing Etched.
 2. Stop Minecraft and the dedicated server.
 3. Remove the original Etched JAR and any older Re-Etched JAR.
-4. Put `re-etched-4.0.0-beta.1.jar` in the client and server `mods` directories.
+4. Put `re-etched-4.0.0.jar` in the client and server `mods` directories.
 5. Start Minecraft with Java 17 and Forge 47.4.10.
 
 Do not install Etched and Re-Etched in the same Minecraft instance. Both use
@@ -106,7 +106,6 @@ hostnames remotely must enforce an equivalent destination policy itself.
 
 ## Known Limitations
 
-- This is a beta release.
 - AAC, AAC+, and HLS streams are not supported.
 - Radio inputs are limited to absolute HTTP(S) URLs.
 - SoundCloud, Bandcamp, and station availability are outside the project's
@@ -129,7 +128,7 @@ Install JDK 17 and use the checked-in Gradle wrapper:
 The distributable is:
 
 ```text
-build/libs/re-etched-4.0.0-beta.1.jar
+build/libs/re-etched-4.0.0.jar
 ```
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.
