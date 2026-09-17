@@ -26,6 +26,10 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
 
     @Override
     public Optional<TrackData[]> getMusic(ItemStack stack) {
+        return readMusic(stack);
+    }
+
+    static Optional<TrackData[]> readMusic(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
         if (nbt == null || (!nbt.contains("Music", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST))) {
             return Optional.empty();
@@ -63,15 +67,23 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
 
     @Override
     public Optional<TrackData> getAlbum(ItemStack stack) {
+        return readAlbum(stack);
+    }
+
+    static Optional<TrackData> readAlbum(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
         if (nbt == null || !nbt.contains("Album", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST)) {
-            return this.getMusic(stack).filter(data -> data.length > 0).map(data -> data[0]);
+            return readMusic(stack).filter(data -> data.length > 0).map(data -> data[0]);
         }
         return TrackData.isValid(nbt.getCompound("Album")) ? TrackData.CODEC.parse(NbtOps.INSTANCE, nbt.getCompound("Album")).result() : Optional.empty();
     }
 
     @Override
     public int getTrackCount(ItemStack stack) {
+        return countTracks(stack);
+    }
+
+    static int countTracks(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
         if (nbt == null || (!nbt.contains("Music", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST))) {
             return 0;

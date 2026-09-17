@@ -125,6 +125,16 @@ Install JDK 17 and use the checked-in Gradle wrapper:
 ./gradlew build
 ```
 
+Run the dedicated-server startup smoke check with:
+
+```bash
+python3 scripts/server_smoke.py
+```
+
+The script temporarily accepts the Minecraft EULA for its isolated smoke world,
+waits for Forge to finish starting, shuts the server down, and restores existing
+local server configuration files.
+
 The distributable is:
 
 ```text

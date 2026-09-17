@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -31,6 +31,19 @@ jobs:
 
       - name: Test and build
         run: ./gradlew test build --no-daemon
+
+      - name: Smoke-test dedicated server
+        run: python3 scripts/server_smoke.py
+
+      - name: Upload server failure logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dedicated-server-failure-logs
+          path: |
+            run/logs
+            run/crash-reports
+          if-no-files-found: ignore
 
       - name: Locate production JAR
         id: artifact

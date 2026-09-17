@@ -1,21 +1,33 @@
 package gg.moonflower.etched.common.network;
 
+import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.common.menu.RadioMenu;
 import gg.moonflower.etched.common.network.play.*;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraftforge.network.NetworkDirection;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EtchedMessagesCompatibilityTest {
 
     private static final String RADIO_URL = "https://radio.example/live";
+
+    static {
+        MinecraftTestBootstrap.bootStrap();
+    }
 
     @Test
     void preservesEtched304ProtocolAndPacketIds() {
@@ -69,6 +81,67 @@ class EtchedMessagesCompatibilityTest {
         }
     }
 
+    @Test
+    void preservesInvalidEtchUrlCodec() {
+        ClientboundInvalidEtchUrlPacket packet = new ClientboundInvalidEtchUrlPacket("Invalid URL");
+        byte[] encoded = encode(packet);
+
+        assertArrayEquals(expected(buffer -> buffer.writeUtf("Invalid URL")), encoded);
+        assertEquals("Invalid URL", decode(encoded, ClientboundInvalidEtchUrlPacket::new).exception());
+    }
+
+    @Test
+    void preservesMusicLabelEditCodecAndLimits() {
+        ServerboundEditMusicLabelPacket packet = new ServerboundEditMusicLabelPacket(37, "Artist", "Title");
+        byte[] encoded = encode(packet);
+
+        assertArrayEquals(expected(buffer -> {
+            buffer.writeVarInt(37);
+            buffer.writeUtf("Artist", 128);
+            buffer.writeUtf("Title", 128);
+        }), encoded);
+        assertEquals(packet, decode(encoded, ServerboundEditMusicLabelPacket::new));
+    }
+
+    @Test
+    void preservesAlbumJukeboxTrackCodec() {
+        SetAlbumJukeboxTrackPacket packet = new SetAlbumJukeboxTrackPacket(8, 127);
+        byte[] encoded = encode(packet);
+
+        assertArrayEquals(expected(buffer -> {
+            buffer.writeVarInt(8);
+            buffer.writeVarInt(127);
+        }), encoded);
+        assertEquals(packet, decode(encoded, SetAlbumJukeboxTrackPacket::new));
+    }
+
+    @Test
+    void preservesBlockMusicCodecIncludingRecordNbt() {
+        ItemStack record = new ItemStack(Items.PAPER);
+        record.getOrCreateTag().putString("Music", "legacy-payload");
+        BlockPos pos = new BlockPos(-12, 64, 345);
+        ClientboundPlayMusicPacket packet = new ClientboundPlayMusicPacket(record, pos);
+        byte[] encoded = encode(packet);
+
+        assertArrayEquals(expected(buffer -> {
+            buffer.writeItem(record);
+            buffer.writeBlockPos(pos);
+        }), encoded);
+        ClientboundPlayMusicPacket decoded = decode(encoded, ClientboundPlayMusicPacket::new);
+        assertTrue(ItemStack.matches(record, decoded.record()));
+        assertEquals(pos, decoded.pos());
+    }
+
+    @Test
+    void preservesEntityMusicStartRestartAndStopCodecs() {
+        ItemStack record = new ItemStack(Items.PAPER);
+        record.getOrCreateTag().putString("Music", "legacy-payload");
+
+        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.START, record, 42);
+        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.RESTART, record, 300);
+        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.STOP, ItemStack.EMPTY, 7);
+    }
+
     private static void assertLegacyUrlEncoding(EtchedPacket packet) throws Exception {
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
@@ -92,5 +165,51 @@ class EtchedMessagesCompatibilityTest {
         encoded[0] = (byte) url.length;
         System.arraycopy(url, 0, encoded, 1, url.length);
         return encoded;
+    }
+
+    private static void assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action action,
+                                               ItemStack record, int entityId) {
+        byte[] encoded = expected(buffer -> {
+            buffer.writeEnum(action);
+            if (action != ClientboundPlayEntityMusicPacket.Action.STOP) {
+                buffer.writeItem(record);
+            }
+            buffer.writeVarInt(entityId);
+        });
+
+        ClientboundPlayEntityMusicPacket decoded = decode(encoded, ClientboundPlayEntityMusicPacket::new);
+        assertEquals(action, decoded.getAction());
+        assertTrue(ItemStack.matches(record, decoded.getRecord()));
+        assertEquals(entityId, decoded.getEntityId());
+        assertArrayEquals(encoded, encode(decoded));
+    }
+
+    private static byte[] encode(EtchedPacket packet) {
+        return expected(buffer -> {
+            try {
+                packet.writePacketData(buffer);
+            } catch (IOException exception) {
+                throw new AssertionError(exception);
+            }
+        });
+    }
+
+    private static byte[] expected(Consumer<FriendlyByteBuf> writer) {
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            writer.accept(buffer);
+            return ByteBufUtil.getBytes(buffer);
+        } finally {
+            buffer.release();
+        }
+    }
+
+    private static <T> T decode(byte[] encoded, Function<FriendlyByteBuf, T> decoder) {
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.wrappedBuffer(encoded));
+        try {
+            return decoder.apply(buffer);
+        } finally {
+            buffer.release();
+        }
     }
 }
