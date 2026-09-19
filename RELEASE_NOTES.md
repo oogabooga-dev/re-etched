@@ -1,4 +1,4 @@
-# Re-Etched 4.0.0 for Forge 1.20.1
+# Re-Etched 4.1.0 for Forge 1.20.1
 
 Re-Etched is an unofficial, community-maintained fork of
 [Etched 3.0.4](https://github.com/jacksonhardaway/etched). It is not affiliated
@@ -6,17 +6,16 @@ with or endorsed by Moonflower Studio.
 
 ## Highlights
 
-- Replaced the legacy radio download path with cancellable per-radio streams.
-- Added direct MP3 and Ogg/Vorbis playback, M3U and PLS playlists, SoundCloud
-  progressive MP3 resolution, Bandcamp `mp3-128` resolution, and ICY metadata.
-- Added bounded resolution, buffering, reconnect behavior, and private-network
-  destination controls.
+- Added a client-local history of the 20 most recently accepted stations for
+  each singleplayer world or multiplayer server.
+- Added a five-row radio history list with mouse-wheel and scrollbar navigation,
+  keyboard selection, URL tooltips, and per-context clearing.
+- Added bounded, versioned JSON persistence with validation, atomic replacement,
+  backup recovery, and hashed context identifiers.
+- Records a station only after a matching block update confirms server
+  acceptance. Selecting history fills the editor without starting playback.
 - Preserved the Etched 3.0.4 mod ID, network protocol, registry namespace, and
-  active-radio state for compatibility.
-- Kept potentially blocking network and audio cleanup off the Minecraft client
-  thread and ensured stopping playback releases its upstream connection.
-- Synchronized Play and Stop controls with actual radio state and retained the
-  last known station when connected to an Etched 3.0.4 server.
+  radio NBT contract for mixed client/server compatibility.
 
 ## Requirements
 
@@ -32,7 +31,7 @@ recommended configuration.
 ## Installation
 
 Back up the world before replacing Etched. Remove the original Etched JAR and
-any older Re-Etched JAR before adding `re-etched-4.0.0.jar` to the client and
+any older Re-Etched JAR before adding `re-etched-4.1.0.jar` to the client and
 server `mods` directories. Etched and Re-Etched cannot be installed together
 because both use the `etched` mod ID.
 
@@ -42,6 +41,8 @@ because both use the `etched` mod ID.
 - SoundCloud and Bandcamp support depends on external service formats.
 - Radio inputs must be absolute HTTP or HTTPS URLs.
 - Downgrading to original Etched may discard Re-Etched's stopped-radio state.
+- Recent station URLs are stored in plaintext in the client's local history
+  file because they must remain reusable.
 
-See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.0.0/CHANGELOG.md)
-and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.0.0).
+See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.1.0/CHANGELOG.md)
+and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.1.0).

@@ -16,18 +16,18 @@ public final class RadioClientEvents {
 
     @SubscribeEvent
     public static void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
-        RadioPlaybackManager.getInstance().clearAll();
+        RadioClientRuntime.getInstance().logout();
     }
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
-            RadioPlaybackManager.getInstance().clearAll();
+            RadioClientRuntime.getInstance().clearAll();
         }
     }
 
     @SubscribeEvent
     public static void onGameShuttingDown(GameShuttingDownEvent event) {
-        RadioPlaybackManager.getInstance().shutdown();
+        RadioClientRuntime.getInstance().shutdown();
     }
 }

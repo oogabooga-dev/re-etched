@@ -72,6 +72,7 @@ class RadioHttpTransportImplTest {
             Headers headers = requestHeaders.get();
             assertEquals(1, requests.get());
             assertEquals("GET", requestMethod.get());
+            assertEquals("Re-Etched/4.1", RadioHttpTransportImpl.USER_AGENT);
             assertEquals(RadioHttpTransportImpl.USER_AGENT, headers.getFirst("User-Agent"));
             assertEquals(RadioHttpTransportImpl.ACCEPT, headers.getFirst("Accept"));
             assertEquals("1", headers.getFirst("Icy-MetaData"));

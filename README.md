@@ -10,7 +10,7 @@ internet radio path with a bounded, cancellable, and security-hardened
 implementation.
 
 Re-Etched has independent versioning beginning with `4.0.0`. The current stable
-release is `4.0.0`.
+release is `4.1.0`.
 
 ## Requirements
 
@@ -31,7 +31,7 @@ decoder, so no separate library mod is required.
 1. Back up the world before replacing Etched.
 2. Stop Minecraft and the dedicated server.
 3. Remove the original Etched JAR and any older Re-Etched JAR.
-4. Put `re-etched-4.0.0.jar` in the client and server `mods` directories.
+4. Put `re-etched-4.1.0.jar` in the client and server `mods` directories.
 5. Start Minecraft with Java 17 and Forge 47.4.10.
 
 Do not install Etched and Re-Etched in the same Minecraft instance. Both use
@@ -69,6 +69,12 @@ The radio screen provides separate Play, Stop, and Close controls. Stopping
 retains the entered station, and replaying an already enabled, unchanged URL
 does not restart its session.
 
+Re-Etched clients retain the 20 most recently accepted stations separately for
+each singleplayer world and multiplayer server. Five entries are visible at a
+time in the scrollable radio screen. Selecting an entry fills the URL editor but
+does not start playback until Play is pressed. History can be cleared from the
+radio screen and is not synchronized to the server.
+
 ## Network Security And Privacy
 
 Radio audio is fetched by each client. Joining a server with configured radios
@@ -93,6 +99,14 @@ Re-Etched applies the following controls:
 - playlist and provider response bodies, resolution work, streaming buffers,
   worker queues, and reconnect delays are bounded;
 - active work is cancelled when playback stops or the world unloads.
+
+Recent-station history is stored locally in
+`re-etched/radio-history.json`, with temporary and backup files beside it.
+Server and world identifiers are hashed, and station URLs are never written to
+logs by the history implementation. The URLs remain plaintext in these local
+files because they must be reusable; query parameters may therefore contain
+sensitive tokens. Clearing the current history replaces both the primary and
+backup data.
 
 Default limits include a 5-second DNS timeout, 10-second connection timeout,
 15-second read timeout, five redirects, 256 KiB playlist or provider bodies,
@@ -138,7 +152,7 @@ local server configuration files.
 The distributable is:
 
 ```text
-build/libs/re-etched-4.0.0.jar
+build/libs/re-etched-4.1.0.jar
 ```
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.
