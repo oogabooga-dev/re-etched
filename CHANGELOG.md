@@ -3,6 +3,31 @@
 Notable Re-Etched changes are documented here. Re-Etched uses independent
 versioning beginning with version 4.0.0 and is based on Etched 3.0.4.
 
+## [4.1.0] - 2026-09-19
+
+### Added
+
+- Added a client-local, scrollable history of the 20 most recently accepted
+  radio stations, partitioned by singleplayer world or multiplayer server.
+- Added mouse-wheel, scrollbar, mouse, and keyboard navigation for five visible
+  history rows, plus an action to clear the current context.
+- Added bounded, versioned JSON persistence with validation, atomic replacement,
+  backup recovery, and hashed world/server identifiers.
+
+### Changed
+
+- Expanded the radio screen while preserving the explicit Play, Stop, and Close
+  controls. Selecting a recent station only fills the URL editor.
+- Recorded stations only after the matching block update confirms that the
+  server accepted the URL, including when connected to Etched 3.0.4 servers.
+
+### Security
+
+- Kept radio history entirely client-side without changing the network protocol
+  or block-entity NBT, and prevented history URLs from being written to logs.
+- Added a clear-history control for locally stored URLs, whose query parameters
+  may contain sensitive tokens.
+
 ## [4.0.0] - 2026-09-16
 
 ### Changed

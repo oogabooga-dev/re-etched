@@ -36,7 +36,7 @@ public final class RadioHttpTransportImpl implements RadioHttpTransport {
     public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(15);
     public static final int DEFAULT_MAX_REDIRECTS = 5;
-    public static final String USER_AGENT = "Re-Etched/4.0";
+    public static final String USER_AGENT = "Re-Etched/4.1";
     public static final String ACCEPT = "audio/mpeg, audio/ogg, application/ogg, audio/x-mpegurl, "
             + "audio/mpegurl, application/x-mpegurl, audio/x-scpls, application/vnd.apple.mpegurl;q=0.5, "
             + "*/*;q=0.1";
