@@ -12,6 +12,16 @@ implementation.
 Re-Etched has independent versioning beginning with `4.0.0`. The current stable
 release is `4.1.0`.
 
+## Development Lines
+
+The `4.x` branch is the maintenance and Etched 3.0.4 compatibility line. It
+accepts security, crash, data-loss, provider, and other targeted fixes without
+breaking the existing network, API, registry, or NBT contracts.
+
+The `master` branch is used for current development, including the incompatible
+5.x architecture work. Release branches are cut from and merged back into their
+target line: `release/4.*` targets `4.x`, while `release/5.*` targets `master`.
+
 ## Requirements
 
 | Component | Requirement |
