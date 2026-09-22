@@ -18,9 +18,14 @@ java {
 }
 
 sourceSets {
+    clientSmoke
     gameTest
 }
 
+sourceSets.clientSmoke.compileClasspath =
+        sourceSets.main.output + sourceSets.main.compileClasspath
+sourceSets.clientSmoke.runtimeClasspath =
+        sourceSets.clientSmoke.output + sourceSets.main.output + sourceSets.main.runtimeClasspath
 sourceSets.gameTest.compileClasspath =
         sourceSets.main.output + sourceSets.main.compileClasspath
 sourceSets.gameTest.runtimeClasspath =
@@ -102,6 +107,22 @@ loom {
     }
 
     runs {
+        clientSmoke {
+            environment "client"
+            forgeTemplate "client"
+            name "Minecraft Client Smoke"
+            source sourceSets.main
+            runDir "build/run-client-smoke"
+            property "fabric.dli.env", "client"
+
+            mods {
+                "${project.mod_id}" {
+                    sourceSet sourceSets.main
+                    sourceSet sourceSets.clientSmoke
+                }
+            }
+        }
+
         gameTestServer {
             // Loom lowercases environment names, but Forge's launch config keeps this section camel-cased.
             environment "server"
@@ -146,6 +167,37 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+def clientSmokeSuccessMarker = layout.buildDirectory.file("run-client-smoke/etched-client-smoke-success")
+def clientSmokeOptions = layout.buildDirectory.file("run-client-smoke/options.txt")
+
+tasks.named("runClientSmoke", JavaExec) {
+    group = "verification"
+    description = "Starts the transformed Forge client and verifies that it reaches the title screen"
+    dependsOn tasks.named("classes")
+    dependsOn tasks.named("clientSmokeClasses")
+
+    doFirst {
+        delete(clientSmokeSuccessMarker)
+
+        def options = clientSmokeOptions.get().asFile
+        options.parentFile.mkdirs()
+        options.text = '''version:3465
+onboardAccessibility:false
+narrator:0
+pauseOnLostFocus:false
+enableVsync:false
+maxFps:30
+'''
+    }
+    doLast {
+        def marker = clientSmokeSuccessMarker.get().asFile
+        if (!marker.isFile()) {
+            throw new GradleException("Forge client exited without completing the startup smoke check")
+        }
+        delete(marker)
+    }
 }
 
 def prepareGameTestStructures = tasks.register("prepareGameTestStructures", Sync) {

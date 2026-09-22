@@ -36,6 +36,13 @@ jobs:
       - name: Run transformed Forge GameTests
         run: ./gradlew runGameTestServer --no-daemon
 
+      - name: Smoke-test client startup
+        timeout-minutes: 10
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          XDG_SESSION_TYPE: x11
+        run: env -u WAYLAND_DISPLAY xvfb-run -a ./gradlew runClientSmoke --no-daemon
+
       - name: Smoke-test dedicated server
         run: python3 scripts/server_smoke.py
 
@@ -47,6 +54,8 @@ jobs:
           path: |
             build/run-game-test/logs
             build/run-game-test/crash-reports
+            build/run-client-smoke/logs
+            build/run-client-smoke/crash-reports
             run/logs
             run/crash-reports
           if-no-files-found: ignore
