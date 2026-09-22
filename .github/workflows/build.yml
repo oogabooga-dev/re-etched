@@ -40,8 +40,7 @@ jobs:
         timeout-minutes: 10
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-          XDG_SESSION_TYPE: x11
-        run: env -u WAYLAND_DISPLAY xvfb-run -a ./gradlew runClientSmoke --no-daemon
+        run: xvfb-run -a ./gradlew runClientSmoke --no-daemon
 
       - name: Smoke-test dedicated server
         run: python3 scripts/server_smoke.py
