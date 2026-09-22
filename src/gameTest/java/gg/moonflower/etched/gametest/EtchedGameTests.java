@@ -4,13 +4,16 @@ import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
+import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedBlocks;
 import gg.moonflower.etched.core.registry.EtchedItems;
+import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
@@ -102,5 +105,48 @@ public final class EtchedGameTests {
         helper.assertTrue(ItemStack.matches(expectedAlbumCover, ejectedItems.get(0).getItem()),
                 "The ejected Album Cover lost item or nested record data");
         helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void vanillaJukeboxPacketPreservesAlbumTrackSequence(GameTestHelper helper) {
+        BlockPos jukeboxPos = BlockPos.ZERO;
+        BlockPos absoluteJukeboxPos = helper.absolutePos(jukeboxPos);
+        helper.setBlock(jukeboxPos, Blocks.JUKEBOX);
+
+        TrackData first = track("first");
+        TrackData second = track("second");
+        TrackData third = track("third");
+        ItemStack multiTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(multiTrackDisc, track("album"), first, second);
+        ItemStack singleTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(singleTrackDisc, third);
+        ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
+        AlbumCoverItem.setRecords(albumCover, List.of(multiTrackDisc, singleTrackDisc));
+
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(jukeboxPos);
+        jukebox.setFirstItem(albumCover);
+        ClientboundPlayMusicPacket sentPacket =
+                new ClientboundPlayMusicPacket(jukebox.getFirstItem().copy(), absoluteJukeboxPos);
+
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            sentPacket.writePacketData(buffer);
+            ClientboundPlayMusicPacket receivedPacket = new ClientboundPlayMusicPacket(buffer);
+            TrackData[] tracks = receivedPacket.tracks();
+
+            helper.assertTrue(receivedPacket.pos().equals(absoluteJukeboxPos),
+                    "The jukebox playback packet changed its position");
+            helper.assertTrue(tracks.length == 3, "The Album Cover packet did not contain every track");
+            helper.assertTrue(tracks[0].equals(first), "The first Album Cover track changed order");
+            helper.assertTrue(tracks[1].equals(second), "The second Album Cover track changed order");
+            helper.assertTrue(tracks[2].equals(third), "The third Album Cover track changed order");
+        } finally {
+            buffer.release();
+        }
+        helper.succeed();
+    }
+
+    private static TrackData track(String name) {
+        return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
     }
 }
