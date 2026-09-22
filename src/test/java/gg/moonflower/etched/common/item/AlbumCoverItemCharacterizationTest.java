@@ -2,6 +2,7 @@ package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -77,6 +78,36 @@ class AlbumCoverItemCharacterizationTest {
                 new TrackData[]{third}));
 
         assertArrayEquals(new TrackData[]{first, second, third}, tracks);
+    }
+
+    @Test
+    void aggregatesSerializedEtchedDiscProgramsWhileSkippingEmptyRecords() {
+        TrackData album = track("album");
+        TrackData first = track("first");
+        TrackData second = track("second");
+        TrackData third = track("third");
+
+        ItemStack multiTrack = new ItemStack(Items.PAPER);
+        EtchedMusicDiscItem.setMusic(multiTrack, album, first, second);
+        ItemStack empty = new ItemStack(Items.PAPER);
+        ItemStack malformed = new ItemStack(Items.PAPER);
+        malformed.getOrCreateTag().put("Music", new CompoundTag());
+        ItemStack singleTrack = new ItemStack(Items.PAPER);
+        EtchedMusicDiscItem.setMusic(singleTrack, third);
+
+        TrackData[] tracks = AlbumCoverItem.flattenPrograms(List.of(
+                EtchedMusicDiscItem.readMusic(multiTrack).orElseThrow(),
+                EtchedMusicDiscItem.readMusic(empty).orElseGet(() -> new TrackData[0]),
+                EtchedMusicDiscItem.readMusic(malformed).orElseGet(() -> new TrackData[0]),
+                EtchedMusicDiscItem.readMusic(singleTrack).orElseThrow()));
+
+        assertArrayEquals(new TrackData[]{first, second, third}, tracks);
+        assertEquals(2, EtchedMusicDiscItem.countTracks(multiTrack));
+        assertEquals(0, EtchedMusicDiscItem.countTracks(empty));
+        assertEquals(0, EtchedMusicDiscItem.countTracks(malformed));
+        assertEquals(1, EtchedMusicDiscItem.countTracks(singleTrack));
+        assertEquals(tracks.length,
+                EtchedMusicDiscItem.countTracks(multiTrack) + EtchedMusicDiscItem.countTracks(singleTrack));
     }
 
     private static TrackData track(String name) {
