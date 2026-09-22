@@ -241,8 +241,9 @@ public class SoundTracker {
 
         Optional<? extends SoundInstance> sound = ((PlayableRecord) record.getItem()).createEntitySound(record, entity, track, attenuationDistance);
         if (sound.isEmpty()) {
-            if (loop && track != 0) {
-                playEntityRecord(record, entityId, 0, attenuationDistance, true);
+            int fallbackTrack = EntityPlaybackSequence.getLoopFallbackTrack(track, loop);
+            if (fallbackTrack >= 0) {
+                playEntityRecord(record, entityId, fallbackTrack, attenuationDistance, true);
             }
             return;
         }

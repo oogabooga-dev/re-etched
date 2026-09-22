@@ -49,13 +49,20 @@ public class AbstractOnlineSoundInstance extends AbstractSoundInstance {
     private final boolean stereo;
 
     public AbstractOnlineSoundInstance(String url, @Nullable String subtitle, int attenuationDistance, SoundSource source, DownloadProgressListener progressListener, AudioSource.AudioFileType type, boolean stereo) {
+        this(url, subtitle, attenuationDistance, source, progressListener, type, stereo,
+                Etched.CLIENT_CONFIG.forceStereo.get());
+    }
+
+    protected AbstractOnlineSoundInstance(String url, @Nullable String subtitle, int attenuationDistance,
+                                          SoundSource source, DownloadProgressListener progressListener,
+                                          AudioSource.AudioFileType type, boolean stereo, boolean forceStereo) {
         super(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, DigestUtils.sha1Hex(url)), source, SoundInstance.createUnseededRandom());
         this.url = url;
         this.subtitle = subtitle;
         this.attenuationDistance = attenuationDistance;
         this.progressListener = progressListener;
         this.type = type;
-        this.stereo = Etched.CLIENT_CONFIG.forceStereo.get() || stereo;
+        this.stereo = forceStereo || stereo;
     }
 
     private static AudioStream getStream(AudioStream stream, Sound sound) {
