@@ -36,7 +36,7 @@ import java.util.Objects;
  */
 public class EtchingScreen extends AbstractContainerScreen<EtchingMenu> implements ContainerListener {
 
-    private static final ResourceLocation TEXTURE = new ResourceLocation(Etched.MOD_ID, "textures/gui/container/etching_table.png");
+    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/gui/container/etching_table.png");
     private static final Component INVALID_URL = Component.translatable("screen." + Etched.MOD_ID + ".etching_table.error.invalid_url");
     private static final Component CANNOT_CREATE = Component.translatable("screen." + Etched.MOD_ID + ".etching_table.error.cannot_create");
     private static final Component CANNOT_CREATE_MISSING_DISC = Component.translatable("screen." + Etched.MOD_ID + ".etching_table.error.cannot_create.missing_disc").withStyle(ChatFormatting.GRAY);

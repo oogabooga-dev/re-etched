@@ -15,6 +15,6 @@ public class EtchedSounds {
     public static final Supplier<SoundEvent> UI_ETCHER_TAKE_RESULT = registerSound("ui.etching_table.take_result");
 
     private static Supplier<SoundEvent> registerSound(String id) {
-        return REGISTRY.register(id, () -> SoundEvent.createVariableRangeEvent(new ResourceLocation(Etched.MOD_ID, id)));
+        return REGISTRY.register(id, () -> SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, id)));
     }
 }

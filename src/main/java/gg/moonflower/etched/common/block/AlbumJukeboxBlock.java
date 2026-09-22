@@ -37,6 +37,7 @@ import java.util.Map;
 /**
  * @author Ocelot
  */
+@SuppressWarnings("deprecation") // Minecraft deprecates direct calls to the block hooks that subclasses must override.
 public class AlbumJukeboxBlock extends BaseEntityBlock {
 
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;

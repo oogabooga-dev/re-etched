@@ -37,6 +37,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
+@SuppressWarnings("deprecation") // Minecraft deprecates direct calls to the block hooks that subclasses must override.
 public class RadioBlock extends BaseEntityBlock {
 
     public static final IntegerProperty ROTATION = BlockStateProperties.ROTATION_16;

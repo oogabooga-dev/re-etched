@@ -34,7 +34,7 @@ public class MinecartJukeboxItem extends Item {
             double f = source.z() + (double) direction.getStepZ() * 1.125D;
             BlockPos blockPos = source.getPos().relative(direction);
             BlockState blockState = level.getBlockState(blockPos);
-            RailShape railShape = blockState.getBlock() instanceof BaseRailBlock ? blockState.getValue(((BaseRailBlock) blockState.getBlock()).getShapeProperty()) : RailShape.NORTH_SOUTH;
+            RailShape railShape = blockState.getBlock() instanceof BaseRailBlock rail ? rail.getRailDirection(blockState, level, blockPos, null) : RailShape.NORTH_SOUTH;
             double k;
             if (blockState.is(BlockTags.RAILS)) {
                 if (railShape.isAscending()) {
@@ -48,7 +48,7 @@ public class MinecartJukeboxItem extends Item {
                 }
 
                 BlockState blockState2 = level.getBlockState(blockPos.below());
-                RailShape railShape2 = blockState2.getBlock() instanceof BaseRailBlock ? blockState2.getValue(((BaseRailBlock) blockState2.getBlock()).getShapeProperty()) : RailShape.NORTH_SOUTH;
+                RailShape railShape2 = blockState2.getBlock() instanceof BaseRailBlock rail ? rail.getRailDirection(blockState2, level, blockPos.below(), null) : RailShape.NORTH_SOUTH;
                 if (direction != Direction.DOWN && railShape2.isAscending()) {
                     k = -0.4D;
                 } else {
@@ -87,7 +87,7 @@ public class MinecartJukeboxItem extends Item {
 
         ItemStack stack = useOnContext.getItemInHand();
         if (!level.isClientSide()) {
-            RailShape railShape = blockState.getBlock() instanceof BaseRailBlock ? blockState.getValue(((BaseRailBlock) blockState.getBlock()).getShapeProperty()) : RailShape.NORTH_SOUTH;
+            RailShape railShape = blockState.getBlock() instanceof BaseRailBlock rail ? rail.getRailDirection(blockState, level, blockPos, null) : RailShape.NORTH_SOUTH;
             double d = 0.0D;
             if (railShape.isAscending()) {
                 d = 0.5D;

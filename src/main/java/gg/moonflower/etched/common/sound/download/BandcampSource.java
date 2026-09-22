@@ -65,6 +65,7 @@ public class BandcampSource implements SoundDownloadSource {
         }
     }
 
+    @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
     private <T> T resolve(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy, SourceRequest<T> function) throws IOException, JsonParseException {
         try (InputStream stream = this.get(url, progressListener, proxy)) {
             Matcher dataMatcher = DATA_PATTERN.matcher(IOUtils.toString(stream, StandardCharsets.UTF_8));
@@ -111,6 +112,7 @@ public class BandcampSource implements SoundDownloadSource {
         });
     }
 
+    @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
     @Override
     public List<TrackData> resolveTracks(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException, JsonParseException {
         return this.resolve(url, progressListener, proxy, json -> {

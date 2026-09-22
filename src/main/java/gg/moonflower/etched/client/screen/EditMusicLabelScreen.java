@@ -22,8 +22,8 @@ import net.minecraft.world.item.ItemStack;
 
 public class EditMusicLabelScreen extends Screen {
 
-    private static final ResourceLocation TEXTURE = new ResourceLocation(Etched.MOD_ID, "textures/gui/edit_music_label.png");
-    private static final ResourceLocation LABEL = new ResourceLocation(Etched.MOD_ID, "textures/gui/label.png");
+    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/gui/edit_music_label.png");
+    private static final ResourceLocation LABEL = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/gui/label.png");
     private static final Component TITLE_COMPONENT = Component.translatable("screen.etched.edit_music_label.title");
     private static final Component AUTHOR_COMPONENT = Component.translatable("screen.etched.edit_music_label.author");
 

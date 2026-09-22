@@ -28,6 +28,7 @@ sourceSets.gameTest.runtimeClasspath =
 
 tasks.withType(JavaCompile).configureEach {
     options.release = 17
+    options.compilerArgs.add("-Xlint:deprecation")
 }
 
 def normalizeMixinRefmap = tasks.register("normalizeMixinRefmap") {

@@ -131,6 +131,7 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
         }
     }
 
+    @SuppressWarnings("deprecation") // Minecraft 1.20.1 has no replacement container-destruction hook.
     @Override
     public void onDestroyed(ItemEntity itemEntity) {
         ItemUtils.onContainerDestroyed(itemEntity, getRecords(itemEntity.getItem()).stream());

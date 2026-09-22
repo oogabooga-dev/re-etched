@@ -15,6 +15,7 @@ public abstract class NoteBlockMixin extends Block {
         super(properties);
     }
 
+    @SuppressWarnings("deprecation") // The mixin must override the Minecraft 1.20.1 block hook.
     @Override
     public boolean isPathfindable(BlockState state, BlockGetter level, BlockPos pos, PathComputationType type) {
         return false;

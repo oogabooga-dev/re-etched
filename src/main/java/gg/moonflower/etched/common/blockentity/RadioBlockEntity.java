@@ -94,6 +94,7 @@ public class RadioBlockEntity extends BlockEntity implements Clearable {
         super.setRemoved();
     }
 
+    @SuppressWarnings("deprecation") // Required override for reacting to the block state retained by Minecraft 1.20.1.
     @Override
     public void setBlockState(BlockState state) {
         boolean powered = this.getConfiguration(this.getBlockState()).powered();

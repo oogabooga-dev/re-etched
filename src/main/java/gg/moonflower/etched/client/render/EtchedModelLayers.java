@@ -13,6 +13,6 @@ public class EtchedModelLayers {
     }
 
     public static ModelLayerLocation create(String model, String layer) {
-        return new ModelLayerLocation(new ResourceLocation(Etched.MOD_ID, model), layer);
+        return new ModelLayerLocation(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, model), layer);
     }
 }

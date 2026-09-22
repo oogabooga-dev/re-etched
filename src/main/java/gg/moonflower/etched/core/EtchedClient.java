@@ -68,9 +68,9 @@ public class EtchedClient {
     public static void registerCustomModels(ModelEvent.RegisterAdditional event) {
         ResourceManager resourceManager = Minecraft.getInstance().getResourceManager();
         String folder = "models/item/" + AlbumCoverItemRenderer.FOLDER_NAME;
-        event.register(new ModelResourceLocation(new ResourceLocation(Etched.MOD_ID, "boombox_in_hand"), "inventory"));
+        event.register(new ModelResourceLocation(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "boombox_in_hand"), "inventory"));
         for (ResourceLocation location : resourceManager.listResources(folder, name -> name.getPath().endsWith(".json")).keySet()) {
-            event.register(new ModelResourceLocation(new ResourceLocation(location.getNamespace(), location.getPath().substring(12, location.getPath().length() - 5)), "inventory"));
+            event.register(new ModelResourceLocation(ResourceLocation.fromNamespaceAndPath(location.getNamespace(), location.getPath().substring(12, location.getPath().length() - 5)), "inventory"));
         }
     }
 
