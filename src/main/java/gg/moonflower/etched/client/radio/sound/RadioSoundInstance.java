@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 /** Positional streaming sound backed exclusively by one radio audio stream. */
 public final class RadioSoundInstance extends AbstractTickableSoundInstance implements SoundStopListener {
 
-    private static final ResourceLocation LOCATION = new ResourceLocation(Etched.MOD_ID, "radio_stream");
+    private static final ResourceLocation LOCATION = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "radio_stream");
     private static final SoundEvent EVENT = SoundEvent.createVariableRangeEvent(LOCATION);
 
     private final RadioKey key;

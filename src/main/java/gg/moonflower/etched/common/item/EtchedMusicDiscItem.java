@@ -268,8 +268,8 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
 
             String name = this.name().toLowerCase(Locale.ROOT);
             this.textures = Pair.of(
-                    new ResourceLocation(Etched.MOD_ID, "textures/item/" + name + "_label" + (simple ? "" : "_top") + ".png"),
-                    new ResourceLocation(Etched.MOD_ID, "textures/item/" + name + "_label" + (simple ? "" : "_bottom") + ".png")
+                    ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/item/" + name + "_label" + (simple ? "" : "_top") + ".png"),
+                    ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/item/" + name + "_label" + (simple ? "" : "_bottom") + ".png")
             );
         }
 

@@ -54,9 +54,9 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
     public static final AlbumCoverItemRenderer INSTANCE = new AlbumCoverItemRenderer();
     public static final String FOLDER_NAME = Etched.MOD_ID + "_album_cover";
 
-    private static final ModelResourceLocation BLANK_ALBUM_COVER = new ModelResourceLocation(new ResourceLocation(Etched.MOD_ID, FOLDER_NAME + "/blank"), "inventory");
-    private static final ModelResourceLocation DEFAULT_ALBUM_COVER = new ModelResourceLocation(new ResourceLocation(Etched.MOD_ID, FOLDER_NAME + "/default"), "inventory");
-    private static final ResourceLocation ALBUM_COVER_OVERLAY = new ResourceLocation(Etched.MOD_ID, "textures/item/album_cover_overlay.png");
+    private static final ModelResourceLocation BLANK_ALBUM_COVER = new ModelResourceLocation(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, FOLDER_NAME + "/blank"), "inventory");
+    private static final ModelResourceLocation DEFAULT_ALBUM_COVER = new ModelResourceLocation(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, FOLDER_NAME + "/default"), "inventory");
+    private static final ResourceLocation ALBUM_COVER_OVERLAY = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/item/album_cover_overlay.png");
 
     private static final ItemModelGenerator ITEM_MODEL_GENERATOR = new ItemModelGenerator();
     private static final BlockModel MODEL = BlockModel.fromString("{\"gui_light\":\"front\",\"textures\":{\"layer0\":\"texture\"},\"display\":{\"ground\":{\"rotation\":[0,0,0],\"translation\":[0,2,0],\"scale\":[0.5,0.5,0.5]},\"head\":{\"rotation\":[0,180,0],\"translation\":[0,13,7],\"scale\":[1,1,1]},\"thirdperson_righthand\":{\"rotation\":[0,0,0],\"translation\":[0,3,1],\"scale\":[0.55,0.55,0.55]},\"firstperson_righthand\":{\"rotation\":[0,-90,25],\"translation\":[1.13,3.2,1.13],\"scale\":[0.68,0.68,0.68]},\"fixed\":{\"rotation\":[0,180,0],\"scale\":[1,1,1]}}}");
@@ -76,7 +76,7 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
 
     @Deprecated
     public static void init() {
-//        ReloadListenerRegistry.register(PackType.CLIENT_RESOURCES, INSTANCE, new ResourceLocation(Etched.MOD_ID, "builtin_album_cover"));
+//        ReloadListenerRegistry.register(PackType.CLIENT_RESOURCES, INSTANCE, ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "builtin_album_cover"));
 //        ClientNetworkEvent.DISCONNECT.register((controller, player, connection) -> INSTANCE.close());
     }
 
@@ -219,11 +219,11 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
 
     private static class DynamicModelData extends TextureAtlasSprite implements ModelData {
 
-        private static final ResourceLocation ATLAS = new ResourceLocation(Etched.MOD_ID, DigestUtils.md5Hex(UUID.randomUUID().toString()));
+        private static final ResourceLocation ATLAS = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, DigestUtils.md5Hex(UUID.randomUUID().toString()));
         private BakedModel model;
 
         private DynamicModelData(NativeImage image) {
-            super(ATLAS, new SpriteContents(new ResourceLocation(Etched.MOD_ID, DigestUtils.md5Hex(UUID.randomUUID().toString())), new FrameSize(image.getWidth(), image.getHeight()), image, AnimationMetadataSection.EMPTY, null), image.getWidth(), image.getHeight(), 0, 0);
+            super(ATLAS, new SpriteContents(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, DigestUtils.md5Hex(UUID.randomUUID().toString())), new FrameSize(image.getWidth(), image.getHeight()), image, AnimationMetadataSection.EMPTY, null), image.getWidth(), image.getHeight(), 0, 0);
         }
 
         @Override

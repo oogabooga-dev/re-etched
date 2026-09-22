@@ -10,7 +10,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.worldgen.ProcessorLists;
 import net.minecraft.resources.ResourceKey;
@@ -100,8 +99,8 @@ public class EtchedVillagers {
         tier5.add(Items.DIAMOND, 8, 1, 8, 40, true);
         tier5.add(Items.AMETHYST_SHARD, 1, 8, 10, 40, true);
 
-        // sucks to suck forge
-        BuiltInRegistries.ITEM.getTag(ItemTags.MUSIC_DISCS).ifPresent(tag -> tag.stream().forEach(item -> tier5.add(item.value(), 10, 1, 4, 40, true)));
+        ForgeRegistries.ITEMS.tags().getTag(ItemTags.MUSIC_DISCS)
+                .forEach(item -> tier5.add(item, 10, 1, 4, 40, true));
     }
 
     @SubscribeEvent
@@ -128,8 +127,8 @@ public class EtchedVillagers {
     }
 
     private static void createVillagePiece(Registry<StructureTemplatePool> templatePools, Registry<StructureProcessorList> processorLists, String village, String name, int houseId, int weight, ResourceKey<StructureProcessorList> normalProcessor, ResourceKey<StructureProcessorList> zombieProcessor) {
-        EtchedVillagers.addToPool(templatePools.get(new ResourceLocation("village/" + village + "/houses")), new ResourceLocation(Etched.MOD_ID, "village/" + village + "/houses/" + village + "_" + name + "_" + houseId), processorLists.getHolder(normalProcessor).orElse(null), weight);
-        EtchedVillagers.addToPool(templatePools.get(new ResourceLocation("village/" + village + "/zombie/houses")), new ResourceLocation(Etched.MOD_ID, "village/" + village + "/houses/" + village + "_" + name + "_" + houseId), processorLists.getHolder(zombieProcessor).orElse(null), weight);
+        EtchedVillagers.addToPool(templatePools.get(ResourceLocation.withDefaultNamespace("village/" + village + "/houses")), ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "village/" + village + "/houses/" + village + "_" + name + "_" + houseId), processorLists.getHolder(normalProcessor).orElse(null), weight);
+        EtchedVillagers.addToPool(templatePools.get(ResourceLocation.withDefaultNamespace("village/" + village + "/zombie/houses")), ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "village/" + village + "/houses/" + village + "_" + name + "_" + houseId), processorLists.getHolder(zombieProcessor).orElse(null), weight);
     }
 
     private static void addToPool(@Nullable StructureTemplatePool pool, ResourceLocation pieceId, @Nullable Holder<StructureProcessorList> processorList, int weight) {

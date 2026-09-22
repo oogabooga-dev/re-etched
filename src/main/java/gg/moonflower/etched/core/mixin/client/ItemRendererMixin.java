@@ -28,7 +28,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class ItemRendererMixin {
 
     @Unique
-    private static final ModelResourceLocation etched$BOOMBOX_IN_HAND_MODEL = new ModelResourceLocation(new ResourceLocation(Etched.MOD_ID, "boombox_in_hand"), "inventory");
+    private static final ModelResourceLocation etched$BOOMBOX_IN_HAND_MODEL = new ModelResourceLocation(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "boombox_in_hand"), "inventory");
 
     @Shadow
     @Final

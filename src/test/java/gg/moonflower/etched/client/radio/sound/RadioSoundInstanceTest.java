@@ -87,7 +87,7 @@ class RadioSoundInstanceTest {
         RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
         FakeAudioStream stream = new FakeAudioStream();
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
-                new ResourceLocation("etched_test", "radio"));
+                ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
         RadioSoundInstance sound = new RadioSoundInstance(
                 new RadioKey(dimension, BlockPos.ZERO), attempt.generation(), stream,
                 attempt.cancellation(), 4.0F, 8, () -> {
@@ -123,7 +123,7 @@ class RadioSoundInstanceTest {
         RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
         AtomicInteger stopped = new AtomicInteger();
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
-                new ResourceLocation("etched_test", "radio"));
+                ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
         RadioSoundInstance sound = new RadioSoundInstance(
                 new RadioKey(dimension, BlockPos.ZERO), attempt.generation(), new FakeAudioStream(),
                 attempt.cancellation(), 4.0F, 8, () -> {
@@ -138,7 +138,7 @@ class RadioSoundInstanceTest {
     private static RadioSoundInstance sound(RadioSession.Attempt attempt, RadioAudioStream stream,
                                              AtomicInteger started) {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
-                new ResourceLocation("etched_test", "radio"));
+                ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
         return new RadioSoundInstance(new RadioKey(dimension, new BlockPos(2, 3, 4)),
                 attempt.generation(), stream, attempt.cancellation(), 4.0F, 8,
                 started::incrementAndGet);

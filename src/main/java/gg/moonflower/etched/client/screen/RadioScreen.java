@@ -28,11 +28,11 @@ import java.util.List;
 public class RadioScreen extends AbstractContainerScreen<RadioMenu> {
 
     private static final ResourceLocation BACKGROUND_TEXTURE =
-            new ResourceLocation(Etched.MOD_ID, "textures/gui/radio_background.png");
+            ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/gui/radio_background.png");
     private static final ResourceLocation URL_ACTIVE_TEXTURE =
-            new ResourceLocation(Etched.MOD_ID, "textures/gui/radio_url_active.png");
+            ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/gui/radio_url_active.png");
     private static final ResourceLocation URL_INACTIVE_TEXTURE =
-            new ResourceLocation(Etched.MOD_ID, "textures/gui/radio_url_inactive.png");
+            ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "textures/gui/radio_url_inactive.png");
     private static final Component LOADING_URL = Component.translatable("screen." + Etched.MOD_ID + ".radio.loading_url");
     private static final Component INVALID_URL = Component.translatable("screen." + Etched.MOD_ID + ".radio.error.invalid_url");
     private static final Component PLAY = Component.translatable("screen." + Etched.MOD_ID + ".radio.play");

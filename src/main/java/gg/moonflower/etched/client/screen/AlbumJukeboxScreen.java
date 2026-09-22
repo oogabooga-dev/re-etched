@@ -30,7 +30,7 @@ import java.util.Optional;
  */
 public class AlbumJukeboxScreen extends AbstractContainerScreen<AlbumJukeboxMenu> {
 
-    private static final ResourceLocation CONTAINER_LOCATION = new ResourceLocation("textures/gui/container/dispenser.png");
+    private static final ResourceLocation CONTAINER_LOCATION = ResourceLocation.withDefaultNamespace("textures/gui/container/dispenser.png");
     private static final Component NOW_PLAYING = Component.translatable("screen." + Etched.MOD_ID + ".album_jukebox.now_playing").withStyle(ChatFormatting.YELLOW);
 
     private int playingIndex;

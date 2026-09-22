@@ -670,7 +670,7 @@ class RadioPlaybackManagerTest {
     }
 
     private static ResourceKey<Level> dimension(String path) {
-        return ResourceKey.create(Registries.DIMENSION, new ResourceLocation("etched_test", path));
+        return ResourceKey.create(Registries.DIMENSION, ResourceLocation.fromNamespaceAndPath("etched_test", path));
     }
 
     private static final class RecordingDriver implements RadioPlaybackManager.PlaybackDriver {

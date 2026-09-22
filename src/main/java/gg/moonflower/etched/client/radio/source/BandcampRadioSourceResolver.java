@@ -155,6 +155,7 @@ public final class BandcampRadioSourceResolver implements RadioSourceProgramReso
                 "Bandcamp page exceeds the configured body limit", null);
     }
 
+    @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
     private static ParsedPage parsePage(URI pageUri, String html, RadioResolveContext context)
             throws RadioSourceException {
         Matcher matcher = TRALBUM_DATA.matcher(html);

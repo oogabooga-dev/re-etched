@@ -17,8 +17,18 @@ java {
     }
 }
 
+sourceSets {
+    gameTest
+}
+
+sourceSets.gameTest.compileClasspath =
+        sourceSets.main.output + sourceSets.main.compileClasspath
+sourceSets.gameTest.runtimeClasspath =
+        sourceSets.gameTest.output + sourceSets.main.output + sourceSets.main.runtimeClasspath
+
 tasks.withType(JavaCompile).configureEach {
     options.release = 17
+    options.compilerArgs.add("-Xlint:deprecation")
 }
 
 def normalizeMixinRefmap = tasks.register("normalizeMixinRefmap") {
@@ -90,6 +100,26 @@ loom {
                 "${project.mod_id}.mixins.json"
         ]
     }
+
+    runs {
+        gameTestServer {
+            // Loom lowercases environment names, but Forge's launch config keeps this section camel-cased.
+            environment "server"
+            forgeTemplate "gameTestServer"
+            name "Minecraft Game Test Server"
+            source sourceSets.main
+            runDir "build/run-game-test"
+            property "fabric.dli.env", "gameTestServer"
+            property "forge.enabledGameTestNamespaces", project.mod_id
+
+            mods {
+                "${project.mod_id}" {
+                    sourceSet sourceSets.main
+                    sourceSet sourceSets.gameTest
+                }
+            }
+        }
+    }
 }
 
 repositories {
@@ -116,6 +146,32 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+def prepareGameTestStructures = tasks.register("prepareGameTestStructures", Sync) {
+    from("src/gameTest/gameteststructures")
+    into(layout.buildDirectory.dir("run-game-test/gameteststructures"))
+}
+
+def gameTestSuccessMarker = layout.buildDirectory.file("run-game-test/etched-gametest-success")
+
+tasks.named("runGameTestServer", JavaExec) {
+    group = "verification"
+    description = "Runs Forge GameTests in the transformed Forge userdev server"
+    dependsOn tasks.named("classes")
+    dependsOn tasks.named("gameTestClasses")
+    dependsOn prepareGameTestStructures
+
+    doFirst {
+        delete(gameTestSuccessMarker)
+    }
+    doLast {
+        def marker = gameTestSuccessMarker.get().asFile
+        if (!marker.isFile()) {
+            throw new GradleException("Forge GameTest server exited without running the Etched smoke test")
+        }
+        delete(marker)
+    }
 }
 
 processResources {

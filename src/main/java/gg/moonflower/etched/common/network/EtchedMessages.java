@@ -15,7 +15,7 @@ import java.util.function.Function;
 public class EtchedMessages {
 
     public static final SimpleChannel PLAY = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(Etched.MOD_ID, "play"),
+            ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "play"),
             () -> EtchedLegacyProtocol.VERSION,
             EtchedLegacyProtocol.VERSION::equals,
             EtchedLegacyProtocol.VERSION::equals);

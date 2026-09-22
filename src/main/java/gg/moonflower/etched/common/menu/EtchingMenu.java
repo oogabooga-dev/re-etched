@@ -48,8 +48,8 @@ import java.util.regex.Pattern;
  */
 public class EtchingMenu extends AbstractContainerMenu {
 
-    public static final ResourceLocation EMPTY_SLOT_MUSIC_DISC = new ResourceLocation(Etched.MOD_ID, "item/empty_etching_table_slot_music_disc");
-    public static final ResourceLocation EMPTY_SLOT_MUSIC_LABEL = new ResourceLocation(Etched.MOD_ID, "item/empty_etching_table_slot_music_label");
+    public static final ResourceLocation EMPTY_SLOT_MUSIC_DISC = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "item/empty_etching_table_slot_music_disc");
+    public static final ResourceLocation EMPTY_SLOT_MUSIC_LABEL = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "item/empty_etching_table_slot_music_label");
     private static final Pattern CONTENT_TYPE_PATTERN = Pattern.compile("\\s*;\\s*");
     private static final Cache<String, CompletableFuture<TrackData[]>> DATA_CACHE = CacheBuilder.newBuilder().expireAfterWrite(15, TimeUnit.MINUTES).build();
     private static final boolean IGNORE_CACHE = false;
@@ -347,7 +347,7 @@ public class EtchingMenu extends AbstractContainerMenu {
                             trackData = trackData.withArtist(MusicLabelItem.getAuthor(labelStack));
                         }
                         if (TrackData.isLocalSound(this.url)) {
-                            trackData = trackData.withUrl(new ResourceLocation(this.url).toString());
+                            trackData = trackData.withUrl(ResourceLocation.parse(this.url).toString());
                         }
                         data[i] = trackData;
                     }

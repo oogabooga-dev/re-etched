@@ -28,7 +28,6 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.GrindstoneEvent;
 import net.minecraftforge.event.entity.EntityTravelToDimensionEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
@@ -55,12 +54,12 @@ public class Etched {
         SERVER_CONFIG = serverConfig.getLeft();
     }
 
-    public Etched() {
-        IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
+    public Etched(FMLJavaModLoadingContext context) {
+        IEventBus bus = context.getModEventBus();
         bus.addListener(Etched::init);
         bus.addListener(Etched::clientInit);
 
-        ModLoadingContext.get().registerDisplayTest(EtchedCompatibility.displayTest());
+        context.registerDisplayTest(EtchedCompatibility.displayTest());
 
         EtchedBlocks.BLOCKS.register(bus);
         EtchedBlocks.BLOCK_ENTITIES.register(bus);
@@ -74,8 +73,8 @@ public class Etched {
         EtchedVillagers.POI_REGISTRY.register(bus);
         EtchedVillagers.PROFESSION_REGISTRY.register(bus);
 
-        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, clientSpec);
-        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, serverSpec);
+        context.registerConfig(ModConfig.Type.CLIENT, clientSpec);
+        context.registerConfig(ModConfig.Type.SERVER, serverSpec);
 
         MinecraftForge.EVENT_BUS.addListener(Etched::onGrindstoneChange);
         MinecraftForge.EVENT_BUS.addListener(Etched::onItemChangedDimension);
@@ -116,19 +115,19 @@ public class Etched {
 
     private static void clientInit(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
-            ItemProperties.register(EtchedItems.BOOMBOX.get(), new ResourceLocation(Etched.MOD_ID, "playing"), (stack, level, entity, i) -> {
+            ItemProperties.register(EtchedItems.BOOMBOX.get(), ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "playing"), (stack, level, entity, i) -> {
                 if (!(entity instanceof Player)) {
                     return 0;
                 }
                 InteractionHand hand = BoomboxItem.getPlayingHand(entity);
                 return hand != null && stack == entity.getItemInHand(hand) ? 1 : 0;
             });
-            ItemProperties.register(EtchedItems.ETCHED_MUSIC_DISC.get(), new ResourceLocation(Etched.MOD_ID, "pattern"), (stack, level, entity, i) -> EtchedMusicDiscItem.getPattern(stack).ordinal() / 10F);
+            ItemProperties.register(EtchedItems.ETCHED_MUSIC_DISC.get(), ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "pattern"), (stack, level, entity, i) -> EtchedMusicDiscItem.getPattern(stack).ordinal() / 10F);
 
 //            ItemBlockRenderTypes.setRenderLayer(EtchedBlocks.ETCHING_TABLE.get(), ChunkRenderTypeSet.of(RenderType.cutout()));
 //            ItemBlockRenderTypes.setRenderLayer(EtchedBlocks.RADIO.get(), ChunkRenderTypeSet.of(RenderType.cutout()));
 
-//            ItemRendererRegistry.registerHandModel(EtchedItems.BOOMBOX.get(), new ModelResourceLocation(new ResourceLocation(Etched.MOD_ID, "boombox_in_hand"), "inventory"));
+//            ItemRendererRegistry.registerHandModel(EtchedItems.BOOMBOX.get(), new ModelResourceLocation(ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "boombox_in_hand"), "inventory"));
 //            ItemRendererRegistry.registerRenderer(EtchedItems.ALBUM_COVER.get(), AlbumCoverItemRenderer.INSTANCE);
 
             MenuScreens.register(EtchedMenus.ETCHING_MENU.get(), EtchingScreen::new);

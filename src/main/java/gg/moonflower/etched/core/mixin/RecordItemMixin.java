@@ -71,8 +71,8 @@ public abstract class RecordItemMixin extends Item implements PlayableRecord {
     @Override
     public CompletableFuture<AlbumCover> getAlbumCover(ItemStack stack, Proxy proxy, ResourceManager resourceManager) {
         ResourceLocation key = ForgeRegistries.ITEMS.getKey(this);
-        return resourceManager.getResource(new ResourceLocation(key.getNamespace(), "models/item/" + AlbumCoverItemRenderer.FOLDER_NAME + "/" + key.getPath() + ".json")).isPresent() ?
-                CompletableFuture.completedFuture(AlbumCover.of(new ResourceLocation(key.getNamespace(), AlbumCoverItemRenderer.FOLDER_NAME + "/" + key.getPath()))) :
+        return resourceManager.getResource(ResourceLocation.fromNamespaceAndPath(key.getNamespace(), "models/item/" + AlbumCoverItemRenderer.FOLDER_NAME + "/" + key.getPath() + ".json")).isPresent() ?
+                CompletableFuture.completedFuture(AlbumCover.of(ResourceLocation.fromNamespaceAndPath(key.getNamespace(), AlbumCoverItemRenderer.FOLDER_NAME + "/" + key.getPath()))) :
                 CompletableFuture.completedFuture(AlbumCover.EMPTY);
     }
 
