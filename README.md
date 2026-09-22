@@ -22,6 +22,17 @@ The `master` branch is used for current development, including the incompatible
 5.x architecture work. Release branches are cut from and merged back into their
 target line: `release/4.*` targets `4.x`, while `release/5.*` targets `master`.
 
+## 5.x World Compatibility
+
+Re-Etched 5.x is an intentional clean start for new worlds. Upgrading a world
+previously used with Etched 3.x or Re-Etched 4.x is unsupported, and no old-world
+or old-NBT migration is planned. Keep using the 4.x maintenance line for worlds
+that require original Etched compatibility.
+
+Downgrading a world from Re-Etched 5.x is also unsupported. All clients and the
+server must move to the same 5.x release together; mixed 3.x, 4.x, and 5.x
+multiplayer configurations are not supported.
+
 ## Requirements
 
 | Component | Requirement |
@@ -134,7 +145,8 @@ hostnames remotely must enforce an equivalent destination policy itself.
 - Radio inputs are limited to absolute HTTP(S) URLs.
 - SoundCloud, Bandcamp, and station availability are outside the project's
   control.
-- World migration and downgrade behavior still require caution; keep backups.
+- Re-Etched 5.x requires new worlds and does not support upgrades from 3.x/4.x
+  or downgrades back from 5.x.
 - Only Minecraft 1.20.1, Forge, and Java 17 are supported.
 
 Report reproducible problems at the
