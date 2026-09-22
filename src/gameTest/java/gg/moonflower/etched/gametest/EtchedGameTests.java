@@ -180,6 +180,52 @@ public final class EtchedGameTests {
         helper.succeed();
     }
 
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void boomboxPauseAndRecordReplacementSurviveSynchronization(GameTestHelper helper) {
+        ItemStack firstRecord = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        firstRecord.getOrCreateTag().putString("CharacterizationMarker", "first-record");
+        EtchedMusicDiscItem.setMusic(firstRecord, track("first"));
+        ItemStack replacementRecord = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        replacementRecord.getOrCreateTag().putString("CharacterizationMarker", "replacement-record");
+        EtchedMusicDiscItem.setMusic(replacementRecord, track("replacement"));
+
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, firstRecord);
+        BoomboxItem.setPaused(boombox, true);
+
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            buffer.writeItem(boombox);
+            ItemStack synchronizedBoombox = buffer.readItem();
+
+            helper.assertTrue(BoomboxItem.isPaused(synchronizedBoombox),
+                    "The synchronized boombox lost its paused state");
+            helper.assertTrue(ItemStack.matches(firstRecord, BoomboxItem.getRecord(synchronizedBoombox)),
+                    "The synchronized boombox changed its record data");
+
+            BoomboxItem.setRecord(synchronizedBoombox, replacementRecord);
+            helper.assertTrue(BoomboxItem.isPaused(synchronizedBoombox),
+                    "Replacing the record unpaused the boombox");
+            helper.assertTrue(ItemStack.matches(replacementRecord, BoomboxItem.getRecord(synchronizedBoombox)),
+                    "The boombox did not replace its record data");
+
+            BoomboxItem.setPaused(synchronizedBoombox, false);
+            helper.assertFalse(BoomboxItem.isPaused(synchronizedBoombox),
+                    "The boombox remained paused after resuming");
+            helper.assertTrue(ItemStack.matches(replacementRecord, BoomboxItem.getRecord(synchronizedBoombox)),
+                    "Resuming the boombox changed its replacement record");
+
+            BoomboxItem.setRecord(synchronizedBoombox, ItemStack.EMPTY);
+            helper.assertFalse(BoomboxItem.hasRecord(synchronizedBoombox),
+                    "The boombox retained its record after removal");
+            helper.assertTrue(BoomboxItem.getRecord(synchronizedBoombox).isEmpty(),
+                    "The cleared boombox returned a record");
+        } finally {
+            buffer.release();
+        }
+        helper.succeed();
+    }
+
     private static TrackData track(String name) {
         return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
     }
