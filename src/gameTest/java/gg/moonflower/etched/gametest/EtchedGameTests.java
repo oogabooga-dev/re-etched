@@ -3,6 +3,7 @@ package gg.moonflower.etched.gametest;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
+import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.Etched;
@@ -140,6 +141,39 @@ public final class EtchedGameTests {
             helper.assertTrue(tracks[0].equals(first), "The first Album Cover track changed order");
             helper.assertTrue(tracks[1].equals(second), "The second Album Cover track changed order");
             helper.assertTrue(tracks[2].equals(third), "The third Album Cover track changed order");
+        } finally {
+            buffer.release();
+        }
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void boomboxStackPreservesAlbumTrackSequence(GameTestHelper helper) {
+        TrackData first = track("first");
+        TrackData second = track("second");
+        TrackData third = track("third");
+        ItemStack multiTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(multiTrackDisc, track("album"), first, second);
+        ItemStack singleTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(singleTrackDisc, third);
+        ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
+        AlbumCoverItem.setRecords(albumCover, List.of(multiTrackDisc, singleTrackDisc));
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, albumCover);
+
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            buffer.writeItem(boombox);
+            ItemStack receivedBoombox = buffer.readItem();
+            ItemStack receivedAlbumCover = BoomboxItem.getRecord(receivedBoombox);
+            TrackData[] tracks = PlayableRecord.getStackMusic(receivedAlbumCover).orElseGet(() -> new TrackData[0]);
+
+            helper.assertTrue(receivedAlbumCover.is(EtchedItems.ALBUM_COVER.get()),
+                    "The synchronized boombox did not retain its Album Cover");
+            helper.assertTrue(tracks.length == 3, "The boombox Album Cover did not contain every track");
+            helper.assertTrue(tracks[0].equals(first), "The first boombox track changed order");
+            helper.assertTrue(tracks[1].equals(second), "The second boombox track changed order");
+            helper.assertTrue(tracks[2].equals(third), "The third boombox track changed order");
         } finally {
             buffer.release();
         }
