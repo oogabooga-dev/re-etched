@@ -33,6 +33,9 @@ jobs:
       - name: Test and build
         run: ./gradlew test build --no-daemon
 
+      - name: Run transformed Forge GameTests
+        run: ./gradlew runGameTestServer --no-daemon
+
       - name: Smoke-test dedicated server
         run: python3 scripts/server_smoke.py
 
@@ -42,6 +45,8 @@ jobs:
         with:
           name: dedicated-server-failure-logs
           path: |
+            build/run-game-test/logs
+            build/run-game-test/crash-reports
             run/logs
             run/crash-reports
           if-no-files-found: ignore
