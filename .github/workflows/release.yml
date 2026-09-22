@@ -52,8 +52,23 @@ jobs:
             exit 1
           fi
 
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
-            printf 'Tagged commit %s is not on origin/master\n' "$GITHUB_SHA" >&2
+          case "$version" in
+            4.*) release_branch="4.x" ;;
+            5.*) release_branch="master" ;;
+            *)
+              printf 'Unsupported release line for version %s\n' "$version" >&2
+              exit 1
+              ;;
+          esac
+
+          release_ref="refs/remotes/origin/$release_branch"
+          if ! git show-ref --verify --quiet "$release_ref"; then
+            printf 'Release branch origin/%s was not fetched\n' "$release_branch" >&2
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "$release_ref"; then
+            printf 'Tagged commit %s is not on origin/%s\n' "$GITHUB_SHA" "$release_branch" >&2
             exit 1
           fi
 
