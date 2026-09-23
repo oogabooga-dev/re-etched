@@ -95,12 +95,7 @@ tasks.withType(Jar).configureEach {
 }
 
 loom {
-    accessWidenerPath = file("src/main/resources/${project.mod_id}.accesswidener")
-
     forge {
-        convertAccessWideners = true
-        extraAccessWideners.add loom.accessWidenerPath.get().asFile.name
-
         mixinConfigs = [
                 "${project.mod_id}.mixins.json"
         ]

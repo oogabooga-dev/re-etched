@@ -56,6 +56,13 @@ public final class EtchedGameTests {
         helper.assertFalse(ForgeRegistries.POI_TYPES.containsKey(bardId), "The removed bard POI was registered");
         helper.assertFalse(ForgeRegistries.VILLAGER_PROFESSIONS.containsKey(bardId),
                 "The removed bard profession was registered");
+        ResourceLocation jukeboxMinecartId = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "jukebox_minecart");
+        helper.assertFalse(ForgeRegistries.ITEMS.containsKey(jukeboxMinecartId),
+                "The removed Jukebox Minecart item was registered");
+        helper.assertFalse(ForgeRegistries.ENTITY_TYPES.containsKey(jukeboxMinecartId),
+                "The removed Jukebox Minecart entity was registered");
+        helper.assertTrue(helper.getLevel().getRecipeManager().byKey(jukeboxMinecartId).isEmpty(),
+                "The removed Jukebox Minecart recipe was loaded");
         helper.assertTrue(Items.MUSIC_DISC_13 instanceof PlayableRecord, "Etched common mixins were not applied");
         try {
             Files.writeString(Path.of("etched-gametest-success"), "passed\n");
