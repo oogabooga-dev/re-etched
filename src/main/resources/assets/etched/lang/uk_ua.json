@@ -1,8 +1,6 @@
 {
-  "block.etched.album_jukebox": "Альбомний програвач",
   "block.etched.etching_table": "Стіл гравіювання",
   "block.etched.radio": "Радіо",
-  "container.etched.album_jukebox": "Альбомний програвач",
   "container.etched.etching_table": "Стіл гравіювання",
   "container.etched.etching_table.url": "Посилання пісні",
   "container.etched.radio": "Радіо",
@@ -22,7 +20,6 @@
   "record.etched.downloadProgress": "Завантаження (%s МБ / %s МБ): %s",
   "record.etched.loading": "Завантаження %s",
   "record.etched.resolvingTracks": "Розпізнавання композицій...",
-  "screen.etched.album_jukebox.now_playing": "Зараз грає",
   "screen.etched.edit_music_label.author": "Автор",
   "screen.etched.edit_music_label.title": "Заголовок",
   "screen.etched.etching_table.error.cannot_create": "Неможливо створити платівку",
