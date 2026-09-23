@@ -122,7 +122,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/album").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         assertEquals(4.0F, sounds.played.get(0).getVolume());
         assertEquals(SoundInstance.Attenuation.LINEAR, sounds.played.get(0).getAttenuation());
@@ -163,7 +163,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/station").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         drain(sounds.audio.get(0));
         await(() -> events.terminations.size() == 1);
@@ -186,7 +186,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/station-race").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         sounds.played.get(0).onStop();
         assertEquals(1, events.soundStops.size());
@@ -209,7 +209,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/album-race").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         sounds.played.get(0).onStop();
         drain(sounds.audio.get(0));
@@ -252,7 +252,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/blocked").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         assertTrue(entered.await(5, TimeUnit.SECONDS));
 
         session.stop();
@@ -276,7 +276,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> events.failures.size() == 1);
         session.stop();
         driver.abort(KEY, session, attempt);
@@ -300,7 +300,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/silent").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> events.failures.size() == 1);
 
         assertTrue(sounds.audio.isEmpty());
@@ -320,7 +320,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/closed").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         sounds.audio.get(0).close();
         await(() -> events.soundStops.size() == 1);
@@ -340,7 +340,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-ownership").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         RadioAudioStream audio = sounds.audio.get(0);
 
@@ -381,7 +381,7 @@ class ProductionRadioSessionDriverTest {
         ExecutorService soundExecutor = Executors.newSingleThreadExecutor();
 
         try {
-            driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+            driver.start(KEY, configuration(attempt.source()), session, attempt, events);
             await(() -> sounds.audio.size() == 1);
             assertTrue(bodySent.await(5, TimeUnit.SECONDS));
             RadioAudioStream audio = sounds.audio.get(0);
@@ -422,7 +422,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         RadioAudioStream audio = sounds.audio.get(0);
         sounds.failStop = true;
@@ -455,7 +455,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start("https://bad host/");
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration("https://radio.example/valid"), session, attempt, events);
         await(() -> events.failures.size() == 1);
 
         RadioSourceException failure = assertInstanceOf(
@@ -476,7 +476,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession session = new RadioSession();
         RadioSession.Attempt first = session.start(this.baseUri.resolve("/album-retry").toString());
         RecordingEvents firstEvents = new RecordingEvents(session, first);
-        driver.start(KEY, new RadioConfiguration(first.source(), false), session, first, firstEvents);
+        driver.start(KEY, configuration(first.source()), session, first, firstEvents);
         await(() -> sounds.audio.size() == 1);
         drain(sounds.audio.get(0));
         sounds.played.get(0).onStop();
@@ -491,7 +491,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt retry = session.retry(wait).orElseThrow();
         RecordingEvents retryEvents = new RecordingEvents(session, retry);
 
-        driver.start(KEY, new RadioConfiguration(retry.source(), false), session, retry, retryEvents);
+        driver.start(KEY, configuration(retry.source()), session, retry, retryEvents);
         await(() -> sounds.audio.size() == 2);
 
         assertEquals(List.of("one", "retry", "retry"), this.requests);
@@ -519,7 +519,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/owner").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> events.unavailableOwners.get() == 1);
 
         assertTrue(sounds.played.isEmpty());
@@ -549,7 +549,7 @@ class ProductionRadioSessionDriverTest {
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/owner-handoff").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
-        driver.start(KEY, new RadioConfiguration(attempt.source(), false), session, attempt, events);
+        driver.start(KEY, configuration(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
         sounds.played.get(0).onStop();
         await(() -> events.unavailableOwners.get() == 1);
@@ -594,6 +594,10 @@ class ProductionRadioSessionDriverTest {
                 return program;
             }
         };
+    }
+
+    private static RadioConfiguration configuration(String source) {
+        return RadioConfiguration.forStation(0L, source, true, false);
     }
 
     private void serve(HttpExchange exchange, String name) throws IOException {

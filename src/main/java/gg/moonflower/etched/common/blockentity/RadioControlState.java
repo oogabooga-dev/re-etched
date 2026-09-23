@@ -1,36 +1,51 @@
 package gg.moonflower.etched.common.blockentity;
 
+import gg.moonflower.etched.common.audio.AudioNbtCodec;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.PlaybackRevision;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Stores a radio station separately from whether manual playback is enabled. */
 final class RadioControlState {
 
-    private static final String ACTIVE_URL_TAG = "Url";
-    private static final String STORED_URL_TAG = "StoredUrl";
+    private static final String STATION_TAG = "Station";
+    private static final String ENABLED_TAG = "Enabled";
+    private static final String REVISION_TAG = "PlaybackRevision";
 
-    private String storedUrl;
+    private AudioProgram station;
     private boolean enabled;
+    private long revision;
+    private boolean initialized;
 
-    void load(CompoundTag nbt) {
-        String activeUrl = readUrl(nbt, ACTIVE_URL_TAG);
-        if (nbt.contains(STORED_URL_TAG, Tag.TAG_STRING)) {
-            this.storedUrl = normalize(nbt.getString(STORED_URL_TAG));
-        } else if (activeUrl != null || !nbt.contains(ACTIVE_URL_TAG, Tag.TAG_STRING)) {
-            this.storedUrl = activeUrl;
+    boolean load(CompoundTag nbt) {
+        AudioProgram loadedStation = readStation(nbt).orElse(null);
+        boolean loadedEnabled = loadedStation != null && nbt.contains(ENABLED_TAG, Tag.TAG_BYTE)
+                && nbt.getBoolean(ENABLED_TAG);
+        long loadedRevision = nbt.contains(REVISION_TAG, Tag.TAG_LONG) ? nbt.getLong(REVISION_TAG) : 0L;
+        if (this.initialized && (loadedRevision == this.revision
+                || !PlaybackRevision.isNewer(loadedRevision, this.revision))) {
+            return false;
         }
-        this.enabled = this.storedUrl != null && activeUrl != null;
+
+        this.station = loadedStation;
+        this.enabled = loadedEnabled;
+        this.revision = loadedRevision;
+        this.initialized = true;
+        return true;
     }
 
     void save(CompoundTag nbt) {
-        if (this.storedUrl == null) {
-            return;
+        if (this.station != null) {
+            nbt.put(STATION_TAG, AudioNbtCodec.write(this.station));
         }
-
-        nbt.putString(STORED_URL_TAG, this.storedUrl);
-        nbt.putString(ACTIVE_URL_TAG, this.enabled ? this.storedUrl : "");
+        nbt.putBoolean(ENABLED_TAG, this.enabled);
+        nbt.putLong(REVISION_TAG, this.revision);
     }
 
     boolean apply(String url) {
@@ -40,43 +55,65 @@ final class RadioControlState {
                 return false;
             }
             this.enabled = false;
+            this.advanceRevision();
             return true;
         }
 
-        if (this.enabled && Objects.equals(this.storedUrl, normalized)) {
+        AudioProgram updatedStation = station(normalized);
+        if (this.enabled && Objects.equals(this.station, updatedStation)) {
             return false;
         }
-        this.storedUrl = normalized;
+        this.station = updatedStation;
         this.enabled = true;
+        this.advanceRevision();
         return true;
     }
 
     boolean clear() {
-        if (this.storedUrl == null && !this.enabled) {
+        if (this.station == null && !this.enabled) {
             return false;
         }
-        this.storedUrl = null;
+        this.station = null;
         this.enabled = false;
+        this.advanceRevision();
         return true;
     }
 
     String storedUrl() {
-        return this.storedUrl;
+        return this.station == null ? null : this.station.tracks().get(0).source();
     }
 
-    String activeUrl() {
-        return this.enabled ? this.storedUrl : null;
+    Optional<AudioProgram> station() {
+        return Optional.ofNullable(this.station);
     }
 
     boolean enabled() {
         return this.enabled;
     }
 
-    private static String readUrl(CompoundTag nbt, String key) {
-        return nbt.contains(key, Tag.TAG_STRING) ? normalize(nbt.getString(key)) : null;
+    long revision() {
+        return this.revision;
+    }
+
+    void advanceRevision() {
+        this.revision = PlaybackRevision.next(this.revision);
+        this.initialized = true;
     }
 
     private static String normalize(String url) {
-        return url == null || url.isBlank() ? null : url;
+        return url == null || url.isBlank() ? null : url.trim();
+    }
+
+    private static AudioProgram station(String url) {
+        return new AudioProgram(AudioProgram.Kind.LIVE, List.of(
+                new AudioTrack(AudioTrack.SourceType.REMOTE, url, "", "")));
+    }
+
+    private static Optional<AudioProgram> readStation(CompoundTag nbt) {
+        if (!(nbt.get(STATION_TAG) instanceof CompoundTag stationTag)) {
+            return Optional.empty();
+        }
+        return AudioNbtCodec.readProgram(stationTag).result()
+                .filter(program -> program.kind() == AudioProgram.Kind.LIVE);
     }
 }
