@@ -31,8 +31,9 @@ public class RadioBlockEntity extends BlockEntity implements Clearable {
     @Override
     public void load(CompoundTag nbt) {
         super.load(nbt);
-        this.controlState.load(nbt);
-        this.publishUpdate();
+        if (this.controlState.load(nbt)) {
+            this.publishUpdate();
+        }
     }
 
     @Override
@@ -100,13 +101,17 @@ public class RadioBlockEntity extends BlockEntity implements Clearable {
         boolean powered = this.getConfiguration(this.getBlockState()).powered();
         super.setBlockState(state);
         if (powered != this.getConfiguration(state).powered()) {
-            this.publishUpdate();
+            if (this.level != null && !this.level.isClientSide()) {
+                this.controlState.advanceRevision();
+                this.stateChanged();
+            }
         }
     }
 
     private RadioConfiguration getConfiguration(BlockState state) {
         boolean powered = state.hasProperty(RadioBlock.POWERED) && state.getValue(RadioBlock.POWERED);
-        return new RadioConfiguration(this.controlState.activeUrl(), powered);
+        return new RadioConfiguration(this.controlState.revision(), this.controlState.station(),
+                this.controlState.enabled(), powered);
     }
 
     private void stateChanged() {

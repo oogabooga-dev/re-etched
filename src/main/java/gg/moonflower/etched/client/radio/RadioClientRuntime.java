@@ -89,7 +89,8 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
             PendingStation pending = this.pendingStations.get(key);
             if (pending != null && pending.expired()) {
                 this.pendingStations.remove(key);
-            } else if (pending != null && pending.url.equals(configuration.url())) {
+            } else if (pending != null && configuration.manuallyEnabled()
+                    && pending.url.equals(configuration.url())) {
                 this.pendingStations.remove(key);
                 confirmed = pending;
             }

@@ -1,26 +1,48 @@
 package gg.moonflower.etched.common.radio;
 
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RadioConfigurationTest {
 
     @Test
-    void normalizesMissingUrlWithoutChangingPresentValues() {
-        assertEquals("", new RadioConfiguration(null, false).url());
-        assertEquals("  https://radio.example/live  ",
-                new RadioConfiguration("  https://radio.example/live  ", false).url());
+    void exposesStationUrlAndExplicitPlaybackState() {
+        RadioConfiguration enabled = RadioConfiguration.forStation(
+                12L, "https://radio.example/live", true, false);
+        RadioConfiguration manuallyStopped = RadioConfiguration.forStation(
+                13L, "https://radio.example/live", false, false);
+        RadioConfiguration powered = RadioConfiguration.forStation(
+                14L, "https://radio.example/live", true, true);
+        RadioConfiguration empty = RadioConfiguration.empty(15L, false);
+
+        assertEquals(12L, enabled.revision());
+        assertEquals("https://radio.example/live", enabled.url());
+        assertTrue(enabled.isConfigured());
+        assertTrue(enabled.isEnabled());
+        assertFalse(manuallyStopped.isEnabled());
+        assertFalse(powered.isEnabled());
+        assertFalse(empty.isConfigured());
+        assertEquals("", empty.url());
     }
 
     @Test
-    void distinguishesConfigurationFromEnabledPlayback() {
-        assertFalse(new RadioConfiguration("", false).isConfigured());
-        assertFalse(new RadioConfiguration("", false).isEnabled());
-        assertTrue(new RadioConfiguration("https://radio.example/live", false).isConfigured());
-        assertTrue(new RadioConfiguration("https://radio.example/live", false).isEnabled());
-        assertFalse(new RadioConfiguration("https://radio.example/live", true).isEnabled());
+    void rejectsInvalidRadioPrograms() {
+        AudioProgram finite = new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                new AudioTrack(AudioTrack.SourceType.REMOTE,
+                        "https://audio.example/track", "", "")));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new RadioConfiguration(1L, Optional.of(finite), true, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> new RadioConfiguration(1L, Optional.empty(), true, false));
     }
 }

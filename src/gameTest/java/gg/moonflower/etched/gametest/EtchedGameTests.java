@@ -2,6 +2,8 @@ package gg.moonflower.etched.gametest;
 
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.block.RadioBlock;
+import gg.moonflower.etched.common.blockentity.RadioBlockEntity;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
@@ -80,6 +82,34 @@ public final class EtchedGameTests {
         } catch (IOException exception) {
             throw new IllegalStateException("Could not record the Etched GameTest result", exception);
         }
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void radioRedstoneTransitionsAdvancePlaybackRevision(GameTestHelper helper) {
+        BlockPos radioPos = BlockPos.ZERO;
+        helper.setBlock(radioPos, EtchedBlocks.RADIO.get());
+        RadioBlockEntity radio = (RadioBlockEntity) helper.getBlockEntity(radioPos);
+        radio.setUrl("https://radio.example/live");
+
+        helper.assertTrue(radio.getUpdateTag().getLong("PlaybackRevision") == 1L,
+                "Setting the station did not establish revision 1");
+        helper.assertTrue(radio.getUpdateTag().getBoolean("Enabled"),
+                "Setting the station did not enable manual playback");
+
+        helper.setBlock(radioPos, helper.getBlockState(radioPos).setValue(RadioBlock.POWERED, true));
+        helper.assertTrue(radio.getUpdateTag().getLong("PlaybackRevision") == 2L,
+                "Powering the radio did not advance its revision exactly once");
+        helper.getLevel().sendBlockUpdated(helper.absolutePos(radioPos),
+                helper.getBlockState(radioPos), helper.getBlockState(radioPos), 3);
+        helper.assertTrue(radio.getUpdateTag().getLong("PlaybackRevision") == 2L,
+                "A duplicate block notification advanced the radio revision");
+
+        helper.setBlock(radioPos, helper.getBlockState(radioPos).setValue(RadioBlock.POWERED, false));
+        helper.assertTrue(radio.getUpdateTag().getLong("PlaybackRevision") == 3L,
+                "Unpowering the radio did not advance its revision exactly once");
+        helper.assertTrue(radio.isConfiguredAndEnabled(),
+                "Unpowering the radio did not resume the retained station");
         helper.succeed();
     }
 

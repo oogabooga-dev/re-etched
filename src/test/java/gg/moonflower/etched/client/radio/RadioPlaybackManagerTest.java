@@ -35,7 +35,7 @@ class RadioPlaybackManagerTest {
     private static final ResourceKey<Level> FIRST_DIMENSION = dimension("first");
     private static final ResourceKey<Level> SECOND_DIMENSION = dimension("second");
     private static final RadioConfiguration ENABLED =
-            new RadioConfiguration("https://radio.example/live", false);
+            configuration(1L, "https://radio.example/live", false);
 
     @Test
     void deduplicatesConfigurationAndAppliesMeaningfulChanges() {
@@ -45,12 +45,41 @@ class RadioPlaybackManagerTest {
 
         assertTrue(manager.update(key, ENABLED));
         assertFalse(manager.update(key, ENABLED));
-        assertTrue(manager.update(key, new RadioConfiguration(ENABLED.url(), true)));
+        RadioConfiguration powered = configuration(2L, ENABLED.url(), true);
+        assertTrue(manager.update(key, powered));
 
         assertEquals(2, driver.applied.size());
-        assertEquals(new RadioConfiguration(ENABLED.url(), true), manager.getConfiguration(key).orElseThrow());
+        assertEquals(powered, manager.getConfiguration(key).orElseThrow());
         assertEquals(RadioPlaybackState.STOPPED,
                 manager.getSessionSnapshot(key).orElseThrow().state());
+    }
+
+    @Test
+    void rejectsStaleAndConflictingRevisions() {
+        RecordingDriver driver = new RecordingDriver();
+        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
+        RadioKey key = new RadioKey(FIRST_DIMENSION, BlockPos.ZERO);
+        RadioConfiguration current = configuration(10L, "https://radio.example/current", false);
+
+        assertTrue(manager.update(key, current));
+        assertFalse(manager.update(key, configuration(9L, "https://radio.example/stale", false)));
+        assertFalse(manager.update(key, configuration(10L, "https://radio.example/conflict", false)));
+
+        assertEquals(current, manager.getConfiguration(key).orElseThrow());
+        assertEquals(1, driver.applied.size());
+    }
+
+    @Test
+    void acceptsRevisionAfterLongWrap() {
+        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver());
+        RadioKey key = new RadioKey(FIRST_DIMENSION, BlockPos.ZERO);
+
+        assertTrue(manager.update(key, configuration(
+                Long.MAX_VALUE, "https://radio.example/before-wrap", false)));
+        assertTrue(manager.update(key, configuration(
+                Long.MIN_VALUE, "https://radio.example/after-wrap", false)));
+
+        assertEquals(Long.MIN_VALUE, manager.getConfiguration(key).orElseThrow().revision());
     }
 
     @Test
@@ -93,6 +122,19 @@ class RadioPlaybackManagerTest {
 
         assertEquals(1, driver.applied.size());
         assertEquals(List.of(key, key), driver.ticked);
+    }
+
+    @Test
+    void fallbackTickUsesAcceptedStateAfterStaleUpdate() {
+        RecordingDriver driver = new RecordingDriver();
+        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
+        RadioKey key = new RadioKey(FIRST_DIMENSION, BlockPos.ZERO);
+        RadioConfiguration current = configuration(2L, "https://radio.example/current", false);
+
+        manager.update(key, current);
+        manager.tick(key, configuration(1L, "https://radio.example/stale", false));
+
+        assertEquals(current, driver.tickedConfigurations.get(0).configuration());
     }
 
     @Test
@@ -147,14 +189,14 @@ class RadioPlaybackManagerTest {
         StartedSession first = sessions.started.get(0);
         assertFalse(manager.update(key, ENABLED));
         assertFalse(first.attempt().cancellation().isCancelled());
-        manager.update(key, new RadioConfiguration("https://radio.example/new", false));
+        manager.update(key, configuration(2L, "https://radio.example/new", false));
         StartedSession second = sessions.started.get(1);
 
         assertTrue(first.attempt().cancellation().isCancelled());
         assertFalse(first.session().advance(first.attempt().generation(), RadioPlaybackState.CONNECTING));
         assertFalse(second.attempt().cancellation().isCancelled());
 
-        manager.update(key, new RadioConfiguration(second.configuration().url(), true));
+        manager.update(key, configuration(3L, second.configuration().url(), true));
 
         assertTrue(second.attempt().cancellation().isCancelled());
         assertEquals(2, sessions.started.size());
@@ -173,15 +215,16 @@ class RadioPlaybackManagerTest {
         RadioKey key = new RadioKey(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.update(key, ENABLED);
+        long revision = ENABLED.revision();
         for (int i = 0; i < 100; i++) {
             String url = "https://radio.example/live/" + i;
             StartedSession previous = sessions.started.get(sessions.started.size() - 1);
-            manager.update(key, new RadioConfiguration(url, false));
+            manager.update(key, configuration(++revision, url, false));
             assertTrue(previous.attempt().cancellation().isCancelled());
             StartedSession started = sessions.started.get(sessions.started.size() - 1);
-            manager.update(key, new RadioConfiguration(url, true));
+            manager.update(key, configuration(++revision, url, true));
             assertTrue(started.attempt().cancellation().isCancelled());
-            manager.update(key, new RadioConfiguration(url, false));
+            manager.update(key, configuration(++revision, url, false));
         }
         manager.remove(key);
 
@@ -206,7 +249,8 @@ class RadioPlaybackManagerTest {
         manager.update(incumbent, ENABLED);
 
         for (int i = 0; i < 50; i++) {
-            manager.update(queued, new RadioConfiguration("https://radio.example/queued/" + i, false));
+            manager.update(queued, configuration(
+                    i + 1L, "https://radio.example/queued/" + i, false));
             assertEquals(1, connections.queuedCount());
         }
         manager.remove(incumbent);
@@ -219,13 +263,13 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void normalizesSurroundingUrlWhitespaceBeforeStartingASession() {
+    void startsOnlyWhenAuthoritativeStateHasAnEnabledStation() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver(), sessions);
         RadioKey key = new RadioKey(FIRST_DIMENSION, BlockPos.ZERO);
 
-        manager.update(key, new RadioConfiguration("   ", false));
-        manager.update(key, new RadioConfiguration("  https://radio.example/live  ", false));
+        manager.update(key, RadioConfiguration.empty(1L, false));
+        manager.update(key, configuration(2L, "https://radio.example/live", false));
 
         assertEquals(1, sessions.started.size());
         assertEquals("https://radio.example/live", sessions.started.get(0).attempt().source());
@@ -303,7 +347,7 @@ class RadioPlaybackManagerTest {
         assertEquals(RadioPlaybackState.PLAYING, playing.snapshot().state());
         assertEquals("Current title", playing.snapshot().streamTitle());
 
-        manager.update(key, new RadioConfiguration("https://radio.example/replacement", false));
+        manager.update(key, configuration(2L, "https://radio.example/replacement", false));
         StartedSession second = sessions.started.get(1);
         assertEquals(first.attempt().generation(), second.attempt().generation());
         assertFalse(first.session().offerStreamTitle(first.attempt(), "Stale title"));
@@ -447,7 +491,7 @@ class RadioPlaybackManagerTest {
         RadioKey key = new RadioKey(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
         StartedSession detached = sessions.started.get(0);
-        RadioConfiguration replacement = new RadioConfiguration("https://radio.example/new", false);
+        RadioConfiguration replacement = configuration(2L, "https://radio.example/new", false);
         manager.update(key, replacement);
         StartedSession current = sessions.started.get(1);
         int updates = effects.updated.size();
@@ -673,11 +717,16 @@ class RadioPlaybackManagerTest {
         return ResourceKey.create(Registries.DIMENSION, ResourceLocation.fromNamespaceAndPath("etched_test", path));
     }
 
+    private static RadioConfiguration configuration(long revision, String url, boolean powered) {
+        return RadioConfiguration.forStation(revision, url, true, powered);
+    }
+
     private static final class RecordingDriver implements RadioPlaybackManager.PlaybackDriver {
 
         private final List<AppliedConfiguration> applied = new ArrayList<>();
         private final List<RadioKey> stopped = new ArrayList<>();
         private final List<RadioKey> ticked = new ArrayList<>();
+        private final List<AppliedConfiguration> tickedConfigurations = new ArrayList<>();
         private final Set<RadioKey> playing = new HashSet<>();
 
         @Override
@@ -699,6 +748,7 @@ class RadioPlaybackManagerTest {
         @Override
         public void tick(RadioKey key, RadioConfiguration configuration) {
             this.ticked.add(key);
+            this.tickedConfigurations.add(new AppliedConfiguration(key, configuration));
         }
 
         @Override

@@ -37,13 +37,13 @@ class RadioClientRuntimeTest {
         RadioClientRuntime runtime = this.runtime(playback, history);
 
         runtime.expectStation(DIMENSION, POSITION, "https://radio.example/live");
-        runtime.tick(DIMENSION, POSITION, new RadioConfiguration("https://radio.example/live", false));
+        runtime.tick(DIMENSION, POSITION, configuration(1L, "https://radio.example/live", false));
         assertTrue(history.entries(CONTEXT).isEmpty());
 
-        runtime.update(DIMENSION, POSITION, new RadioConfiguration("https://radio.example/other", false));
+        runtime.update(DIMENSION, POSITION, configuration(2L, "https://radio.example/other", false));
         assertTrue(history.entries(CONTEXT).isEmpty());
 
-        runtime.update(DIMENSION, POSITION, new RadioConfiguration("https://radio.example/live", false));
+        runtime.update(DIMENSION, POSITION, configuration(3L, "https://radio.example/live", false));
         assertEquals(1, history.entries(CONTEXT).size());
         assertEquals(2, playback.updates);
         assertEquals(1, playback.ticks);
@@ -55,13 +55,25 @@ class RadioClientRuntimeTest {
         RadioClientRuntime runtime = this.runtime(new TestListener(), history);
 
         runtime.expectStation(DIMENSION, POSITION, "https://radio.example/powered");
-        runtime.update(DIMENSION, POSITION, new RadioConfiguration("https://radio.example/powered", true));
+        runtime.update(DIMENSION, POSITION, configuration(1L, "https://radio.example/powered", true));
         assertEquals(1, history.entries(CONTEXT).size());
 
         runtime.expectStation(DIMENSION, POSITION, "https://radio.example/cancelled");
         runtime.cancelExpectedStation(DIMENSION, POSITION);
-        runtime.update(DIMENSION, POSITION, new RadioConfiguration("https://radio.example/cancelled", false));
+        runtime.update(DIMENSION, POSITION, configuration(2L, "https://radio.example/cancelled", false));
         assertEquals(1, history.entries(CONTEXT).size());
+    }
+
+    @Test
+    void retainedManuallyStoppedStationDoesNotConfirmPendingPlay() {
+        RadioStationHistory history = new RadioStationHistory();
+        RadioClientRuntime runtime = this.runtime(new TestListener(), history);
+
+        runtime.expectStation(DIMENSION, POSITION, "https://radio.example/stopped");
+        runtime.update(DIMENSION, POSITION, RadioConfiguration.forStation(
+                1L, "https://radio.example/stopped", false, false));
+
+        assertTrue(history.entries(CONTEXT).isEmpty());
     }
 
     @Test
@@ -72,7 +84,7 @@ class RadioClientRuntimeTest {
 
         runtime.expectStation(DIMENSION, POSITION, "https://radio.example/live");
         runtime.remove(DIMENSION, POSITION);
-        runtime.update(DIMENSION, POSITION, new RadioConfiguration("https://radio.example/live", false));
+        runtime.update(DIMENSION, POSITION, configuration(1L, "https://radio.example/live", false));
 
         assertTrue(history.entries(CONTEXT).isEmpty());
         assertEquals(1, playback.removals);
@@ -82,6 +94,10 @@ class RadioClientRuntimeTest {
         RadioHistoryStorage storage = new RadioHistoryStorage(history,
                 this.temporaryDirectory.resolve("radio-history.json"), Runnable::run);
         return new RadioClientRuntime(playback, history, storage, () -> Optional.of(CONTEXT));
+    }
+
+    private static RadioConfiguration configuration(long revision, String url, boolean powered) {
+        return RadioConfiguration.forStation(revision, url, true, powered);
     }
 
     private static final class TestListener implements RadioClientBridge.Listener {

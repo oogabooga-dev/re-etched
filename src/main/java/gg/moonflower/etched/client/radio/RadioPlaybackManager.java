@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.common.audio.PlaybackRevision;
 import gg.moonflower.etched.common.radio.RadioClientBridge;
 import gg.moonflower.etched.common.radio.RadioConfiguration;
 import net.minecraft.client.Minecraft;
@@ -81,8 +82,18 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
             return false;
         }
         ManagedRadio previous = this.radios.get(key);
-        if (previous != null && configuration.equals(previous.configuration())) {
-            return false;
+        if (previous != null) {
+            long previousRevision = previous.configuration().revision();
+            if (configuration.revision() == previousRevision) {
+                if (!configuration.equals(previous.configuration())) {
+                    LOGGER.warn("Ignoring conflicting radio state at {} for revision {}",
+                            key, configuration.revision());
+                }
+                return false;
+            }
+            if (!PlaybackRevision.isNewer(configuration.revision(), previousRevision)) {
+                return false;
+            }
         }
 
         if (previous != null) {
@@ -92,9 +103,9 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
         RadioSession session = new RadioSession();
         ManagedRadio radio = new ManagedRadio(configuration, session);
         this.radios.put(key, radio);
-        String source = configuration.url().trim();
+        String source = configuration.url();
         if (this.sessions.enabled()) {
-            if (!source.isEmpty() && !configuration.powered()) {
+            if (configuration.isEnabled()) {
                 RadioSession.Attempt attempt = session.start(source);
                 this.startSession(key, radio, attempt);
             }
@@ -136,14 +147,15 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
             return;
         }
         this.update(key, configuration);
+        ManagedRadio radio = this.radios.get(key);
+        if (radio == null) {
+            return;
+        }
         if (this.sessions.enabled()) {
-            ManagedRadio radio = this.radios.get(key);
-            if (radio != null) {
-                radio.session().applyPendingStreamTitle();
-                this.effects.update(key, radio.session().snapshot());
-            }
+            radio.session().applyPendingStreamTitle();
+            this.effects.update(key, radio.session().snapshot());
         } else {
-            this.playback.tick(key, configuration);
+            this.playback.tick(key, radio.configuration());
         }
     }
 
