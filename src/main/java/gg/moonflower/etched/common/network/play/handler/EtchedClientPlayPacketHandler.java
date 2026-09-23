@@ -4,10 +4,8 @@ import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.SoundTracker;
 import gg.moonflower.etched.api.sound.StopListeningSound;
-import gg.moonflower.etched.client.screen.AlbumJukeboxScreen;
 import gg.moonflower.etched.client.screen.EtchingScreen;
 import gg.moonflower.etched.client.screen.RadioScreen;
-import gg.moonflower.etched.common.blockentity.AlbumJukeboxBlockEntity;
 import gg.moonflower.etched.common.network.play.*;
 import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
 import net.minecraft.client.Minecraft;
@@ -22,7 +20,6 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
 @ApiStatus.Internal
@@ -123,16 +120,4 @@ public class EtchedClientPlayPacketHandler {
         });
     }
 
-    public static void handleSetAlbumJukeboxTrack(SetAlbumJukeboxTrackPacket pkt, NetworkEvent.Context ctx) {
-        ctx.enqueueWork(() -> {
-            Minecraft client = Minecraft.getInstance();
-            if (client.level != null && client.screen instanceof AlbumJukeboxScreen screen) {
-                BlockPos pos = screen.getMenu().getPos();
-                if (screen.getMenu().setPlayingTrack(client.level, pkt)) {
-                    AlbumJukeboxBlockEntity entity = (AlbumJukeboxBlockEntity) Objects.requireNonNull(client.level.getBlockEntity(pos));
-                    SoundTracker.playAlbum(entity, entity.getBlockState(), client.level, pos, true);
-                }
-            }
-        });
-    }
 }

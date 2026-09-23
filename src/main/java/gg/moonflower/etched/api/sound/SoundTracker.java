@@ -4,9 +4,7 @@ import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
-import gg.moonflower.etched.common.block.AlbumJukeboxBlock;
 import gg.moonflower.etched.common.block.RadioBlock;
-import gg.moonflower.etched.common.blockentity.AlbumJukeboxBlockEntity;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.mixin.client.GuiAccessor;
 import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
@@ -28,10 +26,8 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -184,16 +180,6 @@ public class SoundTracker {
         soundManager.play(sound);
     }
 
-    private static void playNextRecord(ClientLevel level, BlockPos pos) {
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (!(blockEntity instanceof AlbumJukeboxBlockEntity jukebox)) {
-            return;
-        }
-
-        jukebox.next();
-        playAlbum((AlbumJukeboxBlockEntity) blockEntity, blockEntity.getBlockState(), level, pos, true);
-    }
-
     public static void playBlockRecord(BlockPos pos, TrackData[] tracks, int track) {
         ClientLevel level = Minecraft.getInstance().level;
         if (level == null) {
@@ -283,12 +269,12 @@ public class SoundTracker {
     }
 
     /**
-     * Plays the records on an album jukebox in order.
+     * Plays a radio stream.
      *
      * @param url   The URL of the stream
      * @param state The block state of the radio
      * @param level The level to play records in
-     * @param pos   The position of the jukebox
+     * @param pos   The position of the radio
      */
     public static void playRadio(@Nullable String url, BlockState state, ClientLevel level, BlockPos pos) {
         SoundManager soundManager = Minecraft.getInstance().getSoundManager();
@@ -316,64 +302,6 @@ public class SoundTracker {
             record.setLoop(true); // If the sound is a file, then just continue looping that specific track
             playRecord(pos, record); // Get the new block state
         }
-    }
-
-    /**
-     * Plays the records on an album jukebox in order.
-     *
-     * @param jukebox The jukebox to play records
-     * @param level   The level to play records in
-     * @param pos     The position of the jukebox
-     * @param force   Whether to force the jukebox to play
-     */
-    public static void playAlbum(AlbumJukeboxBlockEntity jukebox, BlockState state, ClientLevel level, BlockPos pos, boolean force) {
-        SoundManager soundManager = Minecraft.getInstance().getSoundManager();
-        Map<BlockPos, SoundInstance> playingRecords = ((LevelRendererAccessor) Minecraft.getInstance().levelRenderer).getPlayingRecords();
-
-        if (!state.hasProperty(AlbumJukeboxBlock.POWERED) || !state.getValue(AlbumJukeboxBlock.POWERED) && !force && !jukebox.recalculatePlayingIndex(false)) {// Something must already be playing since it would otherwise be -1 and a change would occur
-            return;
-        }
-
-        SoundInstance soundInstance = playingRecords.get(pos);
-        if (soundInstance != null) {
-            if (soundInstance instanceof StopListeningSound) {
-                ((StopListeningSound) soundInstance).stopListening();
-            }
-            soundManager.stop(soundInstance);
-            playingRecords.remove(pos);
-            setRecordPlayingNearby(level, pos, false);
-        }
-
-        if (state.getValue(AlbumJukeboxBlock.POWERED)) {
-            jukebox.stopPlaying();
-        }
-
-        if (jukebox.getPlayingIndex() < 0) {// Nothing can be played inside the jukebox
-            return;
-        }
-
-        ItemStack disc = jukebox.getItem(jukebox.getPlayingIndex());
-        SoundInstance sound = null;
-        if (disc.getItem() instanceof RecordItem) {
-            sound = StopListeningSound.create(getEtchedRecord(((RecordItem) disc.getItem()).getSound().getLocation().toString(), ((RecordItem) disc.getItem()).getDisplayName(), level, pos, AudioSource.AudioFileType.FILE), () -> Minecraft.getInstance().tell(() -> playNextRecord(level, pos)));
-        } else if (disc.getItem() instanceof PlayableRecord) {
-            Optional<TrackData[]> optional = PlayableRecord.getStackMusic(disc);
-            if (optional.isPresent()) {
-                TrackData[] tracks = optional.get();
-                TrackData track = jukebox.getTrack() < 0 || jukebox.getTrack() >= tracks.length ? tracks[0] : tracks[jukebox.getTrack()];
-                String url = track.url();
-                if (TrackData.isValidURL(url) && !FAILED_URLS.contains(url)) {
-                    sound = StopListeningSound.create(getEtchedRecord(url, track.getDisplayName(), level, pos, AudioSource.AudioFileType.FILE), () -> Minecraft.getInstance().tell(() -> playNextRecord(level, pos)));
-                }
-            }
-        }
-
-        if (sound == null) {
-            return;
-        }
-
-        playRecord(pos, sound);
-        setRecordPlayingNearby(level, pos, true);
     }
 
     private static class DownloadTextComponent implements Component {

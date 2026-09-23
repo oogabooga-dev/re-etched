@@ -1,14 +1,15 @@
 package gg.moonflower.etched.common.network.play;
 
-import gg.moonflower.etched.common.network.play.handler.EtchedClientPlayPacketHandler;
-import gg.moonflower.etched.common.network.play.handler.EtchedServerPlayPacketHandler;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.network.NetworkEvent;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
- * @param playingIndex The playing index to set the jukebox to
- * @param track        The track to set the jukebox to
+ * Compatibility tombstone for the removed Album Jukebox packet. Its ID and codec
+ * remain registered for protocol 3 compatibility.
+ *
+ * @param playingIndex The legacy playing index
+ * @param track        The legacy track index
  * @author Ocelot
  */
 @ApiStatus.Internal
@@ -26,9 +27,5 @@ public record SetAlbumJukeboxTrackPacket(int playingIndex, int track) implements
 
     @Override
     public void processPacket(NetworkEvent.Context ctx) {
-        switch (ctx.getDirection().getReceptionSide()) {
-            case CLIENT -> EtchedClientPlayPacketHandler.handleSetAlbumJukeboxTrack(this, ctx);
-            case SERVER -> EtchedServerPlayPacketHandler.handleSetAlbumJukeboxTrack(this, ctx);
-        }
     }
 }

@@ -127,7 +127,6 @@ public class Etched {
 //            ItemRendererRegistry.registerRenderer(EtchedItems.ALBUM_COVER.get(), AlbumCoverItemRenderer.INSTANCE);
 
             MenuScreens.register(EtchedMenus.ETCHING_MENU.get(), EtchingScreen::new);
-            MenuScreens.register(EtchedMenus.ALBUM_JUKEBOX_MENU.get(), AlbumJukeboxScreen::new);
             MenuScreens.register(EtchedMenus.BOOMBOX_MENU.get(), BoomboxScreen::new);
             MenuScreens.register(EtchedMenus.ALBUM_COVER_MENU.get(), AlbumCoverScreen::new);
             MenuScreens.register(EtchedMenus.RADIO_MENU.get(), RadioScreen::new);

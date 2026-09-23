@@ -1,8 +1,6 @@
 {
-  "block.etched.album_jukebox": "专辑唱片机",
   "block.etched.etching_table": "蚀刻台",
   "block.etched.radio": "收音机",
-  "container.etched.album_jukebox": "专辑唱片机",
   "container.etched.etching_table": "蚀刻台",
   "container.etched.etching_table.url": "音乐文件的URL链接",
   "container.etched.radio": "收音机",
@@ -22,7 +20,6 @@
   "record.etched.downloadProgress": "正在下载(%s MB / %s MB)：%s",
   "record.etched.loading": "正在加载 %s",
   "record.etched.resolvingTracks": "解析歌曲中……",
-  "screen.etched.album_jukebox.now_playing": "正在播放",
   "screen.etched.edit_music_label.author": "作者",
   "screen.etched.edit_music_label.title": "标题",
   "screen.etched.etching_table.error.cannot_create": "无法创建唱片",

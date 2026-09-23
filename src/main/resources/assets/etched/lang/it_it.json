@@ -1,8 +1,6 @@
 {
-  "block.etched.album_jukebox": "Giradischi con album",
   "block.etched.etching_table": "Tavolo da incisione",
   "block.etched.radio": "Radio",
-  "container.etched.album_jukebox": "Giradischi con album",
   "container.etched.etching_table": "Tavolo da incisione",
   "container.etched.etching_table.url": "URL Musicale",
   "container.etched.radio": "Radio",
@@ -28,7 +26,6 @@
   "screen.etched.etching_table.error.invalid_url": "Impossibile incidere da URL invalido",
   "screen.etched.etching_table.error.missing_disc": "Un disco musicale vuoto è richiesto per incidere",
   "screen.etched.etching_table.error.missing_label": "Un'etichetta musicale è richiesta per incidere",
-  "screen.etched.album_jukebox.now_playing": "Ora in riproduzione",
   "sound_source.etched.requesting": "Ricevendo la traccia...",
   "sound_source.etched.sound_cloud": "Ottenuto da Soundcloud",
   "sound_source.etched.bandcamp": "Ottenuto da Bandcamp",

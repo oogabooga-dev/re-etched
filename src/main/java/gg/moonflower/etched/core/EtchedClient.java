@@ -52,7 +52,6 @@ public class EtchedClient {
             event.accept(EtchedItems.ALBUM_COVER);
         } else if (tab == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(EtchedBlocks.ETCHING_TABLE);
-            event.accept(EtchedBlocks.ALBUM_JUKEBOX);
             event.accept(EtchedBlocks.RADIO);
         }
     }
