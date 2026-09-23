@@ -70,9 +70,6 @@ public class Etched {
         EtchedSounds.REGISTRY.register(bus);
         EtchedRecipes.REGISTRY.register(bus);
 
-        EtchedVillagers.POI_REGISTRY.register(bus);
-        EtchedVillagers.PROFESSION_REGISTRY.register(bus);
-
         context.registerConfig(ModConfig.Type.CLIENT, clientSpec);
         context.registerConfig(ModConfig.Type.SERVER, serverSpec);
 

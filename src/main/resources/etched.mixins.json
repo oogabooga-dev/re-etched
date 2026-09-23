@@ -20,10 +20,7 @@
   "mixins": [
     "JukeboxBlockEntityMixin",
     "JukeboxBlockMixin",
-    "NoteBlockMixin",
-    "RecordItemMixin",
-    "StructureTemplatePoolAccessor",
-    "VillagerGoalPackagesMixin"
+    "RecordItemMixin"
   ],
   "injectors": {
     "defaultRequire": 1
