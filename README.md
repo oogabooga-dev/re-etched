@@ -59,16 +59,20 @@ Do not install Etched and Re-Etched in the same Minecraft instance. Both use
 the mod ID `etched`, so Forge treats them as duplicate implementations of the
 same mod.
 
-Re-Etched preserves the Etched 3.0.4 `etched:play` network channel, protocol
-version `3`, packet IDs `0` through `6`, registry namespace, and legacy active
-radio `Url` state. A Re-Etched client with an Etched 3.0.4 server, and the
-reverse combination, are compatibility targets. No other original Etched
-version is claimed compatible.
+The Re-Etched 4.x maintenance line preserves the Etched 3.0.4 `etched:play`
+network channel, protocol version `3`, packet IDs `0` through `6`, registry
+namespace, and legacy active radio `Url` state. A 4.x client with an Etched
+3.0.4 server, and the reverse combination, are compatibility targets. No other
+original Etched version is claimed compatible.
 
-Existing `Url` values are read by Re-Etched. Re-Etched additionally uses
-`StoredUrl` to retain a manually stopped station. Back up before migration and
-do not assume that downgrading to the original mod will preserve this new
-stopped-state information.
+Re-Etched 5.x keeps the `etched:play` channel name but uses protocol version
+`5`. Its strict network and display checks reject Etched 3.x, Re-Etched 4.x,
+vanilla peers, and peers without the mod before packet decoding.
+
+On the 4.x line, existing `Url` values are read by Re-Etched and `StoredUrl` is
+used to retain a manually stopped station. Back up before migration and do not
+assume that downgrading to the original mod will preserve this new stopped-state
+information.
 
 ## Radio Sources
 
@@ -174,7 +178,7 @@ local server configuration files.
 The distributable is:
 
 ```text
-build/libs/re-etched-4.1.0.jar
+build/libs/re-etched-5.0.0-alpha.1.jar
 ```
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.

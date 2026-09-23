@@ -1,15 +1,19 @@
 package gg.moonflower.etched.common.network;
 
 import gg.moonflower.etched.common.network.play.*;
+import gg.moonflower.etched.core.Etched;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.fml.IExtensionPoint;
 import net.minecraftforge.network.NetworkDirection;
-import org.jetbrains.annotations.Nullable;
 
 /**
- * The frozen multiplayer contract shared with original Etched 3.0.4.
+ * The protocol boundary for incompatible 5.x development builds.
  */
-final class EtchedLegacyProtocol {
+public final class EtchedProtocol {
 
-    static final String VERSION = "3";
+    public static final ResourceLocation CHANNEL_NAME =
+            ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "play");
+    public static final String VERSION = "5";
     static final PacketContract<ClientboundInvalidEtchUrlPacket> CLIENTBOUND_INVALID_ETCH_URL =
             new PacketContract<>(0, ClientboundInvalidEtchUrlPacket.class, NetworkDirection.PLAY_TO_CLIENT);
     static final PacketContract<ClientboundPlayEntityMusicPacket> CLIENTBOUND_PLAY_ENTITY_MUSIC =
@@ -22,13 +26,19 @@ final class EtchedLegacyProtocol {
             new PacketContract<>(4, ServerboundSetUrlPacket.class, NetworkDirection.PLAY_TO_SERVER);
     static final PacketContract<ServerboundEditMusicLabelPacket> SERVERBOUND_EDIT_MUSIC_LABEL =
             new PacketContract<>(5, ServerboundEditMusicLabelPacket.class, NetworkDirection.PLAY_TO_SERVER);
-    static final PacketContract<SetAlbumJukeboxTrackPacket> SET_ALBUM_JUKEBOX_TRACK =
-            new PacketContract<>(6, SetAlbumJukeboxTrackPacket.class, null);
 
-    private EtchedLegacyProtocol() {
+    private EtchedProtocol() {
     }
 
-    record PacketContract<MSG extends EtchedPacket>(int id, Class<MSG> type,
-                                                    @Nullable NetworkDirection direction) {
+    public static boolean accepts(String remoteVersion) {
+        return VERSION.equals(remoteVersion);
+    }
+
+    public static IExtensionPoint.DisplayTest displayTest() {
+        return new IExtensionPoint.DisplayTest(VERSION,
+                (remoteVersion, isFromServer) -> accepts(remoteVersion));
+    }
+
+    record PacketContract<MSG extends EtchedPacket>(int id, Class<MSG> type, NetworkDirection direction) {
     }
 }

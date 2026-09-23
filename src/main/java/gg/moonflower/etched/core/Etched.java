@@ -6,6 +6,7 @@ import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.network.EtchedMessages;
+import gg.moonflower.etched.common.network.EtchedProtocol;
 import gg.moonflower.etched.common.sound.download.BandcampSource;
 import gg.moonflower.etched.common.sound.download.SoundCloudSource;
 import gg.moonflower.etched.core.registry.*;
@@ -59,7 +60,7 @@ public class Etched {
         bus.addListener(Etched::init);
         bus.addListener(Etched::clientInit);
 
-        context.registerDisplayTest(EtchedCompatibility.displayTest());
+        context.registerDisplayTest(EtchedProtocol.displayTest());
 
         EtchedBlocks.BLOCKS.register(bus);
         EtchedBlocks.BLOCK_ENTITIES.register(bus);
