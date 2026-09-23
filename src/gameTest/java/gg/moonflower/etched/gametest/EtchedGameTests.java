@@ -16,6 +16,7 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -51,6 +52,10 @@ public final class EtchedGameTests {
         helper.assertTrue(
                 ForgeRegistries.BLOCKS.getValue(EtchedBlocks.RADIO.getId()) == EtchedBlocks.RADIO.get(),
                 "Etched blocks were not registered");
+        ResourceLocation bardId = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "bard");
+        helper.assertFalse(ForgeRegistries.POI_TYPES.containsKey(bardId), "The removed bard POI was registered");
+        helper.assertFalse(ForgeRegistries.VILLAGER_PROFESSIONS.containsKey(bardId),
+                "The removed bard profession was registered");
         helper.assertTrue(Items.MUSIC_DISC_13 instanceof PlayableRecord, "Etched common mixins were not applied");
         try {
             Files.writeString(Path.of("etched-gametest-success"), "passed\n");
