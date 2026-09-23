@@ -45,7 +45,7 @@ class RadioUrlValidatorTest {
     }
 
     @Test
-    void rejectsValuesBeyondTheLegacyScreenLimit() {
+    void rejectsValuesBeyondTheProtocolLimit() {
         String oversized = "https://radio.example/" + "a".repeat(RadioUrlValidator.MAX_LENGTH);
 
         assertFalse(RadioUrlValidator.validate(oversized).valid());

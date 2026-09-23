@@ -104,17 +104,19 @@ public class EtchedClientPlayPacketHandler {
         });
     }
 
-    public static void handleSetInvalidEtch(ClientboundInvalidEtchUrlPacket pkt, NetworkEvent.Context ctx) {
+    public static void handleEtchingUrlError(ClientboundEtchingUrlErrorPacket pkt, NetworkEvent.Context ctx) {
         ctx.enqueueWork(() -> {
-            if (Minecraft.getInstance().screen instanceof EtchingScreen screen) {
-                screen.setReason(pkt.exception());
+            if (Minecraft.getInstance().screen instanceof EtchingScreen screen
+                    && screen.getMenu().containerId == pkt.containerId()) {
+                screen.setReason(pkt.message());
             }
         });
     }
 
-    public static void handleSetUrl(ClientboundSetUrlPacket pkt, NetworkEvent.Context ctx) {
+    public static void handleRadioMenuInit(ClientboundRadioMenuInitPacket pkt, NetworkEvent.Context ctx) {
         ctx.enqueueWork(() -> {
-            if (Minecraft.getInstance().screen instanceof RadioScreen screen) {
+            if (Minecraft.getInstance().screen instanceof RadioScreen screen
+                    && screen.getMenu().containerId == pkt.containerId()) {
                 screen.receiveUrl(pkt.url());
             }
         });

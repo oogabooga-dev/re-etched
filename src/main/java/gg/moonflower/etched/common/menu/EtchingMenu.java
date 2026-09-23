@@ -10,13 +10,15 @@ import gg.moonflower.etched.api.sound.download.SoundDownloadSource;
 import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.common.item.*;
 import gg.moonflower.etched.common.network.EtchedMessages;
-import gg.moonflower.etched.common.network.play.ClientboundInvalidEtchUrlPacket;
+import gg.moonflower.etched.common.network.play.ClientboundEtchingUrlErrorPacket;
+import gg.moonflower.etched.common.network.play.ServerboundSetEtchingUrlPacket;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedBlocks;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import gg.moonflower.etched.core.registry.EtchedMenus;
 import gg.moonflower.etched.core.registry.EtchedSounds;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.HttpUtil;
@@ -70,10 +72,10 @@ public class EtchingMenu extends AbstractContainerMenu {
     private final Container result;
     private final Player player;
     private String url;
-    private int urlId;
+    private long urlId;
     private long lastSoundTime;
     private CompletableFuture<?> currentRequest;
-    private int currentRequestId;
+    private long currentRequestId;
 
 
     public EtchingMenu(int id, Inventory inventory) {
@@ -267,7 +269,7 @@ public class EtchingMenu extends AbstractContainerMenu {
             return;
         }
 
-        EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) this.player), new ClientboundInvalidEtchUrlPacket(""));
+        this.sendUrlError("");
         this.resultSlot.set(ItemStack.EMPTY);
         if (this.labelIndex.get() >= 0 && this.labelIndex.get() < EtchedMusicDiscItem.LabelPattern.values().length) {
             ItemStack discStack = this.discSlot.getItem();
@@ -281,7 +283,7 @@ public class EtchingMenu extends AbstractContainerMenu {
                     return;
                 }
 
-                int currentId = this.currentRequestId = this.urlId;
+                long currentId = this.currentRequestId = this.urlId;
                 this.currentRequest = CompletableFuture.supplyAsync(() -> {
                     ItemStack resultStack = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
                     resultStack.setCount(1);
@@ -307,7 +309,9 @@ public class EtchingMenu extends AbstractContainerMenu {
                             data = DATA_CACHE.get(this.url, () -> SoundSourceManager.resolveTracks(this.url, null, Proxy.NO_PROXY)).join();
                         } catch (Exception e) {
                             if (!level.isClientSide()) {
-                                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) this.player), new ClientboundInvalidEtchUrlPacket(e instanceof CompletionException ? e.getCause().getMessage() : e.getMessage()));
+                                Throwable cause = e instanceof CompletionException && e.getCause() != null
+                                        ? e.getCause() : e;
+                                this.sendUrlError(currentId, cause.getMessage());
                             }
                             if (e instanceof CompletionException) {
                                 throw (CompletionException) e;
@@ -320,12 +324,12 @@ public class EtchingMenu extends AbstractContainerMenu {
                             data = new TrackData[]{data[0].withUrl(this.url)};
                         } catch (UnknownHostException e) {
                             if (!level.isClientSide()) {
-                                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) this.player), new ClientboundInvalidEtchUrlPacket("Unknown host: " + this.url));
+                                this.sendUrlError(currentId, "Unknown host: " + this.url);
                             }
                             throw new CompletionException("Invalid URL", e);
                         } catch (Exception e) {
                             if (!level.isClientSide()) {
-                                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) this.player), new ClientboundInvalidEtchUrlPacket(e.getLocalizedMessage()));
+                                this.sendUrlError(currentId, e.getLocalizedMessage());
                             }
                             throw new CompletionException("Invalid URL", e);
                         }
@@ -361,7 +365,6 @@ public class EtchingMenu extends AbstractContainerMenu {
                     if (this.urlId == currentId && !ItemStack.matches(resultStack, this.resultSlot.getItem()) && !ItemStack.matches(resultStack, this.discSlot.getItem())) {
                         this.resultSlot.set(resultStack);
                         this.urlId++;
-                        this.urlId %= 1000;
                         this.broadcastChanges();
                     }
                 }, level.getServer()).exceptionally(unused -> null);
@@ -373,6 +376,30 @@ public class EtchingMenu extends AbstractContainerMenu {
         return this.labelIndex.get();
     }
 
+    private void sendUrlError(long requestId, String message) {
+        MinecraftServer server = this.player.getServer();
+        if (server == null) {
+            return;
+        }
+        server.execute(() -> {
+            if (this.urlId == requestId && this.currentRequestId == requestId) {
+                this.sendUrlError(message);
+            }
+        });
+    }
+
+    private void sendUrlError(String message) {
+        if (!(this.player instanceof ServerPlayer serverPlayer) || this.player.containerMenu != this) {
+            return;
+        }
+        String boundedMessage = message != null ? message : "Unknown error";
+        if (boundedMessage.length() > ClientboundEtchingUrlErrorPacket.MAX_MESSAGE_LENGTH) {
+            boundedMessage = boundedMessage.substring(0, ClientboundEtchingUrlErrorPacket.MAX_MESSAGE_LENGTH);
+        }
+        EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> serverPlayer),
+                new ClientboundEtchingUrlErrorPacket(this.containerId, boundedMessage));
+    }
+
     /**
      * Sets the URL for the resulting stack to the specified value.
      *
@@ -382,8 +409,20 @@ public class EtchingMenu extends AbstractContainerMenu {
         if (!Objects.equals(this.url, string)) {
             this.url = string;
             this.urlId++;
-            this.urlId %= 1000;
             this.setupResultSlot();
         }
+    }
+
+    public boolean submitUrl(String url) {
+        if (!isValidUrlSubmission(url)) {
+            return false;
+        }
+        this.setUrl(url);
+        return true;
+    }
+
+    static boolean isValidUrlSubmission(String url) {
+        return url != null && url.length() <= ServerboundSetEtchingUrlPacket.MAX_URL_LENGTH
+                && (url.isEmpty() || TrackData.isValidURL(url));
     }
 }

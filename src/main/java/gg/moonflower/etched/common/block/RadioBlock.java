@@ -3,7 +3,7 @@ package gg.moonflower.etched.common.block;
 import gg.moonflower.etched.common.blockentity.RadioBlockEntity;
 import gg.moonflower.etched.common.menu.RadioMenu;
 import gg.moonflower.etched.common.network.EtchedMessages;
-import gg.moonflower.etched.common.network.play.ClientboundSetUrlPacket;
+import gg.moonflower.etched.common.network.play.ClientboundRadioMenuInitPacket;
 import gg.moonflower.etched.common.radio.RadioClientBridge;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedBlocks;
@@ -67,9 +67,10 @@ public class RadioBlock extends BaseEntityBlock {
             level.setBlock(pos, state.setValue(PORTAL, true), 3);
             return InteractionResult.SUCCESS;
         }
-        player.openMenu(state.getMenuProvider(level, pos)).ifPresent(__ -> {
+        player.openMenu(state.getMenuProvider(level, pos)).ifPresent(containerId -> {
             String url = level.getBlockEntity(pos) instanceof RadioBlockEntity be ? be.getUrl() : "";
-            EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) player), new ClientboundSetUrlPacket(url));
+            EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) player),
+                    new ClientboundRadioMenuInitPacket(containerId, url));
         });
         return InteractionResult.CONSUME;
     }
