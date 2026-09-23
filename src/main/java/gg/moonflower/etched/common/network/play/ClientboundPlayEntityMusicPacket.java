@@ -64,7 +64,7 @@ public class ClientboundPlayEntityMusicPacket implements EtchedPacket {
     }
 
     /**
-     * @return The id of the minecart entity
+     * @return The id of the entity
      */
     public int getEntityId() {
         return this.entityId;

@@ -65,7 +65,6 @@ public class Etched {
         EtchedBlocks.BLOCK_ENTITIES.register(bus);
 
         EtchedItems.REGISTRY.register(bus);
-        EtchedEntities.REGISTRY.register(bus);
         EtchedMenus.REGISTRY.register(bus);
         EtchedSounds.REGISTRY.register(bus);
         EtchedRecipes.REGISTRY.register(bus);
