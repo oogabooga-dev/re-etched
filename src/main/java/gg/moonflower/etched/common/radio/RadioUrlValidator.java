@@ -1,5 +1,7 @@
 package gg.moonflower.etched.common.radio;
 
+import gg.moonflower.etched.common.network.EtchedProtocol;
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Locale;
@@ -7,7 +9,7 @@ import java.util.Locale;
 /** Performs the shared syntactic validation used by the radio screen and server menu. */
 public final class RadioUrlValidator {
 
-    public static final int MAX_LENGTH = 32_500;
+    public static final int MAX_LENGTH = EtchedProtocol.MAX_URL_LENGTH;
 
     private RadioUrlValidator() {
     }

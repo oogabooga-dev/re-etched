@@ -4,7 +4,7 @@ import gg.moonflower.etched.common.blockentity.RadioBlockEntity;
 import gg.moonflower.etched.client.radio.RadioClientRuntime;
 import gg.moonflower.etched.common.menu.RadioMenu;
 import gg.moonflower.etched.common.network.EtchedMessages;
-import gg.moonflower.etched.common.network.play.ServerboundSetUrlPacket;
+import gg.moonflower.etched.common.network.play.ServerboundSetRadioUrlPacket;
 import gg.moonflower.etched.common.radio.RadioClientBridge;
 import gg.moonflower.etched.common.radio.RadioUrlValidator;
 import gg.moonflower.etched.core.Etched;
@@ -199,7 +199,7 @@ public class RadioScreen extends AbstractContainerScreen<RadioMenu> {
                 this.radioRuntime.expectStation(this.radioDimension, this.radioPos, value);
             }
         }
-        EtchedMessages.PLAY.sendToServer(new ServerboundSetUrlPacket(value));
+        EtchedMessages.PLAY.sendToServer(new ServerboundSetRadioUrlPacket(this.menu.containerId, value));
         this.updateActionButtons();
     }
 

@@ -4,7 +4,8 @@ import gg.moonflower.etched.common.item.SimpleMusicLabelItem;
 import gg.moonflower.etched.common.menu.EtchingMenu;
 import gg.moonflower.etched.common.menu.RadioMenu;
 import gg.moonflower.etched.common.network.play.ServerboundEditMusicLabelPacket;
-import gg.moonflower.etched.common.network.play.ServerboundSetUrlPacket;
+import gg.moonflower.etched.common.network.play.ServerboundSetEtchingUrlPacket;
+import gg.moonflower.etched.common.network.play.ServerboundSetRadioUrlPacket;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -16,16 +17,29 @@ import org.jetbrains.annotations.ApiStatus;
 @ApiStatus.Internal
 public class EtchedServerPlayPacketHandler {
 
-    public static void handleSetUrl(ServerboundSetUrlPacket pkt, NetworkEvent.Context ctx) {
+    public static void handleSetEtchingUrl(ServerboundSetEtchingUrlPacket pkt, NetworkEvent.Context ctx) {
         ServerPlayer player = ctx.getSender();
         if (player == null) {
             return;
         }
 
         ctx.enqueueWork(() -> {
-            if (player.containerMenu instanceof EtchingMenu menu) {
-                menu.setUrl(pkt.url());
-            } else if (player.containerMenu instanceof RadioMenu menu && menu.stillValid(player)) {
+            if (player.containerMenu instanceof EtchingMenu menu
+                    && menu.containerId == pkt.containerId() && menu.stillValid(player)) {
+                menu.submitUrl(pkt.url());
+            }
+        });
+    }
+
+    public static void handleSetRadioUrl(ServerboundSetRadioUrlPacket pkt, NetworkEvent.Context ctx) {
+        ServerPlayer player = ctx.getSender();
+        if (player == null) {
+            return;
+        }
+
+        ctx.enqueueWork(() -> {
+            if (player.containerMenu instanceof RadioMenu menu
+                    && menu.containerId == pkt.containerId() && menu.stillValid(player)) {
                 menu.submitUrl(pkt.url());
             }
         });
