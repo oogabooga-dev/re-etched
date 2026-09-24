@@ -24,40 +24,40 @@ public final class AudioPlaybackManager {
     private static final int MAX_ACTIVE_PLAYBACKS = 8;
     private static final int MAX_QUEUED_PLAYBACKS = 32;
     private static final AudioPlaybackManager INSTANCE = new AudioPlaybackManager(
-            PlaybackDriver.NOOP, new ProductionRadioSessionDriver(), new MinecraftRadioPlaybackEffects(),
+            PlaybackDriver.NOOP, new LiveStreamPlaybackBackend(), new MinecraftRadioPlaybackEffects(),
             RadioReconnectController.createDefault(command -> Minecraft.getInstance().execute(command)));
 
     private final Map<PlaybackOwnerKey, ManagedPlayback> playbacks;
     private final PlaybackDriver playback;
-    private final SessionDriver sessions;
+    private final PlaybackBackend backend;
     private final RadioPlaybackEffects effects;
     private final RadioReconnectController reconnects;
     private final RadioConnectionScheduler connections;
     private boolean closed;
 
     AudioPlaybackManager(PlaybackDriver playback) {
-        this(playback, SessionDriver.NOOP, RadioPlaybackEffects.NOOP);
+        this(playback, PlaybackBackend.NOOP, RadioPlaybackEffects.NOOP);
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, SessionDriver sessions) {
-        this(playback, sessions, RadioPlaybackEffects.NOOP);
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend) {
+        this(playback, backend, RadioPlaybackEffects.NOOP);
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, SessionDriver sessions, RadioPlaybackEffects effects) {
-        this(playback, sessions, effects, RadioReconnectController.createDefault(Runnable::run));
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, RadioPlaybackEffects effects) {
+        this(playback, backend, effects, RadioReconnectController.createDefault(Runnable::run));
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, SessionDriver sessions, RadioPlaybackEffects effects,
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, RadioPlaybackEffects effects,
                          RadioReconnectController reconnects) {
-        this(playback, sessions, effects, reconnects,
+        this(playback, backend, effects, reconnects,
                 new RadioConnectionScheduler(MAX_ACTIVE_PLAYBACKS, MAX_QUEUED_PLAYBACKS, reconnects::execute));
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, SessionDriver sessions, RadioPlaybackEffects effects,
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, RadioPlaybackEffects effects,
                          RadioReconnectController reconnects, RadioConnectionScheduler connections) {
         this.playbacks = new HashMap<>();
         this.playback = Objects.requireNonNull(playback, "playback");
-        this.sessions = Objects.requireNonNull(sessions, "sessions");
+        this.backend = Objects.requireNonNull(backend, "backend");
         this.effects = Objects.requireNonNull(effects, "effects");
         this.reconnects = Objects.requireNonNull(reconnects, "reconnects");
         this.connections = Objects.requireNonNull(connections, "connections");
@@ -96,7 +96,7 @@ public final class AudioPlaybackManager {
         boolean backendSupported = this.supportsLiveBackend(key, state);
         ManagedPlayback playback = new ManagedPlayback(state, session, backendSupported);
         this.playbacks.put(key, playback);
-        if (this.sessions.enabled()) {
+        if (this.backend.enabled()) {
             if (state.enabled() && backendSupported) {
                 RadioSession.Attempt attempt = session.start(liveSource(state));
                 this.startSession(key, playback, attempt);
@@ -119,11 +119,11 @@ public final class AudioPlaybackManager {
             return false;
         }
 
-        if (this.sessions.enabled() && removed.backendSupported()) {
+        if (this.backend.enabled() && removed.backendSupported()) {
             this.stopSession(key, removed);
         } else {
             removed.session().stop();
-            if (!this.sessions.enabled()) {
+            if (!this.backend.enabled()) {
                 this.playback.stop(key);
             }
         }
@@ -139,7 +139,7 @@ public final class AudioPlaybackManager {
         if (managed == null) {
             return updated;
         }
-        if (this.sessions.enabled()) {
+        if (this.backend.enabled()) {
             if (managed.backendSupported()) {
                 managed.session().applyPendingStreamTitle();
                 this.updateEffects(key, managed);
@@ -155,7 +155,7 @@ public final class AudioPlaybackManager {
         if (managed == null) {
             return false;
         }
-        return this.sessions.enabled()
+        return this.backend.enabled()
                 ? managed.session().snapshot().state() == RadioPlaybackState.PLAYING
                 : this.playback.isPlaying(key);
     }
@@ -172,7 +172,7 @@ public final class AudioPlaybackManager {
 
     public boolean retry(PlaybackOwnerKey key) {
         Objects.requireNonNull(key, "key");
-        if (this.closed || !this.sessions.enabled()) {
+        if (this.closed || !this.backend.enabled()) {
             return false;
         }
         ManagedPlayback managed = this.playbacks.get(key);
@@ -196,11 +196,11 @@ public final class AudioPlaybackManager {
         RuntimeException failure = null;
         for (Map.Entry<PlaybackOwnerKey, ManagedPlayback> entry : entries) {
             try {
-                if (this.sessions.enabled() && entry.getValue().backendSupported()) {
+                if (this.backend.enabled() && entry.getValue().backendSupported()) {
                     this.stopSession(entry.getKey(), entry.getValue());
                 } else {
                     entry.getValue().session().stop();
-                    if (!this.sessions.enabled()) {
+                    if (!this.backend.enabled()) {
                         this.playback.stop(entry.getKey());
                     }
                 }
@@ -226,7 +226,7 @@ public final class AudioPlaybackManager {
             this.clearAll();
         } finally {
             try {
-                this.sessions.shutdown();
+                this.backend.shutdown();
             } finally {
                 this.connections.close();
                 this.reconnects.close();
@@ -237,9 +237,9 @@ public final class AudioPlaybackManager {
     private void stopSession(PlaybackOwnerKey key, ManagedPlayback playback) {
         RadioSession session = playback.session();
         session.stop();
-        if (this.sessions.enabled()) {
+        if (this.backend.enabled()) {
             try {
-                this.sessions.stop(key, session);
+                this.backend.stop(key, session);
             } finally {
                 try {
                     playback.releaseAttempt(null);
@@ -262,7 +262,7 @@ public final class AudioPlaybackManager {
                 this.startAdmittedSession(key, playback, attempt);
             } catch (RuntimeException exception) {
                 try {
-                    this.sessions.abort(key, playback.session(), attempt);
+                    this.backend.abort(key, playback.session(), attempt);
                 } catch (RuntimeException abortException) {
                     exception.addSuppressed(abortException);
                 } finally {
@@ -286,8 +286,8 @@ public final class AudioPlaybackManager {
 
     private void startAdmittedSession(PlaybackOwnerKey key, ManagedPlayback playback,
                                       RadioSession.Attempt attempt) {
-        this.sessions.start(key, playback.state(), playback.session(), attempt,
-                new SessionEvents() {
+        this.backend.start(key, playback.state(), playback.session(), attempt,
+                new PlaybackBackend.Events() {
                     @Override
                     public void progress(RadioPlaybackState state) {
                         reconnects.progress(playback.session(), attempt, state,
@@ -338,7 +338,7 @@ public final class AudioPlaybackManager {
                             return;
                         }
                         try {
-                            sessions.abort(key, playback.session(), attempt);
+                            backend.abort(key, playback.session(), attempt);
                         } finally {
                             playback.releaseAttempt(attempt);
                         }
@@ -357,7 +357,7 @@ public final class AudioPlaybackManager {
         }
         try {
             if (playback.ownsAttempt(attempt)) {
-                this.sessions.abort(key, playback.session(), attempt);
+                this.backend.abort(key, playback.session(), attempt);
             }
         } finally {
             try {
@@ -391,7 +391,7 @@ public final class AudioPlaybackManager {
 
     private boolean supportsLiveBackend(PlaybackOwnerKey key, PlaybackState state) {
         return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent()
-                && this.sessions.supports(key, state);
+                && this.backend.supports(key, state);
     }
 
     private static String liveSource(PlaybackState state) {
@@ -435,68 +435,6 @@ public final class AudioPlaybackManager {
         void tick(PlaybackOwnerKey key, PlaybackState state);
 
         boolean isPlaying(PlaybackOwnerKey key);
-    }
-
-    interface SessionDriver {
-
-        SessionDriver NOOP = new SessionDriver() {
-            @Override
-            public boolean enabled() {
-                return false;
-            }
-
-            @Override
-            public void start(PlaybackOwnerKey key, PlaybackState state,
-                              RadioSession session,
-                              RadioSession.Attempt attempt, SessionEvents events) {
-            }
-
-            @Override
-            public void stop(PlaybackOwnerKey key, RadioSession session) {
-            }
-
-            @Override
-            public void abort(PlaybackOwnerKey key, RadioSession session,
-                              RadioSession.Attempt attempt) {
-            }
-        };
-
-        default boolean enabled() {
-            return true;
-        }
-
-        default boolean supports(PlaybackOwnerKey key, PlaybackState state) {
-            return true;
-        }
-
-        void start(PlaybackOwnerKey key, PlaybackState state,
-                   RadioSession session,
-                   RadioSession.Attempt attempt, SessionEvents events);
-
-        void stop(PlaybackOwnerKey key, RadioSession session);
-
-        void abort(PlaybackOwnerKey key, RadioSession session,
-                   RadioSession.Attempt attempt);
-
-        default void shutdown() {
-        }
-    }
-
-    interface SessionEvents {
-
-        void progress(RadioPlaybackState state);
-
-        void sequenceAdvance(Runnable continuation);
-
-        void completion();
-
-        void failure(Throwable failure);
-
-        void termination(RadioAudioStream.Termination termination);
-
-        void soundEngineStopped();
-
-        void ownerUnavailable(Throwable failure);
     }
 
     private static final class ManagedPlayback {

@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.client.radio.sound.RadioSoundInstance;
+import gg.moonflower.etched.client.radio.sound.MinecraftSoundEngineSink;
+import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
 import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.CompositeRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
@@ -17,7 +18,6 @@ import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
-import net.minecraft.tags.BlockTags;
 
 import java.io.IOException;
 import java.net.URI;
@@ -38,30 +38,26 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 
-/** Production playback backend for resolved, independently buffered radio streams. */
-public final class ProductionRadioSessionDriver implements AudioPlaybackManager.SessionDriver {
+/** Playback backend for resolved, independently buffered live streams. */
+public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
-    private static final float RADIO_VOLUME = 4.0F;
-    private static final int ATTENUATION_DISTANCE = 8;
     private static final int WORK_QUEUE_CAPACITY = 32;
 
     private final Object lock = new Object();
-    private final Map<PlaybackOwnerKey.BlockOwner, ActiveAttempt> attempts = new HashMap<>();
-    private final Map<PlaybackOwnerKey.BlockOwner, Integer> serviceCursors = new HashMap<>();
+    private final Map<PlaybackOwnerKey, ActiveAttempt> attempts = new HashMap<>();
+    private final Map<PlaybackOwnerKey, Integer> serviceCursors = new HashMap<>();
     private final RadioSourceProgramResolver resolver;
     private final ContextFactory contexts;
     private final ExecutorService resolverExecutor;
     private final ExecutorService producerExecutor;
     private final ExecutorService decoderExecutor;
     private final Executor ownerExecutor;
-    private final SoundOutput sounds;
+    private final SoundEngineSink sounds;
     private final BooleanSupplier forceStereo;
-    private final Function<PlaybackOwnerKey.BlockOwner, PlaybackParameters> playbackParameters;
     private boolean closed;
 
-    public ProductionRadioSessionDriver() {
+    public LiveStreamPlaybackBackend() {
         this(new CompositeRadioSourceResolver(List.of(
                         new SoundCloudRadioSourceResolver(),
                         new BandcampRadioSourceResolver(),
@@ -71,24 +67,14 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
                 boundedExecutor("Etched radio producer", 8),
                 boundedExecutor("Etched radio decoder", 2),
                 command -> Minecraft.getInstance().execute(command),
-                new MinecraftSoundOutput(),
-                () -> Etched.CLIENT_CONFIG.forceStereo.get(),
-                ProductionRadioSessionDriver::minecraftPlaybackParameters);
+                new MinecraftSoundEngineSink(),
+                () -> Etched.CLIENT_CONFIG.forceStereo.get());
     }
 
-    ProductionRadioSessionDriver(RadioSourceProgramResolver resolver, ContextFactory contexts,
-                                 ExecutorService resolverExecutor, ExecutorService producerExecutor,
-                                  ExecutorService decoderExecutor, Executor ownerExecutor,
-                                  SoundOutput sounds, BooleanSupplier forceStereo) {
-        this(resolver, contexts, resolverExecutor, producerExecutor, decoderExecutor, ownerExecutor,
-                sounds, forceStereo, ignored -> new PlaybackParameters(RADIO_VOLUME, ATTENUATION_DISTANCE));
-    }
-
-    ProductionRadioSessionDriver(RadioSourceProgramResolver resolver, ContextFactory contexts,
-                                  ExecutorService resolverExecutor, ExecutorService producerExecutor,
-                                  ExecutorService decoderExecutor, Executor ownerExecutor,
-                                  SoundOutput sounds, BooleanSupplier forceStereo,
-                                  Function<PlaybackOwnerKey.BlockOwner, PlaybackParameters> playbackParameters) {
+    LiveStreamPlaybackBackend(RadioSourceProgramResolver resolver, ContextFactory contexts,
+                              ExecutorService resolverExecutor, ExecutorService producerExecutor,
+                              ExecutorService decoderExecutor, Executor ownerExecutor,
+                              SoundEngineSink sounds, BooleanSupplier forceStereo) {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.contexts = Objects.requireNonNull(contexts, "contexts");
         this.resolverExecutor = Objects.requireNonNull(resolverExecutor, "resolverExecutor");
@@ -101,41 +87,39 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         this.ownerExecutor = Objects.requireNonNull(ownerExecutor, "ownerExecutor");
         this.sounds = Objects.requireNonNull(sounds, "sounds");
         this.forceStereo = Objects.requireNonNull(forceStereo, "forceStereo");
-        this.playbackParameters = Objects.requireNonNull(playbackParameters, "playbackParameters");
     }
 
     @Override
     public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
-        return key instanceof PlaybackOwnerKey.BlockOwner
+        return this.sounds.supports(key)
                 && state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent();
     }
 
     @Override
     public void start(PlaybackOwnerKey key, PlaybackState state,
                       RadioSession session,
-                      RadioSession.Attempt attempt, AudioPlaybackManager.SessionEvents events) {
-        PlaybackOwnerKey.BlockOwner blockOwner = requireBlockOwner(key);
+                      RadioSession.Attempt attempt, PlaybackBackend.Events events) {
         Objects.requireNonNull(state, "state");
         if (!this.supports(key, state)) {
-            throw new IllegalArgumentException("The radio backend requires a live audio program");
+            throw new IllegalArgumentException("The live backend does not support this playback owner or state");
         }
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(attempt, "attempt");
         Objects.requireNonNull(events, "events");
 
-        ActiveAttempt active = new ActiveAttempt(blockOwner, session, attempt, events,
+        ActiveAttempt active = new ActiveAttempt(key, session, attempt, events,
                 this.contexts.create(attempt.cancellation()));
         synchronized (this.lock) {
             if (this.closed) {
                 throw new RejectedExecutionException("Radio session driver is shut down");
             }
             if (session.snapshot().attemptNumber() == 1) {
-                this.serviceCursors.remove(blockOwner);
+                this.serviceCursors.remove(key);
             }
-            ActiveAttempt previous = this.attempts.put(blockOwner, active);
+            ActiveAttempt previous = this.attempts.put(key, active);
             if (previous != null) {
-                this.attempts.put(blockOwner, previous);
-                throw new IllegalStateException("A radio playback attempt is already active for " + blockOwner);
+                this.attempts.put(key, previous);
+                throw new IllegalStateException("A live playback attempt is already active for " + key);
             }
         }
         attempt.cancellation().onCancel(() -> this.closeAttempt(active));
@@ -152,12 +136,11 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
 
     @Override
     public void stop(PlaybackOwnerKey key, RadioSession session) {
-        PlaybackOwnerKey.BlockOwner blockOwner = requireBlockOwner(key);
         ActiveAttempt active;
         synchronized (this.lock) {
-            active = this.attempts.get(blockOwner);
+            active = this.attempts.get(key);
             if (active == null) {
-                this.serviceCursors.remove(blockOwner);
+                this.serviceCursors.remove(key);
                 return;
             }
             if (active.session != session) {
@@ -170,10 +153,9 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
     @Override
     public void abort(PlaybackOwnerKey key, RadioSession session,
                       RadioSession.Attempt attempt) {
-        PlaybackOwnerKey.BlockOwner blockOwner = requireBlockOwner(key);
         ActiveAttempt active;
         synchronized (this.lock) {
-            active = this.attempts.get(blockOwner);
+            active = this.attempts.get(key);
             if (active == null || active.session != session || active.attempt != attempt) {
                 return;
             }
@@ -196,13 +178,6 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         shutdown(this.resolverExecutor);
         shutdown(this.producerExecutor);
         shutdown(this.decoderExecutor);
-    }
-
-    private static PlaybackOwnerKey.BlockOwner requireBlockOwner(PlaybackOwnerKey key) {
-        if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
-            return blockOwner;
-        }
-        throw new IllegalArgumentException("The radio backend requires a block playback owner");
     }
 
     private void resolve(ActiveAttempt active) {
@@ -317,11 +292,16 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
             return;
         }
 
-        PlaybackParameters parameters = this.playbackParameters.apply(active.key);
-        RadioSoundInstance sound = new RadioSoundInstance(active.key, active.attempt.generation(), audio,
-                active.attempt.cancellation(), parameters.volume(), parameters.attenuationDistance(),
-                () -> this.streamHandedOff(active, track, preparation, audio),
-                () -> this.dispatch(() -> this.soundStopped(active, track), active));
+        SoundEngineSink.Handle sound;
+        try {
+            sound = this.sounds.create(active.key, active.attempt.generation(), audio,
+                    active.attempt.cancellation(),
+                    () -> this.streamHandedOff(active, track, preparation, audio),
+                    () -> this.dispatch(() -> this.soundStopped(active, track), active));
+        } catch (RuntimeException exception) {
+            this.reportFailure(active, track, exception);
+            return;
+        }
         boolean accepted;
         synchronized (this.lock) {
             accepted = this.isCurrentTrackLocked(active, track) && track.preparation == preparation;
@@ -343,7 +323,7 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         }
         active.events.progress(RadioPlaybackState.BUFFERING);
         try {
-            if (!this.sounds.play(sound)) {
+            if (!sound.play()) {
                 this.reportFailure(active, track, new RadioStreamException(
                         RadioFailure.Code.SOUND_ENGINE_STOPPED, false,
                         "SoundManager did not accept radio playback", null));
@@ -539,7 +519,7 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         if (track == null) {
             return;
         }
-        RadioSoundInstance sound;
+        SoundEngineSink.Handle sound;
         RadioStreamPipeline.Preparation preparation;
         RadioAudioStream audio;
         Future<?> worker;
@@ -570,7 +550,7 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
                 synchronized (active) {
                     if (active.soundOutputAvailable) {
                         try {
-                            this.sounds.stop(sound);
+                            sound.stop();
                             soundOutputOwnsAudio = transferred;
                         } catch (RuntimeException ignored) {
                         }
@@ -633,15 +613,6 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         }
     }
 
-    private static PlaybackParameters minecraftPlaybackParameters(PlaybackOwnerKey.BlockOwner key) {
-        Minecraft minecraft = Minecraft.getInstance();
-        boolean muffled = minecraft.level != null && minecraft.level.dimension().equals(key.dimension())
-                && minecraft.level.getBlockState(key.pos().above()).is(BlockTags.WOOL);
-        return muffled
-                ? new PlaybackParameters(RADIO_VOLUME / 2.0F, ATTENUATION_DISTANCE / 2)
-                : new PlaybackParameters(RADIO_VOLUME, ATTENUATION_DISTANCE);
-    }
-
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
         while ((current instanceof CompletionException
@@ -664,41 +635,11 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         RadioResolveContext create(RadioCancellation cancellation);
     }
 
-    interface SoundOutput {
-        boolean play(RadioSoundInstance sound);
-
-        void stop(RadioSoundInstance sound);
-    }
-
-    private static final class MinecraftSoundOutput implements SoundOutput {
-
-        @Override
-        public boolean play(RadioSoundInstance sound) {
-            var manager = Minecraft.getInstance().getSoundManager();
-            manager.play(sound);
-            return manager.isActive(sound);
-        }
-
-        @Override
-        public void stop(RadioSoundInstance sound) {
-            Minecraft.getInstance().getSoundManager().stop(sound);
-        }
-    }
-
-    record PlaybackParameters(float volume, int attenuationDistance) {
-
-        PlaybackParameters {
-            if (!Float.isFinite(volume) || volume < 0.0F || attenuationDistance <= 0) {
-                throw new IllegalArgumentException("Invalid radio playback parameters");
-            }
-        }
-    }
-
     private static final class ActiveAttempt {
-        private final PlaybackOwnerKey.BlockOwner key;
+        private final PlaybackOwnerKey key;
         private final RadioSession session;
         private final RadioSession.Attempt attempt;
-        private final AudioPlaybackManager.SessionEvents events;
+        private final PlaybackBackend.Events events;
         private final RadioResolveContext context;
         private Future<?> worker;
         private RadioSourceProgram program;
@@ -706,9 +647,9 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         private boolean closed;
         private boolean soundOutputAvailable = true;
 
-        private ActiveAttempt(PlaybackOwnerKey.BlockOwner key, RadioSession session,
+        private ActiveAttempt(PlaybackOwnerKey key, RadioSession session,
                               RadioSession.Attempt attempt,
-                              AudioPlaybackManager.SessionEvents events, RadioResolveContext context) {
+                              PlaybackBackend.Events events, RadioResolveContext context) {
             this.key = key;
             this.session = session;
             this.attempt = attempt;
@@ -723,7 +664,7 @@ public final class ProductionRadioSessionDriver implements AudioPlaybackManager.
         private Future<?> worker;
         private RadioStreamPipeline.Preparation preparation;
         private RadioAudioStream audio;
-        private RadioSoundInstance sound;
+        private SoundEngineSink.Handle sound;
         private boolean transferred;
         private boolean terminal;
         private boolean soundStopReported;
