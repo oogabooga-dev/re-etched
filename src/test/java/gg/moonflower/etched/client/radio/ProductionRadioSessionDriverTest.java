@@ -52,7 +52,7 @@ class ProductionRadioSessionDriverTest {
 
     private static final ResourceKey<Level> DIMENSION = ResourceKey.create(Registries.DIMENSION,
             ResourceLocation.fromNamespaceAndPath("etched_test", "driver"));
-    private static final RadioKey KEY = new RadioKey(DIMENSION, BlockPos.ZERO);
+    private static final PlaybackOwnerKey.BlockOwner KEY = PlaybackOwnerKey.block(DIMENSION, BlockPos.ZERO);
 
     private final List<String> requests = new CopyOnWriteArrayList<>();
     private ExecutorService resolvers;

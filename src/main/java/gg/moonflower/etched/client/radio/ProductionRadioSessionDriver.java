@@ -47,8 +47,8 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     private static final int WORK_QUEUE_CAPACITY = 32;
 
     private final Object lock = new Object();
-    private final Map<RadioKey, ActiveAttempt> attempts = new HashMap<>();
-    private final Map<RadioKey, Integer> serviceCursors = new HashMap<>();
+    private final Map<PlaybackOwnerKey.BlockOwner, ActiveAttempt> attempts = new HashMap<>();
+    private final Map<PlaybackOwnerKey.BlockOwner, Integer> serviceCursors = new HashMap<>();
     private final RadioSourceProgramResolver resolver;
     private final ContextFactory contexts;
     private final ExecutorService resolverExecutor;
@@ -57,7 +57,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     private final Executor ownerExecutor;
     private final SoundOutput sounds;
     private final BooleanSupplier forceStereo;
-    private final Function<RadioKey, PlaybackParameters> playbackParameters;
+    private final Function<PlaybackOwnerKey.BlockOwner, PlaybackParameters> playbackParameters;
     private boolean closed;
 
     public ProductionRadioSessionDriver() {
@@ -87,7 +87,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
                                   ExecutorService resolverExecutor, ExecutorService producerExecutor,
                                   ExecutorService decoderExecutor, Executor ownerExecutor,
                                   SoundOutput sounds, BooleanSupplier forceStereo,
-                                  Function<RadioKey, PlaybackParameters> playbackParameters) {
+                                  Function<PlaybackOwnerKey.BlockOwner, PlaybackParameters> playbackParameters) {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.contexts = Objects.requireNonNull(contexts, "contexts");
         this.resolverExecutor = Objects.requireNonNull(resolverExecutor, "resolverExecutor");
@@ -104,7 +104,8 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     @Override
-    public void start(RadioKey key, RadioConfiguration configuration, RadioSession session,
+    public void start(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration,
+                      RadioSession session,
                       RadioSession.Attempt attempt, RadioPlaybackManager.SessionEvents events) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(configuration, "configuration");
@@ -140,7 +141,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     @Override
-    public void stop(RadioKey key, RadioSession session) {
+    public void stop(PlaybackOwnerKey.BlockOwner key, RadioSession session) {
         ActiveAttempt active;
         synchronized (this.lock) {
             active = this.attempts.get(key);
@@ -156,7 +157,8 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     @Override
-    public void abort(RadioKey key, RadioSession session, RadioSession.Attempt attempt) {
+    public void abort(PlaybackOwnerKey.BlockOwner key, RadioSession session,
+                      RadioSession.Attempt attempt) {
         ActiveAttempt active;
         synchronized (this.lock) {
             active = this.attempts.get(key);
@@ -612,7 +614,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
         }
     }
 
-    private static PlaybackParameters minecraftPlaybackParameters(RadioKey key) {
+    private static PlaybackParameters minecraftPlaybackParameters(PlaybackOwnerKey.BlockOwner key) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean muffled = minecraft.level != null && minecraft.level.dimension().equals(key.dimension())
                 && minecraft.level.getBlockState(key.pos().above()).is(BlockTags.WOOL);
@@ -674,7 +676,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     private static final class ActiveAttempt {
-        private final RadioKey key;
+        private final PlaybackOwnerKey.BlockOwner key;
         private final RadioSession session;
         private final RadioSession.Attempt attempt;
         private final RadioPlaybackManager.SessionEvents events;
@@ -685,7 +687,8 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
         private boolean closed;
         private boolean soundOutputAvailable = true;
 
-        private ActiveAttempt(RadioKey key, RadioSession session, RadioSession.Attempt attempt,
+        private ActiveAttempt(PlaybackOwnerKey.BlockOwner key, RadioSession session,
+                              RadioSession.Attempt attempt,
                               RadioPlaybackManager.SessionEvents events, RadioResolveContext context) {
             this.key = key;
             this.session = session;

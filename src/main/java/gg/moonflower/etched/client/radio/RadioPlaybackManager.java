@@ -30,7 +30,7 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
             PlaybackDriver.NOOP, new ProductionRadioSessionDriver(), new MinecraftRadioPlaybackEffects(),
             RadioReconnectController.createDefault(command -> Minecraft.getInstance().execute(command)));
 
-    private final Map<RadioKey, ManagedRadio> radios;
+    private final Map<PlaybackOwnerKey.BlockOwner, ManagedRadio> radios;
     private final PlaybackDriver playback;
     private final SessionDriver sessions;
     private final RadioPlaybackEffects effects;
@@ -72,10 +72,10 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
 
     @Override
     public void update(ResourceKey<Level> dimension, BlockPos pos, RadioConfiguration configuration) {
-        this.update(new RadioKey(dimension, pos), configuration);
+        this.update(PlaybackOwnerKey.block(dimension, pos), configuration);
     }
 
-    public boolean update(RadioKey key, RadioConfiguration configuration) {
+    public boolean update(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(configuration, "configuration");
         if (this.closed) {
@@ -118,10 +118,10 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
 
     @Override
     public void remove(ResourceKey<Level> dimension, BlockPos pos) {
-        this.remove(new RadioKey(dimension, pos));
+        this.remove(PlaybackOwnerKey.block(dimension, pos));
     }
 
-    public boolean remove(RadioKey key) {
+    public boolean remove(PlaybackOwnerKey.BlockOwner key) {
         Objects.requireNonNull(key, "key");
         ManagedRadio removed = this.radios.remove(key);
         if (removed == null) {
@@ -139,10 +139,10 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
 
     @Override
     public void tick(ResourceKey<Level> dimension, BlockPos pos, RadioConfiguration configuration) {
-        this.tick(new RadioKey(dimension, pos), configuration);
+        this.tick(PlaybackOwnerKey.block(dimension, pos), configuration);
     }
 
-    public void tick(RadioKey key, RadioConfiguration configuration) {
+    public void tick(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration) {
         if (this.closed) {
             return;
         }
@@ -161,10 +161,10 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
 
     @Override
     public boolean isPlaying(ResourceKey<Level> dimension, BlockPos pos) {
-        return this.isPlaying(new RadioKey(dimension, pos));
+        return this.isPlaying(PlaybackOwnerKey.block(dimension, pos));
     }
 
-    public boolean isPlaying(RadioKey key) {
+    public boolean isPlaying(PlaybackOwnerKey.BlockOwner key) {
         ManagedRadio radio = this.radios.get(key);
         if (radio == null) {
             return false;
@@ -174,17 +174,17 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
                 : this.playback.isPlaying(key);
     }
 
-    public Optional<RadioConfiguration> getConfiguration(RadioKey key) {
+    public Optional<RadioConfiguration> getConfiguration(PlaybackOwnerKey.BlockOwner key) {
         ManagedRadio radio = this.radios.get(key);
         return radio == null ? Optional.empty() : Optional.of(radio.configuration());
     }
 
-    public Optional<RadioSession.Snapshot> getSessionSnapshot(RadioKey key) {
+    public Optional<RadioSession.Snapshot> getSessionSnapshot(PlaybackOwnerKey.BlockOwner key) {
         ManagedRadio radio = this.radios.get(Objects.requireNonNull(key, "key"));
         return radio == null ? Optional.empty() : Optional.of(radio.session().snapshot());
     }
 
-    public boolean retry(RadioKey key) {
+    public boolean retry(PlaybackOwnerKey.BlockOwner key) {
         Objects.requireNonNull(key, "key");
         if (this.closed || !this.sessions.enabled()) {
             return false;
@@ -204,10 +204,11 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
     }
 
     public void clearAll() {
-        ArrayList<Map.Entry<RadioKey, ManagedRadio>> entries = new ArrayList<>(this.radios.entrySet());
+        ArrayList<Map.Entry<PlaybackOwnerKey.BlockOwner, ManagedRadio>> entries =
+                new ArrayList<>(this.radios.entrySet());
         this.radios.clear();
         RuntimeException failure = null;
-        for (Map.Entry<RadioKey, ManagedRadio> entry : entries) {
+        for (Map.Entry<PlaybackOwnerKey.BlockOwner, ManagedRadio> entry : entries) {
             try {
                 if (this.sessions.enabled()) {
                     this.stopSession(entry.getKey(), entry.getValue());
@@ -245,7 +246,7 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
         }
     }
 
-    private void stopSession(RadioKey key, ManagedRadio radio) {
+    private void stopSession(PlaybackOwnerKey.BlockOwner key, ManagedRadio radio) {
         RadioSession session = radio.session();
         session.stop();
         if (this.sessions.enabled()) {
@@ -261,7 +262,8 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
         }
     }
 
-    private void startSession(RadioKey key, ManagedRadio radio, RadioSession.Attempt attempt) {
+    private void startSession(PlaybackOwnerKey.BlockOwner key, ManagedRadio radio,
+                              RadioSession.Attempt attempt) {
         boolean accepted = this.connections.submit(attempt.cancellation(), lease -> {
             if (this.radios.get(key) != radio || attempt.cancellation().isCancelled()) {
                 lease.close();
@@ -294,7 +296,8 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
         radio.session().fail(attempt, RadioConnectionScheduler.unavailableFailure());
     }
 
-    private void startAdmittedSession(RadioKey key, ManagedRadio radio, RadioSession.Attempt attempt) {
+    private void startAdmittedSession(PlaybackOwnerKey.BlockOwner key, ManagedRadio radio,
+                                      RadioSession.Attempt attempt) {
         this.sessions.start(key, radio.configuration(), radio.session(), attempt,
                 new SessionEvents() {
                     @Override
@@ -355,7 +358,8 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
                 });
     }
 
-    private void terminalStateChanged(RadioKey key, ManagedRadio radio, RadioSession.Attempt attempt) {
+    private void terminalStateChanged(PlaybackOwnerKey.BlockOwner key, ManagedRadio radio,
+                                      RadioSession.Attempt attempt) {
         RadioSession.Snapshot snapshot = radio.session().snapshot();
         if (snapshot.failure() != null) {
             RadioFailure failure = snapshot.failure();
@@ -376,7 +380,8 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
         }
     }
 
-    private void startCurrentSession(RadioKey key, ManagedRadio radio, RadioSession.Attempt attempt) {
+    private void startCurrentSession(PlaybackOwnerKey.BlockOwner key, ManagedRadio radio,
+                                     RadioSession.Attempt attempt) {
         if (this.radios.get(key) != radio) {
             attempt.cancellation().cancel();
             return;
@@ -384,7 +389,7 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
         this.startSession(key, radio, attempt);
     }
 
-    private void updateEffects(RadioKey key, ManagedRadio radio) {
+    private void updateEffects(PlaybackOwnerKey.BlockOwner key, ManagedRadio radio) {
         if (this.radios.get(key) == radio) {
             this.effects.update(key, radio.session().snapshot());
         }
@@ -403,30 +408,30 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
 
         PlaybackDriver NOOP = new PlaybackDriver() {
             @Override
-            public void apply(RadioKey key, RadioConfiguration configuration) {
+            public void apply(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration) {
             }
 
             @Override
-            public void stop(RadioKey key) {
+            public void stop(PlaybackOwnerKey.BlockOwner key) {
             }
 
             @Override
-            public void tick(RadioKey key, RadioConfiguration configuration) {
+            public void tick(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration) {
             }
 
             @Override
-            public boolean isPlaying(RadioKey key) {
+            public boolean isPlaying(PlaybackOwnerKey.BlockOwner key) {
                 return false;
             }
         };
 
-        void apply(RadioKey key, RadioConfiguration configuration);
+        void apply(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration);
 
-        void stop(RadioKey key);
+        void stop(PlaybackOwnerKey.BlockOwner key);
 
-        void tick(RadioKey key, RadioConfiguration configuration);
+        void tick(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration);
 
-        boolean isPlaying(RadioKey key);
+        boolean isPlaying(PlaybackOwnerKey.BlockOwner key);
     }
 
     interface SessionDriver {
@@ -438,16 +443,18 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
             }
 
             @Override
-            public void start(RadioKey key, RadioConfiguration configuration, RadioSession session,
+            public void start(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration,
+                              RadioSession session,
                               RadioSession.Attempt attempt, SessionEvents events) {
             }
 
             @Override
-            public void stop(RadioKey key, RadioSession session) {
+            public void stop(PlaybackOwnerKey.BlockOwner key, RadioSession session) {
             }
 
             @Override
-            public void abort(RadioKey key, RadioSession session, RadioSession.Attempt attempt) {
+            public void abort(PlaybackOwnerKey.BlockOwner key, RadioSession session,
+                              RadioSession.Attempt attempt) {
             }
         };
 
@@ -455,12 +462,14 @@ public final class RadioPlaybackManager implements RadioClientBridge.Listener {
             return true;
         }
 
-        void start(RadioKey key, RadioConfiguration configuration, RadioSession session,
+        void start(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration,
+                   RadioSession session,
                    RadioSession.Attempt attempt, SessionEvents events);
 
-        void stop(RadioKey key, RadioSession session);
+        void stop(PlaybackOwnerKey.BlockOwner key, RadioSession session);
 
-        void abort(RadioKey key, RadioSession session, RadioSession.Attempt attempt);
+        void abort(PlaybackOwnerKey.BlockOwner key, RadioSession session,
+                   RadioSession.Attempt attempt);
 
         default void shutdown() {
         }
