@@ -2,6 +2,7 @@ package gg.moonflower.etched.common.radio;
 
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.PlaybackState;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,6 +33,12 @@ class RadioConfigurationTest {
         assertFalse(powered.isEnabled());
         assertFalse(empty.isConfigured());
         assertEquals("", empty.url());
+
+        assertEquals(new PlaybackState(12L, enabled.station(), true), enabled.toPlaybackState());
+        assertEquals(new PlaybackState(13L, manuallyStopped.station(), false),
+                manuallyStopped.toPlaybackState());
+        assertEquals(new PlaybackState(14L, powered.station(), false), powered.toPlaybackState());
+        assertEquals(new PlaybackState(15L, Optional.empty(), false), empty.toPlaybackState());
     }
 
     @Test

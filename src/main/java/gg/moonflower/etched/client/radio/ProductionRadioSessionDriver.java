@@ -13,7 +13,8 @@ import gg.moonflower.etched.client.radio.source.SoundCloudRadioSourceResolver;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import gg.moonflower.etched.client.radio.stream.RadioStreamPipeline;
 import gg.moonflower.etched.client.radio.stream.RadioStreamException;
-import gg.moonflower.etched.common.radio.RadioConfiguration;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
 import net.minecraft.tags.BlockTags;
@@ -40,7 +41,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /** Production playback backend for resolved, independently buffered radio streams. */
-public final class ProductionRadioSessionDriver implements RadioPlaybackManager.SessionDriver {
+public final class ProductionRadioSessionDriver implements AudioPlaybackManager.SessionDriver {
 
     private static final float RADIO_VOLUME = 4.0F;
     private static final int ATTENUATION_DISTANCE = 8;
@@ -104,28 +105,37 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     @Override
-    public void start(PlaybackOwnerKey.BlockOwner key, RadioConfiguration configuration,
+    public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
+        return key instanceof PlaybackOwnerKey.BlockOwner
+                && state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent();
+    }
+
+    @Override
+    public void start(PlaybackOwnerKey key, PlaybackState state,
                       RadioSession session,
-                      RadioSession.Attempt attempt, RadioPlaybackManager.SessionEvents events) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(configuration, "configuration");
+                      RadioSession.Attempt attempt, AudioPlaybackManager.SessionEvents events) {
+        PlaybackOwnerKey.BlockOwner blockOwner = requireBlockOwner(key);
+        Objects.requireNonNull(state, "state");
+        if (!this.supports(key, state)) {
+            throw new IllegalArgumentException("The radio backend requires a live audio program");
+        }
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(attempt, "attempt");
         Objects.requireNonNull(events, "events");
 
-        ActiveAttempt active = new ActiveAttempt(key, session, attempt, events,
+        ActiveAttempt active = new ActiveAttempt(blockOwner, session, attempt, events,
                 this.contexts.create(attempt.cancellation()));
         synchronized (this.lock) {
             if (this.closed) {
                 throw new RejectedExecutionException("Radio session driver is shut down");
             }
             if (session.snapshot().attemptNumber() == 1) {
-                this.serviceCursors.remove(key);
+                this.serviceCursors.remove(blockOwner);
             }
-            ActiveAttempt previous = this.attempts.put(key, active);
+            ActiveAttempt previous = this.attempts.put(blockOwner, active);
             if (previous != null) {
-                this.attempts.put(key, previous);
-                throw new IllegalStateException("A radio playback attempt is already active for " + key);
+                this.attempts.put(blockOwner, previous);
+                throw new IllegalStateException("A radio playback attempt is already active for " + blockOwner);
             }
         }
         attempt.cancellation().onCancel(() -> this.closeAttempt(active));
@@ -141,12 +151,13 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     @Override
-    public void stop(PlaybackOwnerKey.BlockOwner key, RadioSession session) {
+    public void stop(PlaybackOwnerKey key, RadioSession session) {
+        PlaybackOwnerKey.BlockOwner blockOwner = requireBlockOwner(key);
         ActiveAttempt active;
         synchronized (this.lock) {
-            active = this.attempts.get(key);
+            active = this.attempts.get(blockOwner);
             if (active == null) {
-                this.serviceCursors.remove(key);
+                this.serviceCursors.remove(blockOwner);
                 return;
             }
             if (active.session != session) {
@@ -157,11 +168,12 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
     }
 
     @Override
-    public void abort(PlaybackOwnerKey.BlockOwner key, RadioSession session,
+    public void abort(PlaybackOwnerKey key, RadioSession session,
                       RadioSession.Attempt attempt) {
+        PlaybackOwnerKey.BlockOwner blockOwner = requireBlockOwner(key);
         ActiveAttempt active;
         synchronized (this.lock) {
-            active = this.attempts.get(key);
+            active = this.attempts.get(blockOwner);
             if (active == null || active.session != session || active.attempt != attempt) {
                 return;
             }
@@ -184,6 +196,13 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
         shutdown(this.resolverExecutor);
         shutdown(this.producerExecutor);
         shutdown(this.decoderExecutor);
+    }
+
+    private static PlaybackOwnerKey.BlockOwner requireBlockOwner(PlaybackOwnerKey key) {
+        if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
+            return blockOwner;
+        }
+        throw new IllegalArgumentException("The radio backend requires a block playback owner");
     }
 
     private void resolve(ActiveAttempt active) {
@@ -679,7 +698,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
         private final PlaybackOwnerKey.BlockOwner key;
         private final RadioSession session;
         private final RadioSession.Attempt attempt;
-        private final RadioPlaybackManager.SessionEvents events;
+        private final AudioPlaybackManager.SessionEvents events;
         private final RadioResolveContext context;
         private Future<?> worker;
         private RadioSourceProgram program;
@@ -689,7 +708,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
 
         private ActiveAttempt(PlaybackOwnerKey.BlockOwner key, RadioSession session,
                               RadioSession.Attempt attempt,
-                              RadioPlaybackManager.SessionEvents events, RadioResolveContext context) {
+                              AudioPlaybackManager.SessionEvents events, RadioResolveContext context) {
             this.key = key;
             this.session = session;
             this.attempt = attempt;

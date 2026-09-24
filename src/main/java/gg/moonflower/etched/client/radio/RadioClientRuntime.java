@@ -3,6 +3,7 @@ package gg.moonflower.etched.client.radio;
 import gg.moonflower.etched.client.radio.history.RadioHistoryContext;
 import gg.moonflower.etched.client.radio.history.RadioHistoryStorage;
 import gg.moonflower.etched.client.radio.history.RadioStationHistory;
+import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.radio.RadioClientBridge;
 import gg.moonflower.etched.common.radio.RadioConfiguration;
 import net.minecraft.Util;
@@ -25,15 +26,16 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
 
     private static final long PENDING_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
 
-    private final RadioClientBridge.Listener playback;
+    private final AudioPlaybackManager playback;
     private final RadioStationHistory history;
     private final RadioHistoryStorage storage;
     private final Supplier<Optional<String>> contextSupplier;
     private final Map<PlaybackOwnerKey.BlockOwner, PendingStation> pendingStations = new HashMap<>();
+    private final Map<PlaybackOwnerKey.BlockOwner, RadioConfiguration> acceptedConfigurations = new HashMap<>();
     private boolean initialized;
     private Optional<String> currentContext;
 
-    RadioClientRuntime(RadioClientBridge.Listener playback, RadioStationHistory history,
+    RadioClientRuntime(AudioPlaybackManager playback, RadioStationHistory history,
                        RadioHistoryStorage storage, Supplier<Optional<String>> contextSupplier) {
         this.playback = Objects.requireNonNull(playback, "playback");
         this.history = Objects.requireNonNull(history, "history");
@@ -84,12 +86,21 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
     @Override
     public void update(ResourceKey<Level> dimension, BlockPos pos, RadioConfiguration configuration) {
         PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(dimension, pos);
+        PlaybackState state = configuration.toPlaybackState();
+        boolean accepted = this.playback.update(key, state);
+        boolean authoritative;
+        synchronized (this) {
+            authoritative = accepted || configuration.equals(this.acceptedConfigurations.get(key));
+            if (accepted) {
+                this.acceptedConfigurations.put(key, configuration);
+            }
+        }
         PendingStation confirmed = null;
         synchronized (this) {
             PendingStation pending = this.pendingStations.get(key);
             if (pending != null && pending.expired()) {
                 this.pendingStations.remove(key);
-            } else if (pending != null && configuration.manuallyEnabled()
+            } else if (authoritative && pending != null && configuration.manuallyEnabled()
                     && pending.url.equals(configuration.url())) {
                 this.pendingStations.remove(key);
                 confirmed = pending;
@@ -98,41 +109,47 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
         if (confirmed != null && this.history.record(confirmed.contextKey, confirmed.url)) {
             this.storage.requestSave();
         }
-        this.playback.update(dimension, pos, configuration);
     }
 
     @Override
     public void remove(ResourceKey<Level> dimension, BlockPos pos) {
         synchronized (this) {
-            this.pendingStations.remove(PlaybackOwnerKey.block(dimension, pos));
+            PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(dimension, pos);
+            this.pendingStations.remove(key);
+            this.acceptedConfigurations.remove(key);
         }
-        this.playback.remove(dimension, pos);
+        this.playback.remove(PlaybackOwnerKey.block(dimension, pos));
     }
 
     @Override
     public void tick(ResourceKey<Level> dimension, BlockPos pos, RadioConfiguration configuration) {
+        PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(dimension, pos);
         synchronized (this) {
-            PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(dimension, pos);
             PendingStation pending = this.pendingStations.get(key);
             if (pending != null && pending.expired()) {
                 this.pendingStations.remove(key);
             }
         }
-        this.playback.tick(dimension, pos, configuration);
+        if (this.playback.tick(key, configuration.toPlaybackState())) {
+            synchronized (this) {
+                this.acceptedConfigurations.put(key, configuration);
+            }
+        }
     }
 
     @Override
     public boolean isPlaying(ResourceKey<Level> dimension, BlockPos pos) {
-        return this.playback.isPlaying(dimension, pos);
+        return this.playback.isPlaying(PlaybackOwnerKey.block(dimension, pos));
     }
 
     public synchronized void clearPendingStations() {
         this.pendingStations.clear();
+        this.acceptedConfigurations.clear();
     }
 
     public void clearAll() {
         this.clearPendingStations();
-        RadioPlaybackManager.getInstance().clearAll();
+        this.playback.clearAll();
     }
 
     public void logout() {
@@ -152,7 +169,7 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
     public void shutdown() {
         this.clearPendingStations();
         this.storage.flush();
-        RadioPlaybackManager.getInstance().shutdown();
+        this.playback.shutdown();
     }
 
     private static RadioClientRuntime createDefault() {
@@ -160,7 +177,7 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
         RadioStationHistory history = new RadioStationHistory();
         Path file = minecraft.gameDirectory.toPath().resolve("re-etched").resolve("radio-history.json");
         RadioHistoryStorage storage = new RadioHistoryStorage(history, file, Util.ioPool());
-        return new RadioClientRuntime(RadioPlaybackManager.getInstance(), history, storage,
+        return new RadioClientRuntime(AudioPlaybackManager.getInstance(), history, storage,
                 () -> RadioHistoryContext.resolve(Minecraft.getInstance()));
     }
 

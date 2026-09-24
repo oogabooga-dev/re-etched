@@ -2,6 +2,7 @@ package gg.moonflower.etched.common.radio;
 
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.PlaybackState;
 
 import java.util.List;
 import java.util.Objects;
@@ -44,5 +45,9 @@ public record RadioConfiguration(long revision, Optional<AudioProgram> station,
 
     public boolean isEnabled() {
         return this.manuallyEnabled && !this.powered;
+    }
+
+    public PlaybackState toPlaybackState() {
+        return new PlaybackState(this.revision, this.station, this.isEnabled());
     }
 }
