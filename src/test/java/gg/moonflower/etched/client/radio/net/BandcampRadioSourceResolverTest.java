@@ -2,8 +2,8 @@ package gg.moonflower.etched.client.radio.net;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
+import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
@@ -40,7 +40,7 @@ class BandcampRadioSourceResolverTest {
     private static final URI TRACK = URI.create("https://artist.bandcamp.com/track/only");
     private static final URI FIRST_MEDIA = URI.create("https://t4.bcbits.com/stream/first.mp3");
     private static final URI SECOND_MEDIA = URI.create("https://t4.bcbits.com/stream/second.mp3");
-    private static final RadioNetworkPolicy ALLOW_ALL = uri -> {
+    private static final AudioNetworkPolicy ALLOW_ALL = uri -> {
     };
 
     @Test
@@ -66,7 +66,7 @@ class BandcampRadioSourceResolverTest {
                 .add(ALBUM, page)
                 .add(FIRST_MEDIA, firstOpen, firstAgain)
                 .add(SECOND_MEDIA, secondOpen);
-        RadioResolveContext context = context(router.transport(), limits());
+        AudioResolveContext context = context(router.transport(), limits());
 
         RadioSourceProgram program = new BandcampRadioSourceResolver().resolveProgram(ALBUM, context);
 
@@ -136,7 +136,7 @@ class BandcampRadioSourceResolverTest {
         RadioResolveLimits oneStep = new RadioResolveLimits(4, 4096, 10, 32, 1, 1);
         TrackingConnection page = response(TRACK, 200, trackHtml(FIRST_MEDIA));
         RequestRouter stepRouter = new RequestRouter().add(TRACK, page);
-        RadioResolveContext stepContext = context(stepRouter.transport(), oneStep);
+        AudioResolveContext stepContext = context(stepRouter.transport(), oneStep);
         RadioSourceProgram program = new BandcampRadioSourceResolver().resolveProgram(TRACK, stepContext);
         RadioSourceException stepFailure = assertThrows(RadioSourceException.class,
                 () -> program.openTrack(0, stepContext));
@@ -183,7 +183,7 @@ class BandcampRadioSourceResolverTest {
                 .add(TRACK, initialPage, refreshedPage)
                 .add(FIRST_MEDIA, expired)
                 .add(refreshedMedia, refreshedExpired);
-        RadioResolveContext context = context(router.transport(), limits());
+        AudioResolveContext context = context(router.transport(), limits());
         RadioSourceProgram program = new BandcampRadioSourceResolver().resolveProgram(TRACK, context);
 
         RadioSourceException failure = assertThrows(RadioSourceException.class,
@@ -212,7 +212,7 @@ class BandcampRadioSourceResolverTest {
                 .add(TRACK, initialPage, refreshedPage)
                 .add(FIRST_MEDIA, expired)
                 .add(refreshedMedia, fresh);
-        RadioResolveContext context = context(router.transport(), limits());
+        AudioResolveContext context = context(router.transport(), limits());
         RadioSourceProgram program = new BandcampRadioSourceResolver().resolveProgram(TRACK, context);
 
         try (RadioResolvedSource source = program.openTrack(0, context)) {
@@ -243,7 +243,7 @@ class BandcampRadioSourceResolverTest {
                 .add(ALBUM, initialPage, refreshedPage)
                 .add(FIRST_MEDIA, expired)
                 .add(freshFirst, fresh);
-        RadioResolveContext context = context(router.transport(), limits());
+        AudioResolveContext context = context(router.transport(), limits());
         RadioSourceProgram program = new BandcampRadioSourceResolver().resolveProgram(ALBUM, context);
 
         try (RadioResolvedSource source = program.openTrack(0, context)) {
@@ -261,7 +261,7 @@ class BandcampRadioSourceResolverTest {
         TrackingConnection page = response(ALBUM, 200, trackHtml(FIRST_MEDIA));
         page.onFirstRead = session::stop;
         RequestRouter router = new RequestRouter().add(ALBUM, page);
-        RadioResolveContext context = new RadioResolveContext(router.transport(), ALLOW_ALL,
+        AudioResolveContext context = new AudioResolveContext(router.transport(), ALLOW_ALL,
                 attempt.cancellation(), limits());
 
         assertThrows(CancellationException.class,
@@ -281,8 +281,8 @@ class BandcampRadioSourceResolverTest {
         }
     }
 
-    private static RadioResolveContext context(AudioHttpTransport transport, RadioResolveLimits limits) {
-        return new RadioResolveContext(transport, ALLOW_ALL,
+    private static AudioResolveContext context(AudioHttpTransport transport, RadioResolveLimits limits) {
+        return new AudioResolveContext(transport, ALLOW_ALL,
                 new PlaybackSession().start(ALBUM.toString()).cancellation(), limits);
     }
 

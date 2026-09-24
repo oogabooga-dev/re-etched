@@ -2,8 +2,8 @@ package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
+import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RadioSourceExceptionHttpStatusTest {
 
-    private static final RadioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
+    private static final AudioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
     };
 
     @Test
@@ -54,10 +54,10 @@ class RadioSourceExceptionHttpStatusTest {
                 "status", null, RadioFailure.NO_RETRY_AFTER, status);
     }
 
-    private static RadioResolveContext context() {
+    private static AudioResolveContext context() {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 2);
-        return new RadioResolveContext(transport, ALLOW_TEST_SERVER,
+        return new AudioResolveContext(transport, ALLOW_TEST_SERVER,
                 new PlaybackSession().start("http://radio.example/live").cancellation(),
                 new RadioResolveLimits(4, 64, 2, 32, 1, 4));
     }

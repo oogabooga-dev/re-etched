@@ -42,14 +42,14 @@ public final class RadioHttpTransportImpl implements AudioHttpTransport {
             + "*/*;q=0.1";
 
     private final Proxy proxy;
-    private final RadioNetworkPolicy networkPolicy;
+    private final AudioNetworkPolicy networkPolicy;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
     private final int maxRedirects;
     private final ConnectionFactory connectionFactory;
     private final Authenticator proxyAuthenticator;
 
-    public RadioHttpTransportImpl(Proxy proxy, RadioNetworkPolicy networkPolicy,
+    public RadioHttpTransportImpl(Proxy proxy, AudioNetworkPolicy networkPolicy,
                                                Duration connectTimeout, Duration readTimeout,
                                                int maxRedirects) {
         this(proxy, networkPolicy, connectTimeout, readTimeout, maxRedirects,
@@ -62,7 +62,7 @@ public final class RadioHttpTransportImpl implements AudioHttpTransport {
                 });
     }
 
-    RadioHttpTransportImpl(Proxy proxy, RadioNetworkPolicy networkPolicy,
+    RadioHttpTransportImpl(Proxy proxy, AudioNetworkPolicy networkPolicy,
                                         Duration connectTimeout, Duration readTimeout,
                                         int maxRedirects, ConnectionFactory connectionFactory) {
         this.proxy = Objects.requireNonNull(proxy, "proxy");

@@ -1,8 +1,8 @@
 package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.client.radio.PlaybackSession;
+import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 class DirectRadioSourceProgramTest {
 
-    private static final RadioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
+    private static final AudioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
     };
 
     @Test
@@ -30,7 +30,7 @@ class DirectRadioSourceProgramTest {
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
                 respond(exchange, bytes("ID3-open-" + request));
             });
-            RadioResolveContext context = context(4);
+            AudioResolveContext context = context(4);
 
             RadioSourceProgram program = new DirectRadioSourceResolver()
                     .resolveProgram(server.uri("/live"), context);
@@ -52,10 +52,10 @@ class DirectRadioSourceProgramTest {
         }
     }
 
-    private static RadioResolveContext context(int maxSteps) {
+    private static AudioResolveContext context(int maxSteps) {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 3);
-        return new RadioResolveContext(transport, ALLOW_TEST_SERVER,
+        return new AudioResolveContext(transport, ALLOW_TEST_SERVER,
                 new PlaybackSession().start("http://radio.example/live").cancellation(),
                 new RadioResolveLimits(4, 128, 4, 64, 1, maxSteps));
     }

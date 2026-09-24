@@ -28,7 +28,7 @@ import java.util.function.BooleanSupplier;
  * DNS may ignore interruption, so lookups run in a small bounded daemon pool while callers
  * remain cancellation- and timeout-bounded.</p>
  */
-public final class DefaultRadioNetworkPolicy implements RadioNetworkPolicy {
+public final class DefaultRadioNetworkPolicy implements AudioNetworkPolicy {
 
     public static final Duration DEFAULT_DNS_TIMEOUT = Duration.ofSeconds(5);
     private static final long CANCELLATION_POLL_NANOS = Duration.ofMillis(50).toNanos();

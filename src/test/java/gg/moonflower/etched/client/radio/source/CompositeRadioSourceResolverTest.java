@@ -64,8 +64,8 @@ class CompositeRadioSourceResolverTest {
                 })));
     }
 
-    private static RadioResolveContext nullContext() {
-        return new RadioResolveContext(
+    private static AudioResolveContext nullContext() {
+        return new AudioResolveContext(
                 (request, cancellation) -> {
                     throw new AssertionError("Transport should not be used by this test");
                 }, uri -> {
@@ -95,7 +95,7 @@ class CompositeRadioSourceResolverTest {
         }
 
         @Override
-        public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context) {
+        public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context) {
             this.calls.add(this.name + ":resolve");
             return this.program;
         }

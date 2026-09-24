@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RadioHttpTransportImplTest {
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(2);
-    private static final RadioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
+    private static final AudioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
     };
 
     @Test
@@ -476,7 +476,7 @@ class RadioHttpTransportImplTest {
         CountDownLatch policyStarted = new CountDownLatch(1);
         CountDownLatch releasePolicy = new CountDownLatch(1);
         AtomicInteger connections = new AtomicInteger();
-        RadioNetworkPolicy policy = uri -> {
+        AudioNetworkPolicy policy = uri -> {
             policyStarted.countDown();
             await(releasePolicy);
         };

@@ -10,5 +10,5 @@ public interface AudioSourceResolver {
 
     boolean supports(URI input);
 
-    RadioSourceProgram resolveProgram(URI input, RadioResolveContext context) throws RadioSourceException;
+    RadioSourceProgram resolveProgram(URI input, AudioResolveContext context) throws RadioSourceException;
 }

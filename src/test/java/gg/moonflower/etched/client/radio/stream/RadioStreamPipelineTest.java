@@ -3,10 +3,10 @@ package gg.moonflower.etched.client.radio.stream;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import gg.moonflower.etched.client.radio.PlaybackSession;
+import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
+import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import org.junit.jupiter.api.AfterEach;
@@ -176,12 +176,12 @@ class RadioStreamPipelineTest {
     }
 
     private RadioResolvedSource resolve(PlaybackSession.Attempt attempt) throws Exception {
-        RadioNetworkPolicy allowTestServer = ignored -> {
+        AudioNetworkPolicy allowTestServer = ignored -> {
         };
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(Proxy.NO_PROXY,
                 allowTestServer, Duration.ofSeconds(2), Duration.ofSeconds(2), 2);
         return new DirectRadioSourceResolver().resolve(this.uri,
-                new RadioResolveContext(transport, allowTestServer, attempt.cancellation(),
+                new AudioResolveContext(transport, allowTestServer, attempt.cancellation(),
                         RadioResolveLimits.DEFAULT));
     }
 

@@ -2,11 +2,11 @@ package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.sound.MinecraftSoundEngineSink;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
+import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
 import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.CompositeRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
@@ -62,7 +62,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                         new SoundCloudRadioSourceResolver(),
                         new BandcampRadioSourceResolver(),
                         new DirectRadioSourceResolver())),
-                RadioResolveContext::createDefault,
+                AudioResolveContext::createDefault,
                 boundedExecutor("Etched radio resolver", 2),
                 boundedExecutor("Etched radio producer", 8),
                 boundedExecutor("Etched radio decoder", 2),
@@ -246,7 +246,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         try {
             active.attempt.cancellation().throwIfCancelled();
             track.cancellation.throwIfCancelled();
-            RadioResolveContext trackContext = this.contexts.create(track.cancellation);
+            AudioResolveContext trackContext = this.contexts.create(track.cancellation);
             source = active.program.openTrack(track.index, trackContext);
             if (!this.isCurrentTrack(active, track)) {
                 source.close();
@@ -632,7 +632,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     @FunctionalInterface
     interface ContextFactory {
-        RadioResolveContext create(AudioCancellation cancellation);
+        AudioResolveContext create(AudioCancellation cancellation);
     }
 
     private static final class ActiveAttempt {
@@ -640,7 +640,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private final PlaybackSession session;
         private final PlaybackSession.Attempt attempt;
         private final PlaybackBackend.Events events;
-        private final RadioResolveContext context;
+        private final AudioResolveContext context;
         private Future<?> worker;
         private RadioSourceProgram program;
         private TrackPlayback track;
@@ -649,7 +649,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
         private ActiveAttempt(PlaybackOwnerKey key, PlaybackSession session,
                               PlaybackSession.Attempt attempt,
-                              PlaybackBackend.Events events, RadioResolveContext context) {
+                              PlaybackBackend.Events events, AudioResolveContext context) {
             this.key = key;
             this.session = session;
             this.attempt = attempt;
