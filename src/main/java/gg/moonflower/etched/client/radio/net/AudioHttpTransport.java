@@ -8,6 +8,6 @@ import gg.moonflower.etched.client.radio.AudioCancellation;
  */
 public interface AudioHttpTransport {
 
-    RadioHttpResponse execute(RadioHttpRequest request, AudioCancellation cancellation)
+    AudioHttpResponse execute(AudioHttpRequest request, AudioCancellation cancellation)
             throws RadioTransportException;
 }

@@ -17,7 +17,7 @@ import java.util.OptionalLong;
 /**
  * Owns the final response stream and its underlying connection.
  */
-public final class RadioHttpResponse implements AutoCloseable {
+public final class AudioHttpResponse implements AutoCloseable {
 
     private final URI uri;
     private final int statusCode;
@@ -27,7 +27,7 @@ public final class RadioHttpResponse implements AutoCloseable {
     private final InputStream body;
     private final RadioHttpTransportImpl.ActiveExchange exchange;
 
-    RadioHttpResponse(URI uri, int statusCode, Map<String, List<String>> headers, InputStream rawBody,
+    AudioHttpResponse(URI uri, int statusCode, Map<String, List<String>> headers, InputStream rawBody,
                       int redirectCount, AudioCancellation cancellation,
                       RadioHttpTransportImpl.ActiveExchange exchange) {
         this.uri = Objects.requireNonNull(uri, "uri");
@@ -182,7 +182,7 @@ public final class RadioHttpResponse implements AutoCloseable {
 
         @Override
         public void close() {
-            RadioHttpResponse.this.close();
+            AudioHttpResponse.this.close();
         }
 
         private static RadioTransportException interruptedResponse(IOException cause) {
