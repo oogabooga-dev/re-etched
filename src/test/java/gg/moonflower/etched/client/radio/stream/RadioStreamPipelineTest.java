@@ -6,8 +6,8 @@ import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
+import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -182,7 +182,7 @@ class RadioStreamPipelineTest {
                 allowTestServer, Duration.ofSeconds(2), Duration.ofSeconds(2), 2);
         return new DirectRadioSourceResolver().resolve(this.uri,
                 new AudioResolveContext(transport, allowTestServer, attempt.cancellation(),
-                        RadioResolveLimits.DEFAULT));
+                        AudioResolveLimits.DEFAULT));
     }
 
     private void serveIcyMp3(HttpExchange exchange) throws IOException {

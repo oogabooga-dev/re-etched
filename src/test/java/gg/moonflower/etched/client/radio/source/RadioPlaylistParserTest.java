@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class RadioPlaylistParserTest {
 
     private static final URI BASE = URI.create("https://radio.example/lists/stations.m3u?old=true");
-    private static final RadioResolveLimits LIMITS = new RadioResolveLimits(16, 1024, 10, 256, 2, 20);
+    private static final AudioResolveLimits LIMITS = new AudioResolveLimits(16, 1024, 10, 256, 2, 20);
 
     @Test
     void parsesPlainAndExtendedM3uEntriesRelativeToTheFinalUri() throws Exception {
@@ -63,12 +63,12 @@ class RadioPlaylistParserTest {
 
     @Test
     void enforcesM3uEntryAndLineLimits() {
-        RadioResolveLimits oneEntry = new RadioResolveLimits(4, 128, 1, 32, 1, 4);
+        AudioResolveLimits oneEntry = new AudioResolveLimits(4, 128, 1, 32, 1, 4);
         RadioSourceException entries = assertThrows(RadioSourceException.class,
                 () -> M3uRadioPlaylistParser.parse(BASE, bytes("one.mp3\ntwo.mp3\n"), oneEntry));
         RadioSourceException line = assertThrows(RadioSourceException.class,
                 () -> M3uRadioPlaylistParser.parse(BASE, bytes("123456789.mp3\n"),
-                        new RadioResolveLimits(4, 128, 2, 8, 1, 4)));
+                        new AudioResolveLimits(4, 128, 2, 8, 1, 4)));
 
         assertEquals(RadioFailure.Code.RESOURCE_LIMIT, entries.code());
         assertEquals(RadioFailure.Code.RESOURCE_LIMIT, line.code());
@@ -114,7 +114,7 @@ class RadioPlaylistParserTest {
 
     @Test
     void enforcesPlsEntryAndLineBoundaries() throws Exception {
-        RadioResolveLimits exact = new RadioResolveLimits(4, 128, 1, 10, 1, 4);
+        AudioResolveLimits exact = new AudioResolveLimits(4, 128, 1, 10, 1, 4);
         List<RadioPlaylistEntry> one = PlsRadioPlaylistParser.parse(
                 BASE, bytes("[playlist]\nFile1=x\n"), exact);
         RadioSourceException entries = assertThrows(RadioSourceException.class,
@@ -122,7 +122,7 @@ class RadioPlaylistParserTest {
                         BASE, bytes("[playlist]\nFile1=x\nFile2=y\n"), exact));
         RadioSourceException line = assertThrows(RadioSourceException.class,
                 () -> PlsRadioPlaylistParser.parse(BASE, bytes("[playlist]\nFile1=x\n"),
-                        new RadioResolveLimits(4, 128, 1, 9, 1, 4)));
+                        new AudioResolveLimits(4, 128, 1, 9, 1, 4)));
 
         assertEquals(1, one.size());
         assertEquals(RadioFailure.Code.RESOURCE_LIMIT, entries.code());

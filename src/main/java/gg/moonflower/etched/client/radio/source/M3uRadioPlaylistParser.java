@@ -13,7 +13,7 @@ final class M3uRadioPlaylistParser {
     private M3uRadioPlaylistParser() {
     }
 
-    static List<RadioPlaylistEntry> parse(URI base, byte[] body, RadioResolveLimits limits)
+    static List<RadioPlaylistEntry> parse(URI base, byte[] body, AudioResolveLimits limits)
             throws RadioSourceException {
         String text = new String(body, StandardCharsets.UTF_8);
         String[] lines = text.split("\\R", -1);

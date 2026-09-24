@@ -349,9 +349,9 @@ class DirectRadioSourceResolverTest {
 
     @Test
     void enforcesPlaylistBodyAndNestingLimits() throws Exception {
-        RadioResolveLimits smallBody = new RadioResolveLimits(4, 16, 4, 64, 1, 8);
-        RadioResolveLimits shallow = new RadioResolveLimits(4, 256, 4, 64, 1, 8);
-        RadioResolveLimits cumulativeEntries = new RadioResolveLimits(4, 256, 2, 64, 2, 8);
+        AudioResolveLimits smallBody = new AudioResolveLimits(4, 16, 4, 64, 1, 8);
+        AudioResolveLimits shallow = new AudioResolveLimits(4, 256, 4, 64, 1, 8);
+        AudioResolveLimits cumulativeEntries = new AudioResolveLimits(4, 256, 2, 64, 2, 8);
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/large.m3u", exchange -> respond(exchange, 200,
                     bytes("https://radio.example/stream\n")));
@@ -382,9 +382,9 @@ class DirectRadioSourceResolverTest {
 
     @Test
     void enforcesPlaylistSizeWithoutContentLengthAndTheAggregateRedirectBudget() throws Exception {
-        RadioResolveLimits smallBody = new RadioResolveLimits(4, 16, 4, 64, 2, 8);
-        RadioResolveLimits twoSteps = new RadioResolveLimits(4, 64, 4, 64, 2, 2);
-        RadioResolveLimits twoRequestSteps = new RadioResolveLimits(4, 256, 4, 64, 2, 2);
+        AudioResolveLimits smallBody = new AudioResolveLimits(4, 16, 4, 64, 2, 8);
+        AudioResolveLimits twoSteps = new AudioResolveLimits(4, 64, 4, 64, 2, 2);
+        AudioResolveLimits twoRequestSteps = new AudioResolveLimits(4, 256, 4, 64, 2, 2);
         AtomicInteger finalRequests = new AtomicInteger();
         AtomicInteger crossRequestFinalRequests = new AtomicInteger();
         try (TestHttpServer server = new TestHttpServer()) {
@@ -427,7 +427,7 @@ class DirectRadioSourceResolverTest {
 
     @Test
     void acceptsAPlaylistBodyExactlyAtTheConfiguredLimit() throws Exception {
-        RadioResolveLimits exact = new RadioResolveLimits(4, 6, 2, 16, 1, 4);
+        AudioResolveLimits exact = new AudioResolveLimits(4, 6, 2, 16, 1, 4);
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/exact.m3u", exchange -> respond(exchange, 200, bytes("audio\n")));
             server.handle("/audio", exchange -> {
@@ -616,15 +616,15 @@ class DirectRadioSourceResolverTest {
         return context(ALLOW_TEST_SERVER, limits());
     }
 
-    private static AudioResolveContext context(AudioNetworkPolicy policy, RadioResolveLimits limits) {
+    private static AudioResolveContext context(AudioNetworkPolicy policy, AudioResolveLimits limits) {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, policy, TEST_TIMEOUT, TEST_TIMEOUT, 5);
         return new AudioResolveContext(transport, policy,
                 new PlaybackSession().start("http://radio.example/live").cancellation(), limits);
     }
 
-    private static RadioResolveLimits limits() {
-        return new RadioResolveLimits(64, 4096, 10, 512, 3, 20);
+    private static AudioResolveLimits limits() {
+        return new AudioResolveLimits(64, 4096, 10, 512, 3, 20);
     }
 
     private static byte[] bytes(String value) {

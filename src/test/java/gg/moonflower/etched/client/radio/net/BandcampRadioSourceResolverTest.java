@@ -3,8 +3,8 @@ package gg.moonflower.etched.client.radio.net;
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
+import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
@@ -114,7 +114,7 @@ class BandcampRadioSourceResolverTest {
 
     @Test
     void enforcesBoundedHtmlEntryAndSharedStepLimits() throws Exception {
-        RadioResolveLimits bodyLimit = new RadioResolveLimits(4, 32, 10, 32, 1, 10);
+        AudioResolveLimits bodyLimit = new AudioResolveLimits(4, 32, 10, 32, 1, 10);
         TrackingConnection oversized = response(ALBUM, 200, "x".repeat(33));
         RequestRouter oversizedRouter = new RequestRouter().add(ALBUM, oversized);
 
@@ -124,7 +124,7 @@ class BandcampRadioSourceResolverTest {
         assertEquals(RadioFailure.Code.PLAYLIST_TOO_LARGE, bodyFailure.code());
         assertTrue(oversized.disconnected);
 
-        RadioResolveLimits oneEntry = new RadioResolveLimits(4, 4096, 1, 32, 1, 10);
+        AudioResolveLimits oneEntry = new AudioResolveLimits(4, 4096, 1, 32, 1, 10);
         TrackingConnection twoTracks = response(ALBUM, 200, albumHtml(FIRST_MEDIA, SECOND_MEDIA));
         RequestRouter entriesRouter = new RequestRouter().add(ALBUM, twoTracks);
         RadioSourceException entryFailure = assertThrows(RadioSourceException.class,
@@ -133,7 +133,7 @@ class BandcampRadioSourceResolverTest {
         assertEquals(RadioFailure.Code.RESOURCE_LIMIT, entryFailure.code());
         assertTrue(twoTracks.disconnected);
 
-        RadioResolveLimits oneStep = new RadioResolveLimits(4, 4096, 10, 32, 1, 1);
+        AudioResolveLimits oneStep = new AudioResolveLimits(4, 4096, 10, 32, 1, 1);
         TrackingConnection page = response(TRACK, 200, trackHtml(FIRST_MEDIA));
         RequestRouter stepRouter = new RequestRouter().add(TRACK, page);
         AudioResolveContext stepContext = context(stepRouter.transport(), oneStep);
@@ -281,13 +281,13 @@ class BandcampRadioSourceResolverTest {
         }
     }
 
-    private static AudioResolveContext context(AudioHttpTransport transport, RadioResolveLimits limits) {
+    private static AudioResolveContext context(AudioHttpTransport transport, AudioResolveLimits limits) {
         return new AudioResolveContext(transport, ALLOW_ALL,
                 new PlaybackSession().start(ALBUM.toString()).cancellation(), limits);
     }
 
-    private static RadioResolveLimits limits() {
-        return new RadioResolveLimits(16, 8192, 20, 256, 2, 20);
+    private static AudioResolveLimits limits() {
+        return new AudioResolveLimits(16, 8192, 20, 256, 2, 20);
     }
 
     private static String albumHtml(URI first, URI second) {
