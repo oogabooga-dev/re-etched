@@ -76,7 +76,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
     }
 
     @Override
-    public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context)
+    public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context)
             throws RadioSourceException {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(context, "context");
@@ -122,13 +122,13 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         return new RadioSourceProgram(RadioSourceProgram.Kind.SERVICE_TRACKS, input, tracks);
     }
 
-    private RadioResolvedSource openTrack(TrackReference track, RadioResolveContext context)
+    private RadioResolvedSource openTrack(TrackReference track, AudioResolveContext context)
             throws RadioSourceException {
         AuthState auth = new AuthState();
         return this.openTrack(track, context, auth, false);
     }
 
-    private RadioResolvedSource openTrack(TrackReference reference, RadioResolveContext context,
+    private RadioResolvedSource openTrack(TrackReference reference, AudioResolveContext context,
                                           AuthState auth, boolean mediaRetried)
             throws RadioSourceException {
         context.cancellation().throwIfCancelled();
@@ -157,18 +157,18 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         }
     }
 
-    private JsonObject resolvePage(URI page, RadioResolveContext context, AuthState auth)
+    private JsonObject resolvePage(URI page, AudioResolveContext context, AuthState auth)
             throws RadioSourceException {
         URI request = appendQuery(this.resolveEndpoint, "url", page.toASCIIString());
         return this.authenticatedJson(request, context, auth);
     }
 
-    private JsonObject authenticatedJson(URI endpoint, RadioResolveContext context, AuthState auth)
+    private JsonObject authenticatedJson(URI endpoint, AudioResolveContext context, AuthState auth)
             throws RadioSourceException {
         return this.authenticatedJson(endpoint, context, auth, null);
     }
 
-    private JsonObject authenticatedJson(URI endpoint, RadioResolveContext context, AuthState auth,
+    private JsonObject authenticatedJson(URI endpoint, AudioResolveContext context, AuthState auth,
                                           @Nullable String trackAuthorization)
             throws RadioSourceException {
         if (!sameOrigin(endpoint, this.resolveEndpoint)) {
@@ -199,7 +199,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         }
     }
 
-    private String getClientId(RadioResolveContext context) throws RadioSourceException {
+    private String getClientId(AudioResolveContext context) throws RadioSourceException {
         Discovery discovery;
         boolean owner = false;
         synchronized (this.clientIdLock) {
@@ -246,7 +246,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         }
     }
 
-    private String refreshClientId(String rejected, RadioResolveContext context)
+    private String refreshClientId(String rejected, AudioResolveContext context)
             throws RadioSourceException {
         synchronized (this.clientIdLock) {
             context.cancellation().throwIfCancelled();
@@ -260,7 +260,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         return this.getClientId(context);
     }
 
-    private static String awaitDiscovery(Discovery discovery, RadioResolveContext context)
+    private static String awaitDiscovery(Discovery discovery, AudioResolveContext context)
             throws RadioSourceException {
         while (true) {
             context.cancellation().throwIfCancelled();
@@ -286,7 +286,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         }
     }
 
-    private String discoverClientId(RadioResolveContext context) throws RadioSourceException {
+    private String discoverClientId(AudioResolveContext context) throws RadioSourceException {
         URI pageUri;
         String html;
         try (AudioHttpResponse response = execute(this.homepage, context)) {
@@ -417,7 +417,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
                 optionalString(track, "title"), true);
     }
 
-    private static AudioHttpResponse execute(URI uri, RadioResolveContext context)
+    private static AudioHttpResponse execute(URI uri, AudioResolveContext context)
             throws RadioSourceException {
         context.cancellation().throwIfCancelled();
         context.budget().consumeSteps(1);
@@ -444,7 +444,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         }
     }
 
-    private static byte[] readBounded(AudioHttpResponse response, RadioResolveContext context,
+    private static byte[] readBounded(AudioHttpResponse response, AudioResolveContext context,
                                       String description) throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         if (response.contentLength().isPresent() && response.contentLength().getAsLong() > limit) {
@@ -476,7 +476,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
     }
 
     private static @Nullable String scanClientId(AudioHttpResponse response,
-                                                  RadioResolveContext context)
+                                                  AudioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         ByteArrayOutputStream prefix = new ByteArrayOutputStream(Math.min(limit, 8192));

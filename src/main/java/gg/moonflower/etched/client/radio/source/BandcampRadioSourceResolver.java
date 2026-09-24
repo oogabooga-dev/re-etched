@@ -54,7 +54,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
     }
 
     @Override
-    public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context)
+    public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context)
             throws RadioSourceException {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(context, "context");
@@ -73,7 +73,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
     }
 
     private RadioResolvedSource openTrack(URI servicePage, ParsedTrack track,
-                                          RadioResolveContext context) throws RadioSourceException {
+                                          AudioResolveContext context) throws RadioSourceException {
         context.cancellation().throwIfCancelled();
         try {
             return this.direct.resolve(track.media(), context);
@@ -94,7 +94,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
         return this.direct.resolve(refreshedTrack.media(), context);
     }
 
-    private ParsedPage fetchPage(URI servicePage, RadioResolveContext context)
+    private ParsedPage fetchPage(URI servicePage, AudioResolveContext context)
             throws RadioSourceException {
         context.cancellation().throwIfCancelled();
         context.budget().consumeSteps(1);
@@ -125,7 +125,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private static String readHtml(AudioHttpResponse response, RadioResolveContext context)
+    private static String readHtml(AudioHttpResponse response, AudioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         ByteArrayOutputStream body = new ByteArrayOutputStream(Math.min(limit, 8192));
@@ -156,7 +156,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
     }
 
     @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
-    private static ParsedPage parsePage(URI pageUri, String html, RadioResolveContext context)
+    private static ParsedPage parsePage(URI pageUri, String html, AudioResolveContext context)
             throws RadioSourceException {
         Matcher matcher = TRALBUM_DATA.matcher(html);
         if (!matcher.find()) {

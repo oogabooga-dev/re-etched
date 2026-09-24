@@ -37,7 +37,7 @@ public final class RadioSourceProgram {
         return this.tracks;
     }
 
-    public RadioResolvedSource openTrack(int index, RadioResolveContext context)
+    public RadioResolvedSource openTrack(int index, AudioResolveContext context)
             throws RadioSourceException {
         return this.tracks.get(index).open(context);
     }
@@ -67,7 +67,7 @@ public final class RadioSourceProgram {
             return this.title;
         }
 
-        private RadioResolvedSource open(RadioResolveContext context) throws RadioSourceException {
+        private RadioResolvedSource open(AudioResolveContext context) throws RadioSourceException {
             return this.opener.open(context);
         }
     }
@@ -75,6 +75,6 @@ public final class RadioSourceProgram {
     @FunctionalInterface
     public interface Opener {
 
-        RadioResolvedSource open(RadioResolveContext context) throws RadioSourceException;
+        RadioResolvedSource open(AudioResolveContext context) throws RadioSourceException;
     }
 }

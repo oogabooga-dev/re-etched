@@ -2,12 +2,12 @@ package gg.moonflower.etched.client.radio;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
+import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
@@ -275,7 +275,7 @@ class LiveStreamPlaybackBackendTest {
             }
 
             @Override
-            public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context)
+            public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context)
                     throws RadioSourceException {
                 entered.countDown();
                 try {
@@ -505,7 +505,7 @@ class LiveStreamPlaybackBackendTest {
             }
 
             @Override
-            public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context) {
+            public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context) {
                 resolverCalls.incrementAndGet();
                 throw new AssertionError("Malformed URI reached resolver");
             }
@@ -565,10 +565,10 @@ class LiveStreamPlaybackBackendTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        RadioNetworkPolicy allowTestServer = ignored -> {
+        AudioNetworkPolicy allowTestServer = ignored -> {
         };
         LiveStreamPlaybackBackend driver = new LiveStreamPlaybackBackend(
-                fixed(program), cancellation -> new RadioResolveContext(
+                fixed(program), cancellation -> new AudioResolveContext(
                 new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
                 cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
@@ -592,10 +592,10 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         AtomicInteger ownerDispatches = new AtomicInteger();
-        RadioNetworkPolicy allowTestServer = ignored -> {
+        AudioNetworkPolicy allowTestServer = ignored -> {
         };
         LiveStreamPlaybackBackend driver = new LiveStreamPlaybackBackend(
-                fixed(program), cancellation -> new RadioResolveContext(
+                fixed(program), cancellation -> new AudioResolveContext(
                 new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
                 cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
@@ -622,10 +622,10 @@ class LiveStreamPlaybackBackendTest {
 
     private LiveStreamPlaybackBackend driver(AudioSourceResolver resolver,
                                              FakeSoundOutput sounds) {
-        RadioNetworkPolicy allowTestServer = ignored -> {
+        AudioNetworkPolicy allowTestServer = ignored -> {
         };
         return new LiveStreamPlaybackBackend(resolver, cancellation ->
-                new RadioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
+                new AudioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
                         cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
                 this.decoders, Runnable::run, sounds, () -> true);
@@ -650,7 +650,7 @@ class LiveStreamPlaybackBackendTest {
             }
 
             @Override
-            public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context) {
+            public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context) {
                 return program;
             }
         };

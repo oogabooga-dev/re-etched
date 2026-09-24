@@ -4,8 +4,8 @@ import com.sun.net.httpserver.HttpExchange;
 import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
+import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SoundCloudRadioSourceResolverTest {
 
-    private static final RadioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
+    private static final AudioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
     };
     private static final Duration TIMEOUT = Duration.ofSeconds(2);
     private static final URI TRACK = URI.create("https://soundcloud.com/artist/track");
@@ -561,23 +561,23 @@ class SoundCloudRadioSourceResolverTest {
                     "window.__sc={client_id:\"" + id + "\"};"));
         }
 
-        private RadioResolveContext context() {
+        private AudioResolveContext context() {
             return this.context(RadioResolveLimits.DEFAULT);
         }
 
-        private RadioResolveContext context(RadioResolveLimits limits) {
+        private AudioResolveContext context(RadioResolveLimits limits) {
             AudioCancellation cancellation = new PlaybackSession().start(TRACK.toString()).cancellation();
             return this.context(cancellation, limits);
         }
 
-        private RadioResolveContext context(AudioCancellation cancellation) {
+        private AudioResolveContext context(AudioCancellation cancellation) {
             return this.context(cancellation, RadioResolveLimits.DEFAULT);
         }
 
-        private RadioResolveContext context(AudioCancellation cancellation, RadioResolveLimits limits) {
+        private AudioResolveContext context(AudioCancellation cancellation, RadioResolveLimits limits) {
             RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                     Proxy.NO_PROXY, ALLOW_TEST_SERVER, TIMEOUT, TIMEOUT, 5);
-            return new RadioResolveContext(transport, ALLOW_TEST_SERVER, cancellation, limits);
+            return new AudioResolveContext(transport, ALLOW_TEST_SERVER, cancellation, limits);
         }
 
         @Override

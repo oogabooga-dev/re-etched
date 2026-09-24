@@ -30,7 +30,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     }
 
     @Override
-    public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context)
+    public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context)
             throws RadioSourceException {
         Objects.requireNonNull(context, "context");
         if (!this.supports(input)) {
@@ -41,7 +41,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 new RadioSourceProgram.Track(input, null, next -> this.resolve(input, next))));
     }
 
-    public RadioResolvedSource resolve(URI input, RadioResolveContext context) throws RadioSourceException {
+    public RadioResolvedSource resolve(URI input, AudioResolveContext context) throws RadioSourceException {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(context, "context");
         if (!this.supports(input)) {
@@ -51,7 +51,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         return this.resolveEndpoint(input, context, new ResolutionState(), 0, List.of(input));
     }
 
-    private RadioResolvedSource resolveEndpoint(URI input, RadioResolveContext context,
+    private RadioResolvedSource resolveEndpoint(URI input, AudioResolveContext context,
                                                 ResolutionState state, int playlistDepth,
                                                 List<URI> stationEndpoints) throws RadioSourceException {
         context.cancellation().throwIfCancelled();
@@ -124,7 +124,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private RadioResolvedSource resolveFallbacks(List<URI> endpoints, RadioResolveContext context,
+    private RadioResolvedSource resolveFallbacks(List<URI> endpoints, AudioResolveContext context,
                                                  ResolutionState state, int playlistDepth)
             throws RadioSourceException {
         RadioSourceException lastRecoverable = null;
@@ -152,7 +152,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 "Radio playlist does not contain a usable station", null);
     }
 
-    private static void validateAllEntries(List<URI> endpoints, RadioResolveContext context)
+    private static void validateAllEntries(List<URI> endpoints, AudioResolveContext context)
             throws RadioSourceException {
         for (URI endpoint : endpoints) {
             context.cancellation().throwIfCancelled();
@@ -167,7 +167,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     }
 
     private static byte[] readPrefix(AudioHttpResponse response, URI requestedUri,
-                                     RadioResolveContext context)
+                                     AudioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().sniffBytes();
         ByteArrayOutputStream prefix = new ByteArrayOutputStream(limit);
@@ -211,7 +211,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     }
 
     private static byte[] readPlaylist(AudioHttpResponse response, byte[] prefix,
-                                       RadioResolveContext context) throws RadioSourceException {
+                                       AudioResolveContext context) throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         if (response.contentLength().isPresent() && response.contentLength().getAsLong() > limit) {
             throw failure(RadioFailure.Code.PLAYLIST_TOO_LARGE, false,

@@ -3,8 +3,8 @@ package gg.moonflower.etched.client.radio.source;
 import com.sun.net.httpserver.Headers;
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
+import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DirectRadioSourceResolverTest {
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(2);
-    private static final RadioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
+    private static final AudioNetworkPolicy ALLOW_TEST_SERVER = uri -> {
     };
 
     @Test
@@ -136,9 +136,9 @@ class DirectRadioSourceResolverTest {
             PlaybackSession secondSession = new PlaybackSession();
             PlaybackSession.Attempt firstAttempt = firstSession.start(server.uri("/live").toString());
             PlaybackSession.Attempt secondAttempt = secondSession.start(server.uri("/live").toString());
-            RadioResolveContext firstContext = new RadioResolveContext(
+            AudioResolveContext firstContext = new AudioResolveContext(
                     transport, ALLOW_TEST_SERVER, firstAttempt.cancellation(), limits());
-            RadioResolveContext secondContext = new RadioResolveContext(
+            AudioResolveContext secondContext = new AudioResolveContext(
                     transport, ALLOW_TEST_SERVER, secondAttempt.cancellation(), limits());
 
             try (RadioResolvedSource first = resolver.resolve(server.uri("/live"), firstContext);
@@ -281,7 +281,7 @@ class DirectRadioSourceResolverTest {
                 stationRequests.incrementAndGet();
                 respond(exchange, 200, bytes("ID3-audio"));
             });
-            RadioNetworkPolicy policy = uri -> {
+            AudioNetworkPolicy policy = uri -> {
                 if (uri.equals(blocked)) {
                     throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false,
                             "blocked test address", null);
@@ -585,7 +585,7 @@ class DirectRadioSourceResolverTest {
             });
             RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                     Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 5);
-            RadioResolveContext context = new RadioResolveContext(
+            AudioResolveContext context = new AudioResolveContext(
                     transport, ALLOW_TEST_SERVER, attempt.cancellation(), limits());
             CompletableFuture<RadioResolvedSource> result = CompletableFuture.supplyAsync(() -> {
                 try {
@@ -612,14 +612,14 @@ class DirectRadioSourceResolverTest {
         return new DirectRadioSourceResolver();
     }
 
-    private static RadioResolveContext context() {
+    private static AudioResolveContext context() {
         return context(ALLOW_TEST_SERVER, limits());
     }
 
-    private static RadioResolveContext context(RadioNetworkPolicy policy, RadioResolveLimits limits) {
+    private static AudioResolveContext context(AudioNetworkPolicy policy, RadioResolveLimits limits) {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, policy, TEST_TIMEOUT, TEST_TIMEOUT, 5);
-        return new RadioResolveContext(transport, policy,
+        return new AudioResolveContext(transport, policy,
                 new PlaybackSession().start("http://radio.example/live").cancellation(), limits);
     }
 

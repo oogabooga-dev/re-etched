@@ -24,7 +24,7 @@ public final class CompositeRadioSourceResolver implements AudioSourceResolver {
     }
 
     @Override
-    public RadioSourceProgram resolveProgram(URI input, RadioResolveContext context)
+    public RadioSourceProgram resolveProgram(URI input, AudioResolveContext context)
             throws RadioSourceException {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(context, "context");
