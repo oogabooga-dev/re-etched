@@ -31,7 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Resolves SoundCloud tracks and albums without sharing opened media responses. */
-public final class SoundCloudRadioSourceResolver implements RadioSourceProgramResolver {
+public final class SoundCloudRadioSourceResolver implements AudioSourceResolver {
 
     private static final URI HOMEPAGE = URI.create("https://soundcloud.com/");
     private static final URI RESOLVE_ENDPOINT = URI.create("https://api-v2.soundcloud.com/resolve");

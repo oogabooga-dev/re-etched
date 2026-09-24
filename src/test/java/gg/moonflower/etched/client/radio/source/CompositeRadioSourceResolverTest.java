@@ -73,7 +73,7 @@ class CompositeRadioSourceResolverTest {
                 new RadioResolveLimits(4, 64, 2, 32, 1, 4));
     }
 
-    private static final class TrackingResolver implements RadioSourceProgramResolver {
+    private static final class TrackingResolver implements AudioSourceResolver {
 
         private final String name;
         private final boolean supported;

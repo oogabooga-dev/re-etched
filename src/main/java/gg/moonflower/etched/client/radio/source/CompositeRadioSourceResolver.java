@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.Objects;
 
 /** Deterministic provider-first dispatch with direct HTTP(S) fallback. */
-public final class CompositeRadioSourceResolver implements RadioSourceProgramResolver {
+public final class CompositeRadioSourceResolver implements AudioSourceResolver {
 
-    private final List<RadioSourceProgramResolver> resolvers;
+    private final List<AudioSourceResolver> resolvers;
 
-    public CompositeRadioSourceResolver(List<RadioSourceProgramResolver> resolvers) {
+    public CompositeRadioSourceResolver(List<AudioSourceResolver> resolvers) {
         this.resolvers = List.copyOf(resolvers);
         if (this.resolvers.isEmpty()) {
             throw new IllegalArgumentException("At least one radio source resolver is required");
@@ -28,7 +28,7 @@ public final class CompositeRadioSourceResolver implements RadioSourceProgramRes
             throws RadioSourceException {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(context, "context");
-        for (RadioSourceProgramResolver resolver : this.resolvers) {
+        for (AudioSourceResolver resolver : this.resolvers) {
             if (resolver.supports(input)) {
                 return resolver.resolveProgram(input, context);
             }

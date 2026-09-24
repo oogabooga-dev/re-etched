@@ -281,7 +281,7 @@ class BandcampRadioSourceResolverTest {
         }
     }
 
-    private static RadioResolveContext context(RadioHttpTransport transport, RadioResolveLimits limits) {
+    private static RadioResolveContext context(AudioHttpTransport transport, RadioResolveLimits limits) {
         return new RadioResolveContext(transport, ALLOW_ALL,
                 new PlaybackSession().start(ALBUM.toString()).cancellation(), limits);
     }
@@ -331,7 +331,7 @@ class BandcampRadioSourceResolverTest {
             return this;
         }
 
-        private RadioHttpTransport transport() {
+        private AudioHttpTransport transport() {
             return new RadioHttpTransportImpl(Proxy.NO_PROXY, ALLOW_ALL,
                     Duration.ofSeconds(1), Duration.ofSeconds(1), 5, (uri, proxy) -> {
                 this.requests.merge(uri, 1, Integer::sum);
