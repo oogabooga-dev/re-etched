@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.RadioHttpResponse;
+import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -14,7 +14,7 @@ final class RadioHttpStatus {
     private RadioHttpStatus() {
     }
 
-    static void requireSuccess(RadioHttpResponse response, String description)
+    static void requireSuccess(AudioHttpResponse response, String description)
             throws RadioSourceException {
         int status = response.statusCode();
         if (status == 200) {
@@ -28,7 +28,7 @@ final class RadioHttpStatus {
                 description + " returned HTTP status " + status, null, retryAfterMillis, status);
     }
 
-    private static long retryAfterMillis(RadioHttpResponse response) {
+    private static long retryAfterMillis(AudioHttpResponse response) {
         String value = response.firstHeader("retry-after").orElse(null);
         if (value == null) {
             return RadioFailure.NO_RETRY_AFTER;

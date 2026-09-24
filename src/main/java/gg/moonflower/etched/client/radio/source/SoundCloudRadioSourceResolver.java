@@ -6,8 +6,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.RadioHttpRequest;
-import gg.moonflower.etched.client.radio.net.RadioHttpResponse;
+import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
+import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import org.jetbrains.annotations.Nullable;
 
@@ -182,7 +182,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
                 request = appendQuery(request, "track_authorization", trackAuthorization);
             }
             int rejectedStatus;
-            try (RadioHttpResponse response = execute(request, context)) {
+            try (AudioHttpResponse response = execute(request, context)) {
                 rejectedStatus = response.statusCode() == 401 || response.statusCode() == 403
                         ? response.statusCode() : -1;
                 if (rejectedStatus == -1) {
@@ -289,7 +289,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
     private String discoverClientId(RadioResolveContext context) throws RadioSourceException {
         URI pageUri;
         String html;
-        try (RadioHttpResponse response = execute(this.homepage, context)) {
+        try (AudioHttpResponse response = execute(this.homepage, context)) {
             RadioHttpStatus.requireSuccess(response, "SoundCloud homepage");
             pageUri = response.uri();
             html = new String(readBounded(response, context, "SoundCloud homepage"),
@@ -317,7 +317,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         RadioSourceException limitFailure = null;
         while (!scripts.isEmpty()) {
             URI script = scripts.removeLast();
-            try (RadioHttpResponse response = execute(script, context)) {
+            try (AudioHttpResponse response = execute(script, context)) {
                 try {
                     RadioHttpStatus.requireSuccess(response, "SoundCloud application script");
                     String found = scanClientId(response, context);
@@ -417,14 +417,14 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
                 optionalString(track, "title"), true);
     }
 
-    private static RadioHttpResponse execute(URI uri, RadioResolveContext context)
+    private static AudioHttpResponse execute(URI uri, RadioResolveContext context)
             throws RadioSourceException {
         context.cancellation().throwIfCancelled();
         context.budget().consumeSteps(1);
-        RadioHttpResponse response;
+        AudioHttpResponse response;
         try {
             response = context.transport().execute(
-                    RadioHttpRequest.resource(uri).withMaxRedirects(context.budget().remainingSteps()),
+                    AudioHttpRequest.resource(uri).withMaxRedirects(context.budget().remainingSteps()),
                     context.cancellation());
         } catch (RadioTransportException exception) {
             context.budget().consumeSteps(exception.redirectCount());
@@ -444,7 +444,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
         }
     }
 
-    private static byte[] readBounded(RadioHttpResponse response, RadioResolveContext context,
+    private static byte[] readBounded(AudioHttpResponse response, RadioResolveContext context,
                                       String description) throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         if (response.contentLength().isPresent() && response.contentLength().getAsLong() > limit) {
@@ -475,7 +475,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
                 description + " exceeds the configured size limit", null);
     }
 
-    private static @Nullable String scanClientId(RadioHttpResponse response,
+    private static @Nullable String scanClientId(AudioHttpResponse response,
                                                   RadioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();

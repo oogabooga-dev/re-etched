@@ -6,8 +6,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.RadioHttpRequest;
-import gg.moonflower.etched.client.radio.net.RadioHttpResponse;
+import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
+import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import org.apache.commons.lang3.StringEscapeUtils;
 
@@ -98,9 +98,9 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
             throws RadioSourceException {
         context.cancellation().throwIfCancelled();
         context.budget().consumeSteps(1);
-        RadioHttpRequest request = RadioHttpRequest.resource(servicePage)
+        AudioHttpRequest request = AudioHttpRequest.resource(servicePage)
                 .withMaxRedirects(context.budget().remainingSteps());
-        RadioHttpResponse response;
+        AudioHttpResponse response;
         try {
             response = context.transport().execute(request, context.cancellation());
         } catch (RadioTransportException exception) {
@@ -125,7 +125,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private static String readHtml(RadioHttpResponse response, RadioResolveContext context)
+    private static String readHtml(AudioHttpResponse response, RadioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         ByteArrayOutputStream body = new ByteArrayOutputStream(Math.min(limit, 8192));

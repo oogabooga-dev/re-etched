@@ -78,7 +78,7 @@ public final class RadioHttpTransportImpl implements AudioHttpTransport {
     }
 
     @Override
-    public RadioHttpResponse execute(RadioHttpRequest request, AudioCancellation cancellation)
+    public AudioHttpResponse execute(AudioHttpRequest request, AudioCancellation cancellation)
             throws RadioTransportException {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(cancellation, "cancellation");
@@ -130,7 +130,7 @@ public final class RadioHttpTransportImpl implements AudioHttpTransport {
                 if (!exchange.installBody(connection, body)) {
                     throw new CancellationException("Radio request was cancelled");
                 }
-                RadioHttpResponse response = new RadioHttpResponse(
+                AudioHttpResponse response = new AudioHttpResponse(
                         current, statusCode, headers, body, redirects, cancellation, exchange);
                 cancellation.throwIfCancelled();
                 transferred = true;
@@ -157,7 +157,7 @@ public final class RadioHttpTransportImpl implements AudioHttpTransport {
         }
     }
 
-    private void configure(HttpURLConnection connection, RadioHttpRequest.Purpose purpose)
+    private void configure(HttpURLConnection connection, AudioHttpRequest.Purpose purpose)
             throws RadioTransportException {
         try {
             connection.setInstanceFollowRedirects(false);
@@ -169,7 +169,7 @@ public final class RadioHttpTransportImpl implements AudioHttpTransport {
             connection.setRequestProperty("User-Agent", USER_AGENT);
             connection.setRequestProperty("Accept", ACCEPT);
             connection.setAuthenticator(new ProxyOnlyAuthenticator(this.proxyAuthenticator));
-            if (purpose == RadioHttpRequest.Purpose.AUDIO) {
+            if (purpose == AudioHttpRequest.Purpose.AUDIO) {
                 connection.setRequestProperty("Icy-MetaData", "1");
             }
         } catch (IllegalStateException | ProtocolException exception) {

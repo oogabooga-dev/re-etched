@@ -1,8 +1,8 @@
 package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.RadioHttpRequest;
-import gg.moonflower.etched.client.radio.net.RadioHttpResponse;
+import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
+import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
 
 import java.io.ByteArrayOutputStream;
@@ -57,9 +57,9 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         context.cancellation().throwIfCancelled();
         context.budget().consumeSteps(1);
 
-        RadioHttpRequest request = RadioHttpRequest.audio(input);
+        AudioHttpRequest request = AudioHttpRequest.audio(input);
         request = request.withMaxRedirects(context.budget().remainingSteps());
-        RadioHttpResponse response;
+        AudioHttpResponse response;
         try {
             response = context.transport().execute(request, context.cancellation());
         } catch (RadioTransportException exception) {
@@ -166,7 +166,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private static byte[] readPrefix(RadioHttpResponse response, URI requestedUri,
+    private static byte[] readPrefix(AudioHttpResponse response, URI requestedUri,
                                      RadioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().sniffBytes();
@@ -210,7 +210,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private static byte[] readPlaylist(RadioHttpResponse response, byte[] prefix,
+    private static byte[] readPlaylist(AudioHttpResponse response, byte[] prefix,
                                        RadioResolveContext context) throws RadioSourceException {
         int limit = context.limits().maxPlaylistBytes();
         if (response.contentLength().isPresent() && response.contentLength().getAsLong() > limit) {
@@ -241,7 +241,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 "Radio playlist exceeds the configured size limit", null);
     }
 
-    private static SourceKind classify(RadioHttpResponse response, URI requestedUri, byte[] prefix) {
+    private static SourceKind classify(AudioHttpResponse response, URI requestedUri, byte[] prefix) {
         String contentType = response.firstHeader("Content-Type")
                 .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
                 .orElse("");
@@ -319,7 +319,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || contentType.equals("audio/aac") || contentType.equals("audio/aacp");
     }
 
-    private static boolean isPlaylistHint(RadioHttpResponse response, URI requestedUri) {
+    private static boolean isPlaylistHint(AudioHttpResponse response, URI requestedUri) {
         String contentType = response.firstHeader("Content-Type")
                 .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
                 .orElse("");
