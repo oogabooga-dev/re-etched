@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.net;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import org.junit.jupiter.api.Test;
 
 import java.net.Inet6Address;
@@ -148,8 +148,8 @@ class DefaultRadioNetworkPolicyTest {
                     awaitDnsIgnoringInterrupt(release);
                     return new InetAddress[]{literal("8.8.8.8")};
                 }, Duration.ofSeconds(5));
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(RADIO_URI.toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(RADIO_URI.toString());
         CompletableFuture<Void> check = CompletableFuture.runAsync(() -> {
             try {
                 policy.check(RADIO_URI, attempt.cancellation());
@@ -177,7 +177,7 @@ class DefaultRadioNetworkPolicyTest {
                     awaitDns(release);
                     return new InetAddress[]{literal("8.8.8.8")};
                 }, Duration.ofMillis(50));
-        RadioSession.Attempt attempt = new RadioSession().start(RADIO_URI.toString());
+        PlaybackSession.Attempt attempt = new PlaybackSession().start(RADIO_URI.toString());
 
         try {
             RadioTransportException exception = assertThrows(RadioTransportException.class,

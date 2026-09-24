@@ -92,13 +92,13 @@ public final class AudioPlaybackManager {
             this.playbacks.remove(key);
             this.stopSession(key, previous);
         }
-        RadioSession session = new RadioSession();
+        PlaybackSession session = new PlaybackSession();
         boolean backendSupported = this.supportsLiveBackend(key, state);
         ManagedPlayback playback = new ManagedPlayback(state, session, backendSupported);
         this.playbacks.put(key, playback);
         if (this.backend.enabled()) {
             if (state.enabled() && backendSupported) {
-                RadioSession.Attempt attempt = session.start(liveSource(state));
+                PlaybackSession.Attempt attempt = session.start(liveSource(state));
                 this.startSession(key, playback, attempt);
             } else if (state.enabled()) {
                 LOGGER.warn("No playback backend supports enabled state for {}", key);
@@ -165,7 +165,7 @@ public final class AudioPlaybackManager {
         return managed == null ? Optional.empty() : Optional.of(managed.state());
     }
 
-    public Optional<RadioSession.Snapshot> getSessionSnapshot(PlaybackOwnerKey key) {
+    public Optional<PlaybackSession.Snapshot> getSessionSnapshot(PlaybackOwnerKey key) {
         ManagedPlayback managed = this.playbacks.get(Objects.requireNonNull(key, "key"));
         return managed == null ? Optional.empty() : Optional.of(managed.session().snapshot());
     }
@@ -179,11 +179,11 @@ public final class AudioPlaybackManager {
         if (managed == null || !managed.backendSupported() || !managed.state().enabled()) {
             return false;
         }
-        Optional<RadioSession.Attempt> retried = managed.session().retry(managed.session().snapshot().generation());
+        Optional<PlaybackSession.Attempt> retried = managed.session().retry(managed.session().snapshot().generation());
         if (retried.isEmpty()) {
             return false;
         }
-        RadioSession.Attempt attempt = retried.orElseThrow();
+        PlaybackSession.Attempt attempt = retried.orElseThrow();
         this.updateEffects(key, managed);
         this.startSession(key, managed, attempt);
         return true;
@@ -235,7 +235,7 @@ public final class AudioPlaybackManager {
     }
 
     private void stopSession(PlaybackOwnerKey key, ManagedPlayback playback) {
-        RadioSession session = playback.session();
+        PlaybackSession session = playback.session();
         session.stop();
         if (this.backend.enabled()) {
             try {
@@ -251,7 +251,7 @@ public final class AudioPlaybackManager {
     }
 
     private void startSession(PlaybackOwnerKey key, ManagedPlayback playback,
-                              RadioSession.Attempt attempt) {
+                              PlaybackSession.Attempt attempt) {
         boolean accepted = this.connections.submit(attempt.cancellation(), lease -> {
             if (this.playbacks.get(key) != playback || attempt.cancellation().isCancelled()) {
                 lease.close();
@@ -280,12 +280,12 @@ public final class AudioPlaybackManager {
         }
     }
 
-    private void admissionDispatchFailed(ManagedPlayback playback, RadioSession.Attempt attempt) {
+    private void admissionDispatchFailed(ManagedPlayback playback, PlaybackSession.Attempt attempt) {
         playback.session().fail(attempt, RadioConnectionScheduler.unavailableFailure());
     }
 
     private void startAdmittedSession(PlaybackOwnerKey key, ManagedPlayback playback,
-                                      RadioSession.Attempt attempt) {
+                                      PlaybackSession.Attempt attempt) {
         this.backend.start(key, playback.state(), playback.session(), attempt,
                 new PlaybackBackend.Events() {
                     @Override
@@ -347,8 +347,8 @@ public final class AudioPlaybackManager {
     }
 
     private void terminalStateChanged(PlaybackOwnerKey key, ManagedPlayback playback,
-                                      RadioSession.Attempt attempt) {
-        RadioSession.Snapshot snapshot = playback.session().snapshot();
+                                      PlaybackSession.Attempt attempt) {
+        PlaybackSession.Snapshot snapshot = playback.session().snapshot();
         if (snapshot.failure() != null) {
             RadioFailure failure = snapshot.failure();
             LOGGER.warn("Radio {} generation {} for host {} ended with {} (recoverable={}): {}",
@@ -369,7 +369,7 @@ public final class AudioPlaybackManager {
     }
 
     private void startCurrentSession(PlaybackOwnerKey key, ManagedPlayback playback,
-                                     RadioSession.Attempt attempt) {
+                                     PlaybackSession.Attempt attempt) {
         if (this.playbacks.get(key) != playback) {
             attempt.cancellation().cancel();
             return;
@@ -440,11 +440,11 @@ public final class AudioPlaybackManager {
     private static final class ManagedPlayback {
 
         private final PlaybackState state;
-        private final RadioSession session;
+        private final PlaybackSession session;
         private final boolean backendSupported;
         private AttemptLease attemptLease;
 
-        private ManagedPlayback(PlaybackState state, RadioSession session, boolean backendSupported) {
+        private ManagedPlayback(PlaybackState state, PlaybackSession session, boolean backendSupported) {
             this.state = state;
             this.session = session;
             this.backendSupported = backendSupported;
@@ -454,7 +454,7 @@ public final class AudioPlaybackManager {
             return this.state;
         }
 
-        private RadioSession session() {
+        private PlaybackSession session() {
             return this.session;
         }
 
@@ -462,18 +462,18 @@ public final class AudioPlaybackManager {
             return this.backendSupported;
         }
 
-        private synchronized void ownAttempt(RadioSession.Attempt attempt,
+        private synchronized void ownAttempt(PlaybackSession.Attempt attempt,
                                              RadioConnectionScheduler.Lease lease) {
             this.releaseAttempt(null);
             this.attemptLease = new AttemptLease(attempt, lease);
         }
 
-        private synchronized boolean ownsAttempt(RadioSession.Attempt attempt) {
+        private synchronized boolean ownsAttempt(PlaybackSession.Attempt attempt) {
             return this.attemptLease != null && this.attemptLease.attempt() == attempt;
         }
 
         private synchronized void releaseAttempt(
-                @org.jetbrains.annotations.Nullable RadioSession.Attempt attempt) {
+                @org.jetbrains.annotations.Nullable PlaybackSession.Attempt attempt) {
             if (this.attemptLease == null
                     || attempt != null && this.attemptLease.attempt() != attempt) {
                 return;
@@ -484,6 +484,6 @@ public final class AudioPlaybackManager {
         }
     }
 
-    private record AttemptLease(RadioSession.Attempt attempt, RadioConnectionScheduler.Lease lease) {
+    private record AttemptLease(PlaybackSession.Attempt attempt, RadioConnectionScheduler.Lease lease) {
     }
 }

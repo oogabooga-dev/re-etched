@@ -1,9 +1,9 @@
 package gg.moonflower.etched.client.radio.source;
 
 import com.sun.net.httpserver.HttpExchange;
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
@@ -465,8 +465,8 @@ class SoundCloudRadioSourceResolverTest {
                 requests.incrementAndGet();
                 respondHtml(exchange, "unused");
             });
-            RadioSession session = new RadioSession();
-            RadioSession.Attempt attempt = session.start(TRACK.toString());
+            PlaybackSession session = new PlaybackSession();
+            PlaybackSession.Attempt attempt = session.start(TRACK.toString());
             session.stop();
 
             assertThrows(CancellationException.class,
@@ -566,15 +566,15 @@ class SoundCloudRadioSourceResolverTest {
         }
 
         private RadioResolveContext context(RadioResolveLimits limits) {
-            RadioCancellation cancellation = new RadioSession().start(TRACK.toString()).cancellation();
+            AudioCancellation cancellation = new PlaybackSession().start(TRACK.toString()).cancellation();
             return this.context(cancellation, limits);
         }
 
-        private RadioResolveContext context(RadioCancellation cancellation) {
+        private RadioResolveContext context(AudioCancellation cancellation) {
             return this.context(cancellation, RadioResolveLimits.DEFAULT);
         }
 
-        private RadioResolveContext context(RadioCancellation cancellation, RadioResolveLimits limits) {
+        private RadioResolveContext context(AudioCancellation cancellation, RadioResolveLimits limits) {
             RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                     Proxy.NO_PROXY, ALLOW_TEST_SERVER, TIMEOUT, TIMEOUT, 5);
             return new RadioResolveContext(transport, ALLOW_TEST_SERVER, cancellation, limits);

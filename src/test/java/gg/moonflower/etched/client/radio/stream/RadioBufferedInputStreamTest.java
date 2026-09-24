@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.stream;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -102,7 +102,7 @@ class RadioBufferedInputStreamTest {
     @Test
     void underrunWaitsForProducerInsteadOfReturningEof() throws Exception {
         PausedInputStream source = new PausedInputStream(new byte[]{1, 2, 3}, new byte[]{4, 5});
-        RadioCancellation cancellation = cancellation();
+        AudioCancellation cancellation = cancellation();
         try (RadioBufferedInputStream stream = new RadioBufferedInputStream(
                 source, cancellation, this.producer, 8, 3, 3)) {
             assertEquals(RadioBufferedInputStream.Startup.READY, startup(stream));
@@ -189,8 +189,8 @@ class RadioBufferedInputStreamTest {
 
     @Test
     void cancellationDiscardsBufferedDataAndClosesSource() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         CloseCountingInputStream source = new CloseCountingInputStream(new byte[32]);
         RadioBufferedInputStream stream = new RadioBufferedInputStream(
                 source, attempt.cancellation(), this.producer, 16, 4, 8);
@@ -206,8 +206,8 @@ class RadioBufferedInputStreamTest {
 
     @Test
     void alreadyCancelledAttemptNeverReadsSource() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         session.stop();
         AtomicInteger reads = new AtomicInteger();
         InputStream source = new ByteArrayInputStream(new byte[]{1}) {
@@ -301,8 +301,8 @@ class RadioBufferedInputStreamTest {
                 this.producer, capacity, chunk, threshold);
     }
 
-    private static RadioCancellation cancellation() {
-        return new RadioSession().start("https://radio.example/live").cancellation();
+    private static AudioCancellation cancellation() {
+        return new PlaybackSession().start("https://radio.example/live").cancellation();
     }
 
     private static RadioBufferedInputStream.Startup startup(RadioBufferedInputStream stream) throws Exception {

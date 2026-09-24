@@ -20,15 +20,15 @@ class RadioConnectionSchedulerTest {
         List<Integer> started = new ArrayList<>();
         List<RadioConnectionScheduler.Lease> leases = new ArrayList<>();
 
-        assertTrue(scheduler.submit(new RadioCancellation(), lease -> {
+        assertTrue(scheduler.submit(new AudioCancellation(), lease -> {
             started.add(1);
             leases.add(lease);
         }));
-        assertTrue(scheduler.submit(new RadioCancellation(), lease -> {
+        assertTrue(scheduler.submit(new AudioCancellation(), lease -> {
             started.add(2);
             leases.add(lease);
         }));
-        assertFalse(scheduler.submit(new RadioCancellation(), lease -> started.add(3)));
+        assertFalse(scheduler.submit(new AudioCancellation(), lease -> started.add(3)));
 
         assertEquals(List.of(1), started);
         assertEquals(1, scheduler.activeCount());
@@ -48,8 +48,8 @@ class RadioConnectionSchedulerTest {
         RadioConnectionScheduler scheduler = new RadioConnectionScheduler(1, 2, Runnable::run);
         List<RadioConnectionScheduler.Lease> leases = new ArrayList<>();
         List<Integer> started = new ArrayList<>();
-        RadioCancellation queued = new RadioCancellation();
-        scheduler.submit(new RadioCancellation(), leases::add);
+        AudioCancellation queued = new AudioCancellation();
+        scheduler.submit(new AudioCancellation(), leases::add);
         scheduler.submit(queued, lease -> started.add(2));
 
         queued.cancel();
@@ -63,14 +63,14 @@ class RadioConnectionSchedulerTest {
     @Test
     void activeCancellationWaitsForResourceOwnerToReleaseLease() {
         RadioConnectionScheduler scheduler = new RadioConnectionScheduler(1, 0, Runnable::run);
-        RadioCancellation cancellation = new RadioCancellation();
+        AudioCancellation cancellation = new AudioCancellation();
         List<RadioConnectionScheduler.Lease> leases = new ArrayList<>();
         scheduler.submit(cancellation, leases::add);
 
         cancellation.cancel();
 
         assertEquals(1, scheduler.activeCount());
-        assertFalse(scheduler.submit(new RadioCancellation(), leases::add));
+        assertFalse(scheduler.submit(new AudioCancellation(), leases::add));
         leases.get(0).close();
         assertEquals(0, scheduler.activeCount());
     }
@@ -79,13 +79,13 @@ class RadioConnectionSchedulerTest {
     void closeRejectsNewAndDropsQueuedAttempts() {
         RadioConnectionScheduler scheduler = new RadioConnectionScheduler(1, 1, Runnable::run);
         List<RadioConnectionScheduler.Lease> leases = new ArrayList<>();
-        scheduler.submit(new RadioCancellation(), leases::add);
-        scheduler.submit(new RadioCancellation(), leases::add);
+        scheduler.submit(new AudioCancellation(), leases::add);
+        scheduler.submit(new AudioCancellation(), leases::add);
 
         scheduler.close();
 
         assertEquals(0, scheduler.queuedCount());
-        assertFalse(scheduler.submit(new RadioCancellation(), leases::add));
+        assertFalse(scheduler.submit(new AudioCancellation(), leases::add));
         leases.get(0).close();
         assertEquals(0, scheduler.activeCount());
     }
@@ -105,10 +105,10 @@ class RadioConnectionSchedulerTest {
                     throw new RejectedExecutionException("closed");
                 });
 
-        assertFalse(scheduler.submit(new RadioCancellation(), lease -> {
+        assertFalse(scheduler.submit(new AudioCancellation(), lease -> {
         }));
         assertEquals(0, scheduler.activeCount());
-        assertFalse(scheduler.submit(new RadioCancellation(), lease -> {
+        assertFalse(scheduler.submit(new AudioCancellation(), lease -> {
         }));
     }
 
@@ -117,7 +117,7 @@ class RadioConnectionSchedulerTest {
         Queue<Runnable> ownerTasks = new ArrayDeque<>();
         RadioConnectionScheduler scheduler = new RadioConnectionScheduler(1, 1, ownerTasks::add);
         List<RadioConnectionScheduler.Lease> leases = new ArrayList<>();
-        assertTrue(scheduler.submit(new RadioCancellation(), leases::add));
+        assertTrue(scheduler.submit(new AudioCancellation(), leases::add));
 
         scheduler.close();
         ownerTasks.remove().run();

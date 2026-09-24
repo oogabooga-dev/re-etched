@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.net;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
 
 import java.io.IOException;
@@ -28,7 +28,7 @@ public final class RadioHttpResponse implements AutoCloseable {
     private final RadioHttpTransportImpl.ActiveExchange exchange;
 
     RadioHttpResponse(URI uri, int statusCode, Map<String, List<String>> headers, InputStream rawBody,
-                      int redirectCount, RadioCancellation cancellation,
+                      int redirectCount, AudioCancellation cancellation,
                       RadioHttpTransportImpl.ActiveExchange exchange) {
         this.uri = Objects.requireNonNull(uri, "uri");
         this.statusCode = statusCode;
@@ -99,9 +99,9 @@ public final class RadioHttpResponse implements AutoCloseable {
     private final class ManagedBody extends InputStream {
 
         private final InputStream delegate;
-        private final RadioCancellation cancellation;
+        private final AudioCancellation cancellation;
 
-        private ManagedBody(InputStream delegate, RadioCancellation cancellation) {
+        private ManagedBody(InputStream delegate, AudioCancellation cancellation) {
             this.delegate = delegate;
             this.cancellation = cancellation;
         }

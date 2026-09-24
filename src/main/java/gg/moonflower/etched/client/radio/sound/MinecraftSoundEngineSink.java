@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.sound;
 
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import net.minecraft.client.Minecraft;
 import net.minecraft.tags.BlockTags;
@@ -19,7 +19,7 @@ public final class MinecraftSoundEngineSink implements SoundEngineSink {
 
     @Override
     public Handle create(PlaybackOwnerKey key, long generation, RadioAudioStream stream,
-                         RadioCancellation cancellation, Runnable streamHandedOff,
+                         AudioCancellation cancellation, Runnable streamHandedOff,
                          Runnable soundStopped) {
         if (!(key instanceof PlaybackOwnerKey.BlockOwner blockOwner)) {
             throw new IllegalArgumentException("The Minecraft radio sink requires a block playback owner");

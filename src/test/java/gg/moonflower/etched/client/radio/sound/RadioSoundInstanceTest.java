@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.sound;
 
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.WeighedSoundEvents;
@@ -38,7 +38,7 @@ class RadioSoundInstanceTest {
 
     @Test
     void exposesPositionalStreamingRecordsSound() {
-        RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://radio.example/live");
         RadioSoundInstance sound = sound(attempt, new FakeAudioStream(), new AtomicInteger());
 
         WeighedSoundEvents resolved = sound.resolve(null);
@@ -56,7 +56,7 @@ class RadioSoundInstanceTest {
 
     @Test
     void transfersExactStreamOnceAndReportsHandoff() throws Exception {
-        RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://radio.example/live");
         FakeAudioStream stream = new FakeAudioStream();
         AtomicInteger started = new AtomicInteger();
         RadioSoundInstance sound = sound(attempt, stream, started);
@@ -70,8 +70,8 @@ class RadioSoundInstanceTest {
 
     @Test
     void cancellationStopsTickableSoundBeforeHandoff() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         FakeAudioStream stream = new FakeAudioStream();
         RadioSoundInstance sound = sound(attempt, stream, new AtomicInteger());
 
@@ -84,7 +84,7 @@ class RadioSoundInstanceTest {
 
     @Test
     void callbackFailureClosesUntransferredStream() throws Exception {
-        RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://radio.example/live");
         FakeAudioStream stream = new FakeAudioStream();
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
@@ -102,7 +102,7 @@ class RadioSoundInstanceTest {
 
     @Test
     void stopRequestDoesNotWaitForUntransferredStreamClose() throws Exception {
-        RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://radio.example/live");
         BlockingCloseAudioStream stream = new BlockingCloseAudioStream();
         RadioSoundInstance sound = sound(attempt, stream, new AtomicInteger());
         ExecutorService clientThread = Executors.newSingleThreadExecutor();
@@ -120,7 +120,7 @@ class RadioSoundInstanceTest {
 
     @Test
     void reportsSoundEngineStopOnlyOnce() {
-        RadioSession.Attempt attempt = new RadioSession().start("https://radio.example/live");
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://radio.example/live");
         AtomicInteger stopped = new AtomicInteger();
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
@@ -135,7 +135,7 @@ class RadioSoundInstanceTest {
         assertEquals(1, stopped.get());
     }
 
-    private static RadioSoundInstance sound(RadioSession.Attempt attempt, RadioAudioStream stream,
+    private static RadioSoundInstance sound(PlaybackSession.Attempt attempt, RadioAudioStream stream,
                                              AtomicInteger started) {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));

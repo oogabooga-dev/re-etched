@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.net;
 
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
@@ -77,7 +77,7 @@ class DirectRadioSourceResolverOwnershipTest {
 
     private static RadioResolveContext context(RadioHttpTransport transport) {
         return new RadioResolveContext(transport, ALLOW_ALL,
-                new RadioSession().start("http://radio.example/live").cancellation(),
+                new PlaybackSession().start("http://radio.example/live").cancellation(),
                 new RadioResolveLimits(16, 1024, 10, 256, 2, 20));
     }
 

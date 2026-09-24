@@ -51,7 +51,7 @@ class RadioStatusMessagesTest {
     }
 
     private static Component message(RadioPlaybackState state, RadioFailure failure, String title) {
-        return RadioStatusMessages.forSnapshot(new RadioSession.Snapshot(1L, "source", state, failure, title));
+        return RadioStatusMessages.forSnapshot(new PlaybackSession.Snapshot(1L, "source", state, failure, title));
     }
 
     private static void assertTranslation(String key, Component component) {

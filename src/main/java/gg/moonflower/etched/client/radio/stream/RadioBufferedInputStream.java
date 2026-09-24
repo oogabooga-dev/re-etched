@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.stream;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioResourceDisposer;
 
 import java.io.IOException;
@@ -28,7 +28,7 @@ public final class RadioBufferedInputStream extends InputStream {
     public static final int DEFAULT_STARTUP_THRESHOLD = 64 * 1024;
 
     private final InputStream source;
-    private final RadioCancellation cancellation;
+    private final AudioCancellation cancellation;
     private final byte[] buffer;
     private final int chunkSize;
     private final int startupThreshold;
@@ -47,13 +47,13 @@ public final class RadioBufferedInputStream extends InputStream {
     private int writePosition;
     private int bufferedBytes;
 
-    public RadioBufferedInputStream(InputStream source, RadioCancellation cancellation,
+    public RadioBufferedInputStream(InputStream source, AudioCancellation cancellation,
                                     ExecutorService producerExecutor) {
         this(source, cancellation, producerExecutor, DEFAULT_CAPACITY,
                 DEFAULT_CHUNK_SIZE, DEFAULT_STARTUP_THRESHOLD);
     }
 
-    public RadioBufferedInputStream(InputStream source, RadioCancellation cancellation,
+    public RadioBufferedInputStream(InputStream source, AudioCancellation cancellation,
                                     ExecutorService producerExecutor, int capacityBytes,
                                     int chunkSize, int startupThresholdBytes) {
         this.source = Objects.requireNonNull(source, "source");

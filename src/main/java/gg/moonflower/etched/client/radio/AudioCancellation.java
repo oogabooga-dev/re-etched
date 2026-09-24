@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * A one-shot cancellation signal shared by all resources owned by one attempt.
  */
-public final class RadioCancellation {
+public final class AudioCancellation {
 
     private final CompletableFuture<Void> cancelled = new CompletableFuture<>();
 

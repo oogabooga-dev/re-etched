@@ -14,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RadioCancellationTest {
+class AudioCancellationTest {
 
     @Test
     void cancellationRunsCallbacksExactlyOnce() {
-        RadioCancellation cancellation = new RadioCancellation();
+        AudioCancellation cancellation = new AudioCancellation();
         AtomicInteger callbacks = new AtomicInteger();
         cancellation.onCancel(callbacks::incrementAndGet);
 
@@ -31,7 +31,7 @@ class RadioCancellationTest {
 
     @Test
     void callbackRegisteredAfterCancellationRunsImmediately() {
-        RadioCancellation cancellation = new RadioCancellation();
+        AudioCancellation cancellation = new AudioCancellation();
         cancellation.cancel();
         AtomicInteger callbacks = new AtomicInteger();
 
@@ -42,7 +42,7 @@ class RadioCancellationTest {
 
     @Test
     void concurrentRegistrationCannotLoseCallbacks() throws Exception {
-        RadioCancellation cancellation = new RadioCancellation();
+        AudioCancellation cancellation = new AudioCancellation();
         AtomicInteger callbacks = new AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(8);

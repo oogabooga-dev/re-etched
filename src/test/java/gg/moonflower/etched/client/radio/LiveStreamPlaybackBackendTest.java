@@ -140,8 +140,8 @@ class LiveStreamPlaybackBackendTest {
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         PlaybackOwnerKey entity = PlaybackOwnerKey.entity(DIMENSION,
                 UUID.fromString("9edc3932-5405-416c-b25a-6222ffc4d2d6"));
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/entity").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/entity").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         assertTrue(driver.supports(entity, state(attempt.source())));
@@ -160,8 +160,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one"), this.track("two")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/album").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/album").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -199,8 +199,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/station").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/station").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -222,8 +222,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/station-race").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/station-race").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -245,8 +245,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one"), this.track("two")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/album-race").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/album-race").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -289,8 +289,8 @@ class LiveStreamPlaybackBackendTest {
         };
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(blocking, sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/blocked").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/blocked").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
         driver.start(KEY, state(attempt.source()), session, attempt, events);
         assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -312,8 +312,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(true);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/failure").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -337,8 +337,8 @@ class LiveStreamPlaybackBackendTest {
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         sounds.failCreate = true;
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/create-failure").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/create-failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -356,8 +356,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false, false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/silent").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/silent").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -376,8 +376,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/closed").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/closed").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -397,8 +397,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-ownership").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-ownership").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
         driver.start(KEY, state(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
@@ -435,8 +435,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("stalled")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stalled").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/stalled").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
         ExecutorService soundExecutor = Executors.newSingleThreadExecutor();
 
@@ -479,8 +479,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-failure").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
         driver.start(KEY, state(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
@@ -511,8 +511,8 @@ class LiveStreamPlaybackBackendTest {
             }
         };
         LiveStreamPlaybackBackend driver = this.driver(resolver, new FakeSoundOutput(false));
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://bad host/");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://bad host/");
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state("https://radio.example/valid"), session, attempt, events);
@@ -533,8 +533,8 @@ class LiveStreamPlaybackBackendTest {
                 List.of(this.track("one"), this.track("retry")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt first = session.start(this.baseUri.resolve("/album-retry").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt first = session.start(this.baseUri.resolve("/album-retry").toString());
         RecordingEvents firstEvents = new RecordingEvents(session, first);
         driver.start(KEY, state(first.source()), session, first, firstEvents);
         await(() -> sounds.audio.size() == 1);
@@ -546,9 +546,9 @@ class LiveStreamPlaybackBackendTest {
                 RadioSourceException.class, firstEvents.failures.get(0));
         RadioReconnectPolicy policy = new RadioReconnectPolicy(
                 new long[]{0L}, 30_000L, 0.0D, () -> 0.5D);
-        RadioSession.ReconnectWait wait = session.scheduleReconnect(
+        PlaybackSession.ReconnectWait wait = session.scheduleReconnect(
                 first, sourceFailure.toFailure(), 0L, policy).orElseThrow();
-        RadioSession.Attempt retry = session.retry(wait).orElseThrow();
+        PlaybackSession.Attempt retry = session.retry(wait).orElseThrow();
         RecordingEvents retryEvents = new RecordingEvents(session, retry);
 
         driver.start(KEY, state(retry.source()), session, retry, retryEvents);
@@ -575,8 +575,8 @@ class LiveStreamPlaybackBackendTest {
                 this.decoders, command -> {
                     throw new java.util.concurrent.RejectedExecutionException("owner stopped");
                 }, sounds, () -> true);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/owner").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/owner").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -605,8 +605,8 @@ class LiveStreamPlaybackBackendTest {
                     }
                     command.run();
                 }, sounds, () -> true);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/owner-handoff").toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/owner-handoff").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
@@ -721,7 +721,7 @@ class LiveStreamPlaybackBackendTest {
 
         @Override
         public Handle create(PlaybackOwnerKey key, long generation, RadioAudioStream stream,
-                             RadioCancellation cancellation, Runnable streamHandedOff,
+                             AudioCancellation cancellation, Runnable streamHandedOff,
                              Runnable soundStopped) {
             if (this.failCreate) {
                 throw new IllegalStateException("SoundEngine sink failed to create playback");
@@ -786,8 +786,8 @@ class LiveStreamPlaybackBackendTest {
     }
 
     private static final class RecordingEvents implements PlaybackBackend.Events {
-        private final RadioSession session;
-        private final RadioSession.Attempt attempt;
+        private final PlaybackSession session;
+        private final PlaybackSession.Attempt attempt;
         private final List<RadioPlaybackState> progress = new CopyOnWriteArrayList<>();
         private final List<Throwable> failures = new CopyOnWriteArrayList<>();
         private final List<RadioAudioStream.Termination> terminations = new CopyOnWriteArrayList<>();
@@ -796,7 +796,7 @@ class LiveStreamPlaybackBackendTest {
         private final AtomicInteger unavailableOwners = new AtomicInteger();
         private final AtomicInteger clock = new AtomicInteger();
 
-        private RecordingEvents(RadioSession session, RadioSession.Attempt attempt) {
+        private RecordingEvents(PlaybackSession session, PlaybackSession.Attempt attempt) {
             this.session = session;
             this.attempt = attempt;
         }

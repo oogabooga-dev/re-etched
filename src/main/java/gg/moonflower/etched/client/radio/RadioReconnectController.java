@@ -25,7 +25,7 @@ public final class RadioReconnectController implements AutoCloseable {
     private final RetryScheduler scheduler;
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Semaphore retryPermits;
-    private final ConcurrentMap<RadioSession.Attempt, TimerRegistration> pendingSoundStops =
+    private final ConcurrentMap<PlaybackSession.Attempt, TimerRegistration> pendingSoundStops =
             new ConcurrentHashMap<>();
 
     public static RadioReconnectController createDefault(java.util.concurrent.Executor ownerExecutor) {
@@ -67,7 +67,7 @@ public final class RadioReconnectController implements AutoCloseable {
         }
     }
 
-    public void progress(RadioSession session, RadioSession.Attempt attempt, RadioPlaybackState state,
+    public void progress(PlaybackSession session, PlaybackSession.Attempt attempt, RadioPlaybackState state,
                          Runnable stateChanged) {
         this.execute(() -> {
             if (session.advance(attempt, state, this.clock.getAsLong())) {
@@ -76,32 +76,32 @@ public final class RadioReconnectController implements AutoCloseable {
         });
     }
 
-    public void failure(RadioSession session, RadioSession.Attempt attempt, Throwable throwable,
-                        Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
+    public void failure(PlaybackSession session, PlaybackSession.Attempt attempt, Throwable throwable,
+                        Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         Objects.requireNonNull(throwable, "throwable");
         this.execute(() -> this.handle(session, attempt, this.policy.classify(throwable),
                 retryStarter, stateChanged));
     }
 
-    public void failure(RadioSession session, RadioSession.Attempt attempt, RadioFailure failure,
-                        Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
+    public void failure(PlaybackSession session, PlaybackSession.Attempt attempt, RadioFailure failure,
+                        Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         this.execute(() -> this.handle(session, attempt, Optional.of(Objects.requireNonNull(failure, "failure")),
                 retryStarter, stateChanged));
     }
 
-    public void termination(RadioSession session, RadioSession.Attempt attempt,
+    public void termination(PlaybackSession session, PlaybackSession.Attempt attempt,
                             RadioAudioStream.Termination termination,
-                            Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
+                            Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         this.execute(() -> this.handle(session, attempt, this.policy.classify(termination),
                 retryStarter, stateChanged));
     }
 
-    public void soundEngineStopped(RadioSession session, RadioSession.Attempt attempt,
-                                   Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
+    public void soundEngineStopped(PlaybackSession session, PlaybackSession.Attempt attempt,
+                                   Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         this.execute(() -> this.deferSoundEngineStop(session, attempt, retryStarter, stateChanged));
     }
 
-    public void sequenceAdvance(RadioSession session, RadioSession.Attempt attempt,
+    public void sequenceAdvance(PlaybackSession session, PlaybackSession.Attempt attempt,
                                 Runnable continuation, Runnable stateChanged) {
         Objects.requireNonNull(continuation, "continuation");
         Objects.requireNonNull(stateChanged, "stateChanged");
@@ -114,8 +114,8 @@ public final class RadioReconnectController implements AutoCloseable {
         });
     }
 
-    private void handle(RadioSession session, RadioSession.Attempt attempt, Optional<RadioFailure> classified,
-                        Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
+    private void handle(PlaybackSession session, PlaybackSession.Attempt attempt, Optional<RadioFailure> classified,
+                        Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(attempt, "attempt");
         Objects.requireNonNull(retryStarter, "retryStarter");
@@ -133,12 +133,12 @@ public final class RadioReconnectController implements AutoCloseable {
         }
 
         long nowMillis = this.clock.getAsLong();
-        Optional<RadioSession.ReconnectWait> scheduled = session.scheduleReconnect(
+        Optional<PlaybackSession.ReconnectWait> scheduled = session.scheduleReconnect(
                 attempt, failure, nowMillis, this.policy);
         if (scheduled.isEmpty()) {
             return;
         }
-        RadioSession.ReconnectWait wait = scheduled.orElseThrow();
+        PlaybackSession.ReconnectWait wait = scheduled.orElseThrow();
         if (!this.retryPermits.tryAcquire()) {
             RadioFailure limit = RadioFailure.fatal(RadioFailure.Code.RESOURCE_LIMIT,
                     "Too many radio reconnects are already pending", null);
@@ -168,8 +168,8 @@ public final class RadioReconnectController implements AutoCloseable {
         stateChanged.run();
     }
 
-    private void deferSoundEngineStop(RadioSession session, RadioSession.Attempt attempt,
-                                      Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
+    private void deferSoundEngineStop(PlaybackSession session, PlaybackSession.Attempt attempt,
+                                      Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         if (attempt.cancellation().isCancelled()) {
             return;
         }
@@ -201,20 +201,20 @@ public final class RadioReconnectController implements AutoCloseable {
         });
     }
 
-    private void cancelPendingSoundStop(RadioSession.Attempt attempt) {
+    private void cancelPendingSoundStop(PlaybackSession.Attempt attempt) {
         TimerRegistration registration = this.pendingSoundStops.remove(attempt);
         if (registration != null) {
             registration.cancel();
         }
     }
 
-    private void retry(RadioSession session, RadioSession.ReconnectWait wait,
-                       Consumer<RadioSession.Attempt> retryStarter, Runnable stateChanged) {
-        Optional<RadioSession.Attempt> retried = session.retry(wait);
+    private void retry(PlaybackSession session, PlaybackSession.ReconnectWait wait,
+                       Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
+        Optional<PlaybackSession.Attempt> retried = session.retry(wait);
         if (retried.isEmpty()) {
             return;
         }
-        RadioSession.Attempt attempt = retried.orElseThrow();
+        PlaybackSession.Attempt attempt = retried.orElseThrow();
         try {
             retryStarter.accept(attempt);
         } catch (RuntimeException exception) {

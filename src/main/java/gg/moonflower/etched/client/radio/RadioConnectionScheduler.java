@@ -29,12 +29,12 @@ public final class RadioConnectionScheduler implements AutoCloseable {
         this.ownerExecutor = Objects.requireNonNull(ownerExecutor, "ownerExecutor");
     }
 
-    public boolean submit(RadioCancellation cancellation, Consumer<Lease> starter) {
+    public boolean submit(AudioCancellation cancellation, Consumer<Lease> starter) {
         return this.submit(cancellation, starter, () -> {
         });
     }
 
-    public boolean submit(RadioCancellation cancellation, Consumer<Lease> starter, Runnable dispatchFailed) {
+    public boolean submit(AudioCancellation cancellation, Consumer<Lease> starter, Runnable dispatchFailed) {
         Objects.requireNonNull(cancellation, "cancellation");
         Objects.requireNonNull(starter, "starter");
         Entry entry = new Entry(cancellation, starter, Objects.requireNonNull(dispatchFailed, "dispatchFailed"));
@@ -242,12 +242,12 @@ public final class RadioConnectionScheduler implements AutoCloseable {
 
     private static final class Entry {
 
-        private final RadioCancellation cancellation;
+        private final AudioCancellation cancellation;
         private final Consumer<Lease> starter;
         private final Runnable dispatchFailed;
         private EntryState state;
 
-        private Entry(RadioCancellation cancellation, Consumer<Lease> starter, Runnable dispatchFailed) {
+        private Entry(AudioCancellation cancellation, Consumer<Lease> starter, Runnable dispatchFailed) {
             this.cancellation = cancellation;
             this.starter = starter;
             this.dispatchFailed = dispatchFailed;

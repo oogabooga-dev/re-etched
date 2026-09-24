@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.net;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
 
 import java.net.InetAddress;
@@ -73,7 +73,7 @@ public final class DefaultRadioNetworkPolicy implements RadioNetworkPolicy {
     }
 
     @Override
-    public void check(URI uri, RadioCancellation cancellation) throws RadioTransportException {
+    public void check(URI uri, AudioCancellation cancellation) throws RadioTransportException {
         Objects.requireNonNull(cancellation, "cancellation");
         String host = validateUri(uri);
         cancellation.throwIfCancelled();
@@ -107,7 +107,7 @@ public final class DefaultRadioNetworkPolicy implements RadioNetworkPolicy {
         }
     }
 
-    private InetAddress[] resolveBounded(String host, RadioCancellation cancellation)
+    private InetAddress[] resolveBounded(String host, AudioCancellation cancellation)
             throws RadioTransportException {
         Future<InetAddress[]> lookup;
         try {
