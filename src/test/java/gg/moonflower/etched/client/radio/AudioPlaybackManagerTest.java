@@ -827,7 +827,7 @@ class AudioPlaybackManagerTest {
         private final List<PlaybackOwnerKey> aborted = new ArrayList<>();
         private final List<String> lifecycle = new ArrayList<>();
         private final Set<PlaybackOwnerKey> open = new HashSet<>();
-        private final Set<RadioSession> openSessions = new HashSet<>();
+        private final Set<PlaybackSession> openSessions = new HashSet<>();
         private boolean throwOnStart;
         private boolean openBeforeThrow;
         private boolean throwOnStop;
@@ -842,8 +842,8 @@ class AudioPlaybackManagerTest {
         }
 
         @Override
-        public void start(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
-                          RadioSession.Attempt attempt, PlaybackBackend.Events events) {
+        public void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
+                          PlaybackSession.Attempt attempt, PlaybackBackend.Events events) {
             if (this.throwOnStart) {
                 if (this.openBeforeThrow) {
                     this.open.add(key);
@@ -861,7 +861,7 @@ class AudioPlaybackManagerTest {
         }
 
         @Override
-        public void stop(PlaybackOwnerKey key, RadioSession session) {
+        public void stop(PlaybackOwnerKey key, PlaybackSession session) {
             StartedSession startedSession = this.started.stream()
                     .filter(started -> started.session() == session)
                     .findFirst()
@@ -879,7 +879,7 @@ class AudioPlaybackManagerTest {
         }
 
         @Override
-        public void abort(PlaybackOwnerKey key, RadioSession session, RadioSession.Attempt attempt) {
+        public void abort(PlaybackOwnerKey key, PlaybackSession session, PlaybackSession.Attempt attempt) {
             this.aborted.add(key);
             this.open.remove(key);
             this.openSessions.remove(session);
@@ -901,7 +901,7 @@ class AudioPlaybackManagerTest {
         private final List<PlaybackOwnerKey.BlockOwner> stopped = new ArrayList<>();
 
         @Override
-        public void update(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
+        public void update(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
             this.updated.add(new EffectUpdate(key, snapshot));
         }
 
@@ -964,10 +964,10 @@ class AudioPlaybackManagerTest {
     private record AppliedState(PlaybackOwnerKey key, PlaybackState state) {
     }
 
-    private record StartedSession(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
-                                  RadioSession.Attempt attempt, PlaybackBackend.Events events) {
+    private record StartedSession(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
+                                  PlaybackSession.Attempt attempt, PlaybackBackend.Events events) {
     }
 
-    private record EffectUpdate(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
+    private record EffectUpdate(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
     }
 }

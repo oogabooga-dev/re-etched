@@ -12,16 +12,16 @@ interface PlaybackBackend {
         }
 
         @Override
-        public void start(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
-                          RadioSession.Attempt attempt, Events events) {
+        public void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
+                          PlaybackSession.Attempt attempt, Events events) {
         }
 
         @Override
-        public void stop(PlaybackOwnerKey key, RadioSession session) {
+        public void stop(PlaybackOwnerKey key, PlaybackSession session) {
         }
 
         @Override
-        public void abort(PlaybackOwnerKey key, RadioSession session, RadioSession.Attempt attempt) {
+        public void abort(PlaybackOwnerKey key, PlaybackSession session, PlaybackSession.Attempt attempt) {
         }
     };
 
@@ -33,12 +33,12 @@ interface PlaybackBackend {
         return true;
     }
 
-    void start(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
-               RadioSession.Attempt attempt, Events events);
+    void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
+               PlaybackSession.Attempt attempt, Events events);
 
-    void stop(PlaybackOwnerKey key, RadioSession session);
+    void stop(PlaybackOwnerKey key, PlaybackSession session);
 
-    void abort(PlaybackOwnerKey key, RadioSession session, RadioSession.Attempt attempt);
+    void abort(PlaybackOwnerKey key, PlaybackSession session, PlaybackSession.Attempt attempt);
 
     default void shutdown() {
     }

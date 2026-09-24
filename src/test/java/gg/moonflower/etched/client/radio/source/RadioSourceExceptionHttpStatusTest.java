@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
@@ -58,7 +58,7 @@ class RadioSourceExceptionHttpStatusTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 2);
         return new RadioResolveContext(transport, ALLOW_TEST_SERVER,
-                new RadioSession().start("http://radio.example/live").cancellation(),
+                new PlaybackSession().start("http://radio.example/live").cancellation(),
                 new RadioResolveLimits(4, 64, 2, 32, 1, 4));
     }
 }

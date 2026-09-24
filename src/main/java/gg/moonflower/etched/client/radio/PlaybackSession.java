@@ -6,18 +6,18 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Thread-safe lifecycle state for one client-side radio.
+ * Thread-safe lifecycle state for one client-side playback owner.
  *
  * <p>Every start or retry creates a new generation. Asynchronous work must
  * include that generation when reporting progress so stale work is ignored.</p>
  */
-public final class RadioSession {
+public final class PlaybackSession {
 
     private long generation;
     private String source = "";
     private RadioPlaybackState state = RadioPlaybackState.STOPPED;
     private RadioFailure failure;
-    private RadioCancellation cancellation;
+    private AudioCancellation cancellation;
     private String streamTitle;
     private PendingStreamTitle pendingStreamTitle;
     private int attemptNumber;
@@ -30,7 +30,7 @@ public final class RadioSession {
             throw new IllegalArgumentException("Radio source must not be blank");
         }
 
-        RadioCancellation previous;
+        AudioCancellation previous;
         Attempt attempt;
         synchronized (this) {
             previous = this.cancellation;
@@ -64,7 +64,7 @@ public final class RadioSession {
         return true;
     }
 
-    private boolean advance(long generation, @Nullable RadioCancellation expectedCancellation,
+    private boolean advance(long generation, @Nullable AudioCancellation expectedCancellation,
                             RadioPlaybackState nextState, long nowMillis) {
         Objects.requireNonNull(nextState, "nextState");
         if (nextState != RadioPlaybackState.CONNECTING
@@ -108,7 +108,7 @@ public final class RadioSession {
             throw new IllegalArgumentException("Reconnect requires a recoverable failure");
         }
 
-        RadioCancellation previous;
+        AudioCancellation previous;
         ReconnectWait wait;
         synchronized (this) {
             if (!this.isCurrentAttempt(attempt)) {
@@ -126,7 +126,7 @@ public final class RadioSession {
             this.playingSinceMillis = -1L;
             this.nextRetryAtMillis = saturatedAdd(nowMillis, delayMillis);
             previous = this.cancellation;
-            this.cancellation = new RadioCancellation();
+            this.cancellation = new AudioCancellation();
             wait = new ReconnectWait(this.generation, this.cancellation,
                     this.attemptNumber, this.nextRetryAtMillis);
         }
@@ -146,7 +146,7 @@ public final class RadioSession {
     /** Completes the exact active finite program without scheduling a reconnect. */
     public boolean complete(Attempt attempt) {
         Objects.requireNonNull(attempt, "attempt");
-        RadioCancellation previous;
+        AudioCancellation previous;
         synchronized (this) {
             if (!this.isCurrentAttempt(attempt)) {
                 return false;
@@ -165,7 +165,7 @@ public final class RadioSession {
         return true;
     }
 
-    private boolean fail(long generation, @Nullable RadioCancellation expectedCancellation, RadioFailure failure) {
+    private boolean fail(long generation, @Nullable AudioCancellation expectedCancellation, RadioFailure failure) {
         Objects.requireNonNull(failure, "failure");
         if (failure.recoverable()) {
             throw new IllegalArgumentException("Failed state requires a fatal failure");
@@ -175,7 +175,7 @@ public final class RadioSession {
 
     /** Starts an explicit retry and resets automatic backoff. */
     public Optional<Attempt> retry(long expectedGeneration) {
-        RadioCancellation previous;
+        AudioCancellation previous;
         Attempt attempt;
         synchronized (this) {
             if (this.generation != expectedGeneration
@@ -192,7 +192,7 @@ public final class RadioSession {
     /** Starts the retry owned by the exact reconnect wait token. */
     public Optional<Attempt> retry(ReconnectWait wait) {
         Objects.requireNonNull(wait, "wait");
-        RadioCancellation previous;
+        AudioCancellation previous;
         Attempt attempt;
         synchronized (this) {
             if (!this.isCurrentWait(wait)) {
@@ -213,7 +213,7 @@ public final class RadioSession {
         if (failure.recoverable()) {
             throw new IllegalArgumentException("Failed state requires a fatal failure");
         }
-        RadioCancellation previous;
+        AudioCancellation previous;
         synchronized (this) {
             if (!this.isCurrentWait(wait)) {
                 return false;
@@ -229,7 +229,7 @@ public final class RadioSession {
     }
 
     public boolean stop() {
-        RadioCancellation previous;
+        AudioCancellation previous;
         synchronized (this) {
             if (this.state == RadioPlaybackState.STOPPED) {
                 return false;
@@ -282,9 +282,9 @@ public final class RadioSession {
         return true;
     }
 
-    private boolean finishAttempt(long generation, @Nullable RadioCancellation expectedCancellation,
+    private boolean finishAttempt(long generation, @Nullable AudioCancellation expectedCancellation,
                                   RadioPlaybackState nextState, RadioFailure failure) {
-        RadioCancellation previous;
+        AudioCancellation previous;
         synchronized (this) {
             if (expectedCancellation == null
                     ? !this.isCurrentAttempt(generation)
@@ -321,7 +321,7 @@ public final class RadioSession {
         return this.isCurrentAttempt(attempt.generation(), attempt.cancellation());
     }
 
-    private boolean isCurrentAttempt(long generation, RadioCancellation cancellation) {
+    private boolean isCurrentAttempt(long generation, AudioCancellation cancellation) {
         return this.generation == generation
                 && this.cancellation == cancellation
                 && !cancellation.isCancelled()
@@ -341,7 +341,7 @@ public final class RadioSession {
         this.attemptNumber = attemptNumber;
         this.playingSinceMillis = -1L;
         this.nextRetryAtMillis = -1L;
-        this.cancellation = new RadioCancellation();
+        this.cancellation = new AudioCancellation();
         return new Attempt(this.generation, this.source, this.cancellation);
     }
 
@@ -368,13 +368,13 @@ public final class RadioSession {
         };
     }
 
-    private static void cancel(@Nullable RadioCancellation cancellation) {
+    private static void cancel(@Nullable AudioCancellation cancellation) {
         if (cancellation != null) {
             cancellation.cancel();
         }
     }
 
-    public record Attempt(long generation, String source, RadioCancellation cancellation) {
+    public record Attempt(long generation, String source, AudioCancellation cancellation) {
 
         public Attempt {
             Objects.requireNonNull(source, "source");
@@ -382,10 +382,10 @@ public final class RadioSession {
         }
     }
 
-    public record ReconnectWait(long generation, RadioCancellation cancellation,
+    public record ReconnectWait(long generation, AudioCancellation cancellation,
                                 int attemptNumber, long retryAtMillis) {
 
-        public ReconnectWait(long generation, RadioCancellation cancellation) {
+        public ReconnectWait(long generation, AudioCancellation cancellation) {
             this(generation, cancellation, 1, -1L);
         }
 
@@ -416,7 +416,7 @@ public final class RadioSession {
         }
     }
 
-    private record PendingStreamTitle(long generation, RadioCancellation cancellation, String streamTitle) {
+    private record PendingStreamTitle(long generation, AudioCancellation cancellation, String streamTitle) {
 
         private PendingStreamTitle {
             Objects.requireNonNull(cancellation, "cancellation");

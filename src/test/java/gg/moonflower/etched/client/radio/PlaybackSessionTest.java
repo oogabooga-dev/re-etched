@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RadioSessionTest {
+class PlaybackSessionTest {
 
     private static final RadioReconnectPolicy NO_JITTER = new RadioReconnectPolicy(
             new long[]{1_000L, 2_000L, 5_000L, 10_000L, 20_000L, 30_000L},
@@ -25,15 +25,15 @@ class RadioSessionTest {
 
     @Test
     void advancesThroughThePlaybackLifecycle() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         assertEquals(RadioPlaybackState.RESOLVING, session.snapshot().state());
         assertTrue(session.advance(attempt.generation(), RadioPlaybackState.CONNECTING));
         assertTrue(session.advance(attempt.generation(), RadioPlaybackState.BUFFERING));
         assertTrue(session.advance(attempt.generation(), RadioPlaybackState.PLAYING));
 
-        RadioSession.Snapshot snapshot = session.snapshot();
+        PlaybackSession.Snapshot snapshot = session.snapshot();
         assertEquals(attempt.generation(), snapshot.generation());
         assertEquals("https://radio.example/live", snapshot.source());
         assertEquals(RadioPlaybackState.PLAYING, snapshot.state());
@@ -43,8 +43,8 @@ class RadioSessionTest {
 
     @Test
     void finiteProgramAdvancesOnlyThroughTheExplicitSequenceOperation() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://service.example/album");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://service.example/album");
         session.advance(attempt, RadioPlaybackState.CONNECTING, 1L);
         session.advance(attempt, RadioPlaybackState.BUFFERING, 2L);
         session.advance(attempt, RadioPlaybackState.PLAYING, 3L);
@@ -60,8 +60,8 @@ class RadioSessionTest {
 
     @Test
     void finiteProgramCompletionStopsAndCancelsOnlyTheExactAttempt() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://service.example/album");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://service.example/album");
         session.advance(attempt, RadioPlaybackState.CONNECTING, 1L);
         session.advance(attempt, RadioPlaybackState.BUFFERING, 2L);
         session.advance(attempt, RadioPlaybackState.PLAYING, 3L);
@@ -72,7 +72,7 @@ class RadioSessionTest {
         assertTrue(attempt.cancellation().isCancelled());
         assertFalse(session.complete(attempt));
 
-        RadioSession.Attempt replacement = session.start("https://service.example/replacement");
+        PlaybackSession.Attempt replacement = session.start("https://service.example/replacement");
         assertFalse(session.complete(attempt));
         assertFalse(replacement.cancellation().isCancelled());
         assertEquals(RadioPlaybackState.RESOLVING, session.snapshot().state());
@@ -80,9 +80,9 @@ class RadioSessionTest {
 
     @Test
     void replacementCancelsOldAttemptAndRejectsItsCallbacks() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt oldAttempt = session.start("https://radio.example/old");
-        RadioSession.Attempt newAttempt = session.start("https://radio.example/new");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt oldAttempt = session.start("https://radio.example/old");
+        PlaybackSession.Attempt newAttempt = session.start("https://radio.example/new");
 
         assertTrue(oldAttempt.cancellation().isCancelled());
         assertFalse(newAttempt.cancellation().isCancelled());
@@ -93,8 +93,8 @@ class RadioSessionTest {
 
     @Test
     void coalescesCurrentAttemptMetadataUntilClientTickDrain() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         assertTrue(session.offerStreamTitle(attempt, "First"));
         assertTrue(session.offerStreamTitle(attempt, "Latest"));
@@ -110,12 +110,12 @@ class RadioSessionTest {
 
     @Test
     void rejectsMetadataFromCancelledAttemptWithSameGeneration() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.READ_TIMEOUT, "Station stopped sending data", null);
 
-        RadioSession.ReconnectWait wait = session.scheduleReconnect(
+        PlaybackSession.ReconnectWait wait = session.scheduleReconnect(
                 attempt.generation(), failure).orElseThrow();
 
         assertEquals(attempt.generation(), wait.generation());
@@ -126,12 +126,12 @@ class RadioSessionTest {
 
     @Test
     void newAttemptAndStopClearMetadata() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt first = session.start("https://radio.example/first");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt first = session.start("https://radio.example/first");
         session.offerStreamTitle(first, "First");
         session.applyPendingStreamTitle();
 
-        RadioSession.Attempt second = session.start("https://radio.example/second");
+        PlaybackSession.Attempt second = session.start("https://radio.example/second");
         assertNull(session.snapshot().streamTitle());
         assertFalse(session.offerStreamTitle(first, "Stale"));
         session.offerStreamTitle(second, "Second");
@@ -145,8 +145,8 @@ class RadioSessionTest {
 
     @Test
     void stopIsIdempotentAndInvalidatesCurrentGeneration() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         assertTrue(session.stop());
         long stoppedGeneration = session.snapshot().generation();
@@ -161,18 +161,18 @@ class RadioSessionTest {
 
     @Test
     void recoverableFailureCanStartAComparedRetry() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.READ_TIMEOUT, "Station stopped sending data", null);
 
-        RadioSession.ReconnectWait wait = session.scheduleReconnect(attempt.generation(), failure).orElseThrow();
+        PlaybackSession.ReconnectWait wait = session.scheduleReconnect(attempt.generation(), failure).orElseThrow();
         assertTrue(attempt.cancellation().isCancelled());
         assertFalse(wait.cancellation().isCancelled());
         assertEquals(RadioPlaybackState.RECONNECT_WAIT, session.snapshot().state());
         assertSame(failure, session.snapshot().failure());
 
-        RadioSession.Attempt retry = session.retry(attempt.generation()).orElseThrow();
+        PlaybackSession.Attempt retry = session.retry(attempt.generation()).orElseThrow();
 
         assertTrue(wait.cancellation().isCancelled());
         assertEquals(attempt.generation() + 1, retry.generation());
@@ -184,12 +184,12 @@ class RadioSessionTest {
 
     @Test
     void tracksAutomaticAttemptNumberAndRetryDeadline() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt first = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt first = session.start("https://radio.example/live");
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.CONNECT_TIMEOUT, "Connection timed out", null);
 
-        RadioSession.ReconnectWait firstWait = session.scheduleReconnect(
+        PlaybackSession.ReconnectWait firstWait = session.scheduleReconnect(
                 first, failure, 10_000L, NO_JITTER).orElseThrow();
 
         assertEquals(1, firstWait.attemptNumber());
@@ -197,8 +197,8 @@ class RadioSessionTest {
         assertEquals(1, session.snapshot().attemptNumber());
         assertEquals(11_000L, session.snapshot().nextRetryAtMillis());
 
-        RadioSession.Attempt second = session.retry(firstWait).orElseThrow();
-        RadioSession.ReconnectWait secondWait = session.scheduleReconnect(
+        PlaybackSession.Attempt second = session.retry(firstWait).orElseThrow();
+        PlaybackSession.ReconnectWait secondWait = session.scheduleReconnect(
                 second, failure, 20_000L, NO_JITTER).orElseThrow();
 
         assertEquals(2, secondWait.attemptNumber());
@@ -208,18 +208,18 @@ class RadioSessionTest {
 
     @Test
     void sustainedPlaybackResetsAutomaticBackoff() {
-        RadioSession session = new RadioSession();
+        PlaybackSession session = new PlaybackSession();
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.READ_TIMEOUT, "Read timed out", null);
-        RadioSession.Attempt first = session.start("https://radio.example/live");
-        RadioSession.ReconnectWait firstWait = session.scheduleReconnect(
+        PlaybackSession.Attempt first = session.start("https://radio.example/live");
+        PlaybackSession.ReconnectWait firstWait = session.scheduleReconnect(
                 first, failure, 0L, NO_JITTER).orElseThrow();
-        RadioSession.Attempt second = session.retry(firstWait).orElseThrow();
+        PlaybackSession.Attempt second = session.retry(firstWait).orElseThrow();
         assertTrue(session.advance(second, RadioPlaybackState.CONNECTING, 5_000L));
         assertTrue(session.advance(second, RadioPlaybackState.BUFFERING, 5_000L));
         assertTrue(session.advance(second, RadioPlaybackState.PLAYING, 5_000L));
 
-        RadioSession.ReconnectWait reset = session.scheduleReconnect(
+        PlaybackSession.ReconnectWait reset = session.scheduleReconnect(
                 second, failure, 35_000L, NO_JITTER).orElseThrow();
 
         assertEquals(1, reset.attemptNumber());
@@ -230,13 +230,13 @@ class RadioSessionTest {
 
     @Test
     void serviceTrackBoundariesPreserveSustainedPlaybackReset() {
-        RadioSession session = new RadioSession();
+        PlaybackSession session = new PlaybackSession();
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.READ_TIMEOUT, "Read timed out", null);
-        RadioSession.Attempt first = session.start("https://service.example/album");
-        RadioSession.ReconnectWait firstWait = session.scheduleReconnect(
+        PlaybackSession.Attempt first = session.start("https://service.example/album");
+        PlaybackSession.ReconnectWait firstWait = session.scheduleReconnect(
                 first, failure, 0L, NO_JITTER).orElseThrow();
-        RadioSession.Attempt second = session.retry(firstWait).orElseThrow();
+        PlaybackSession.Attempt second = session.retry(firstWait).orElseThrow();
         session.advance(second, RadioPlaybackState.CONNECTING, 1_000L);
         session.advance(second, RadioPlaybackState.BUFFERING, 1_000L);
         session.advance(second, RadioPlaybackState.PLAYING, 1_000L);
@@ -244,7 +244,7 @@ class RadioSessionTest {
         session.advance(second, RadioPlaybackState.BUFFERING, 20_000L);
         session.advance(second, RadioPlaybackState.PLAYING, 20_000L);
 
-        RadioSession.ReconnectWait reset = session.scheduleReconnect(
+        PlaybackSession.ReconnectWait reset = session.scheduleReconnect(
                 second, failure, 31_000L, NO_JITTER).orElseThrow();
 
         assertEquals(1, reset.attemptNumber());
@@ -253,17 +253,17 @@ class RadioSessionTest {
 
     @Test
     void manualRetryResetsBackoffAndCancelsTheScheduledWait() {
-        RadioSession session = new RadioSession();
+        PlaybackSession session = new PlaybackSession();
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.CONNECT_TIMEOUT, "Connection timed out", null);
-        RadioSession.Attempt first = session.start("https://radio.example/live");
-        RadioSession.ReconnectWait firstWait = session.scheduleReconnect(
+        PlaybackSession.Attempt first = session.start("https://radio.example/live");
+        PlaybackSession.ReconnectWait firstWait = session.scheduleReconnect(
                 first, failure, 0L, NO_JITTER).orElseThrow();
-        RadioSession.Attempt second = session.retry(firstWait).orElseThrow();
-        RadioSession.ReconnectWait secondWait = session.scheduleReconnect(
+        PlaybackSession.Attempt second = session.retry(firstWait).orElseThrow();
+        PlaybackSession.ReconnectWait secondWait = session.scheduleReconnect(
                 second, failure, 1_000L, NO_JITTER).orElseThrow();
 
-        RadioSession.Attempt manual = session.retry(second.generation()).orElseThrow();
+        PlaybackSession.Attempt manual = session.retry(second.generation()).orElseThrow();
 
         assertTrue(secondWait.cancellation().isCancelled());
         assertEquals(1, session.snapshot().attemptNumber());
@@ -274,11 +274,11 @@ class RadioSessionTest {
 
     @Test
     void stopCancelsPendingReconnect() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.CONNECT_TIMEOUT, "Connection timed out", null);
-        RadioSession.ReconnectWait wait = session.scheduleReconnect(attempt.generation(), failure).orElseThrow();
+        PlaybackSession.ReconnectWait wait = session.scheduleReconnect(attempt.generation(), failure).orElseThrow();
 
         assertTrue(session.stop());
 
@@ -290,8 +290,8 @@ class RadioSessionTest {
 
     @Test
     void fatalFailureWaitsForAnExplicitRetry() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/aac");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/aac");
         RadioFailure failure = RadioFailure.fatal(
                 RadioFailure.Code.UNSUPPORTED_AAC, "AAC is not supported", null);
 
@@ -299,15 +299,15 @@ class RadioSessionTest {
         assertEquals(RadioPlaybackState.FAILED, session.snapshot().state());
         assertSame(failure, session.snapshot().failure());
 
-        RadioSession.Attempt retry = session.retry(attempt.generation()).orElseThrow();
+        PlaybackSession.Attempt retry = session.retry(attempt.generation()).orElseThrow();
         assertEquals(attempt.generation() + 1, retry.generation());
         assertEquals(RadioPlaybackState.RESOLVING, session.snapshot().state());
     }
 
     @Test
     void rejectsSkippedOrControlStateTransitions() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         assertThrows(IllegalStateException.class,
                 () -> session.advance(attempt.generation(), RadioPlaybackState.PLAYING));
@@ -317,8 +317,8 @@ class RadioSessionTest {
 
     @Test
     void onlyOneCompetingTerminalCallbackWins() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         RadioFailure recoverable = RadioFailure.recoverable(
                 RadioFailure.Code.READ_TIMEOUT, "Station stopped sending data", null);
         RadioFailure fatal = RadioFailure.fatal(
@@ -345,13 +345,13 @@ class RadioSessionTest {
 
     @Test
     void onlyOneCompetingRetryStartsANewAttempt() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.CONNECT_TIMEOUT, "Connection timed out", null);
         session.scheduleReconnect(attempt.generation(), failure).orElseThrow();
         CountDownLatch start = new CountDownLatch(1);
-        List<Future<Optional<RadioSession.Attempt>>> retries = new ArrayList<>();
+        List<Future<Optional<PlaybackSession.Attempt>>> retries = new ArrayList<>();
         ExecutorService executor = Executors.newFixedThreadPool(4);
 
         try {
@@ -364,7 +364,7 @@ class RadioSessionTest {
 
             start.countDown();
             int started = 0;
-            for (Future<Optional<RadioSession.Attempt>> retry : retries) {
+            for (Future<Optional<PlaybackSession.Attempt>> retry : retries) {
                 if (retry.get().isPresent()) {
                     started++;
                 }
@@ -377,8 +377,8 @@ class RadioSessionTest {
 
     @Test
     void rejectsRecoverableFailureAsTerminal() {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         RadioFailure failure = RadioFailure.recoverable(
                 RadioFailure.Code.READ_TIMEOUT, "Station stopped sending data", null);
 
@@ -387,7 +387,7 @@ class RadioSessionTest {
 
     @Test
     void rejectsBlankSource() {
-        RadioSession session = new RadioSession();
+        PlaybackSession session = new PlaybackSession();
 
         assertThrows(IllegalArgumentException.class, () -> session.start("  "));
     }

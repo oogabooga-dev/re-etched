@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.stream;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioResourceDisposer;
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
@@ -23,14 +23,14 @@ public final class RadioStreamPipeline {
     private RadioStreamPipeline() {
     }
 
-    public static Preparation prepare(RadioResolvedSource source, RadioCancellation cancellation,
+    public static Preparation prepare(RadioResolvedSource source, AudioCancellation cancellation,
                                        ExecutorService producerExecutor,
                                        ExecutorService decoderExecutor, boolean forceStereo) {
         return prepare(source, cancellation, producerExecutor, decoderExecutor, forceStereo, ignored -> {
         });
     }
 
-    public static Preparation prepare(RadioResolvedSource source, RadioCancellation cancellation,
+    public static Preparation prepare(RadioResolvedSource source, AudioCancellation cancellation,
                                       ExecutorService producerExecutor,
                                       ExecutorService decoderExecutor, boolean forceStereo,
                                       Consumer<String> streamTitleListener) {
@@ -97,7 +97,7 @@ public final class RadioStreamPipeline {
     }
 
     private static RadioAudioStream decode(RadioResolvedSource source, RadioBufferedInputStream buffer,
-                                           RadioCancellation cancellation, boolean forceStereo,
+                                           AudioCancellation cancellation, boolean forceStereo,
                                            Consumer<String> streamTitleListener) {
         cancellation.throwIfCancelled();
         RadioAudioStream decoded = null;

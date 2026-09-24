@@ -11,7 +11,7 @@ final class RadioStatusMessages {
     }
 
     @Nullable
-    static Component forSnapshot(RadioSession.Snapshot snapshot) {
+    static Component forSnapshot(PlaybackSession.Snapshot snapshot) {
         return switch (snapshot.state()) {
             case STOPPED -> null;
             case RESOLVING -> Component.translatable(PREFIX + "status.resolving");

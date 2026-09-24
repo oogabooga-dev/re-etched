@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.stream;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
@@ -66,8 +66,8 @@ class RadioStreamPipelineTest {
 
     @Test
     void resolvesBuffersStripsIcyAndDecodesUsingOneGet() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(this.uri.toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.uri.toString());
         RadioResolvedSource source = this.resolve(attempt);
         RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(source,
                 attempt.cancellation(), this.producers, this.decoders, true,
@@ -87,8 +87,8 @@ class RadioStreamPipelineTest {
 
     @Test
     void identicalUrlsProduceIndependentBuffersAndDecoders() throws Exception {
-        RadioSession.Attempt firstAttempt = new RadioSession().start(this.uri.toString());
-        RadioSession.Attempt secondAttempt = new RadioSession().start(this.uri.toString());
+        PlaybackSession.Attempt firstAttempt = new PlaybackSession().start(this.uri.toString());
+        PlaybackSession.Attempt secondAttempt = new PlaybackSession().start(this.uri.toString());
         RadioStreamPipeline.Preparation first = RadioStreamPipeline.prepare(
                 this.resolve(firstAttempt), firstAttempt.cancellation(), this.producers, this.decoders, true);
         RadioStreamPipeline.Preparation second = RadioStreamPipeline.prepare(
@@ -107,7 +107,7 @@ class RadioStreamPipelineTest {
 
     @Test
     void transferredDecoderOutlivesPreparationLease() throws Exception {
-        RadioSession.Attempt attempt = new RadioSession().start(this.uri.toString());
+        PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
         RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, this.decoders, true);
         RadioAudioStream audio = preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
@@ -122,7 +122,7 @@ class RadioStreamPipelineTest {
 
     @Test
     void rejectsSharedProducerAndDecoderExecutor() throws Exception {
-        RadioSession.Attempt attempt = new RadioSession().start(this.uri.toString());
+        PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
         RadioResolvedSource source = this.resolve(attempt);
         try (source) {
             org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
@@ -135,7 +135,7 @@ class RadioStreamPipelineTest {
     void decoderExecutorRejectionClosesTheBuffer() throws Exception {
         ExecutorService rejecting = Executors.newSingleThreadExecutor();
         rejecting.shutdownNow();
-        RadioSession.Attempt attempt = new RadioSession().start(this.uri.toString());
+        PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
         RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, rejecting, true);
         try (preparation) {
@@ -160,7 +160,7 @@ class RadioStreamPipelineTest {
             }
         });
         assertTrue(occupied.await(2, TimeUnit.SECONDS));
-        RadioSession.Attempt attempt = new RadioSession().start(this.uri.toString());
+        PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
         RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, decoder, true);
         try {
@@ -175,7 +175,7 @@ class RadioStreamPipelineTest {
         }
     }
 
-    private RadioResolvedSource resolve(RadioSession.Attempt attempt) throws Exception {
+    private RadioResolvedSource resolve(PlaybackSession.Attempt attempt) throws Exception {
         RadioNetworkPolicy allowTestServer = ignored -> {
         };
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(Proxy.NO_PROXY,

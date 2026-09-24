@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.net;
 
 import com.sun.net.httpserver.Headers;
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -59,7 +59,7 @@ class RadioHttpTransportImplTest {
                 exchange.close();
             });
 
-            RadioSession.Attempt attempt = attempt();
+            PlaybackSession.Attempt attempt = attempt();
             try (RadioHttpResponse response = transport().execute(
                     RadioHttpRequest.audio(server.uri("/stream#ignored")), attempt.cancellation())) {
                 assertEquals(200, response.statusCode());
@@ -448,8 +448,8 @@ class RadioHttpTransportImplTest {
                 exchange.sendResponseHeaders(200, -1);
                 exchange.close();
             });
-            RadioSession session = new RadioSession();
-            RadioSession.Attempt attempt = session.start("http://radio.example/live");
+            PlaybackSession session = new PlaybackSession();
+            PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
             CompletableFuture<RadioHttpResponse> response = CompletableFuture.supplyAsync(() -> {
                 try {
                     return transport().execute(RadioHttpRequest.audio(server.uri("/blocked")),
@@ -486,8 +486,8 @@ class RadioHttpTransportImplTest {
                     connections.incrementAndGet();
                     return new TrackingConnection();
                 });
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         CompletableFuture<RadioHttpResponse> response = CompletableFuture.supplyAsync(() -> {
             try {
                 return transport.execute(RadioHttpRequest.audio(URI.create("http://radio.example/live")),
@@ -532,8 +532,8 @@ class RadioHttpTransportImplTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 0,
                 (uri, proxy) -> connection);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         CompletableFuture<RadioHttpResponse> response = CompletableFuture.supplyAsync(() -> {
             try {
                 return transport.execute(RadioHttpRequest.audio(URI.create("http://radio.example/live")),
@@ -567,8 +567,8 @@ class RadioHttpTransportImplTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 0,
                 (uri, proxy) -> connection);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         RadioHttpResponse response = transport.execute(
                 RadioHttpRequest.audio(URI.create(attempt.source())), attempt.cancellation());
 
@@ -607,8 +607,8 @@ class RadioHttpTransportImplTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 0,
                 (uri, proxy) -> connection);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         RadioHttpResponse response = transport.execute(
                 RadioHttpRequest.audio(URI.create(attempt.source())), attempt.cancellation());
 
@@ -648,8 +648,8 @@ class RadioHttpTransportImplTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 0,
                 (uri, proxy) -> connection);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         RadioHttpResponse response = transport.execute(
                 RadioHttpRequest.audio(URI.create(attempt.source())), attempt.cancellation());
 
@@ -711,8 +711,8 @@ class RadioHttpTransportImplTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 0,
                 (uri, proxy) -> connection);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         try (RadioHttpResponse response = transport.execute(
                 RadioHttpRequest.audio(URI.create("http://radio.example/live")),
                 attempt.cancellation())) {
@@ -745,8 +745,8 @@ class RadioHttpTransportImplTest {
                 await(release);
                 exchange.close();
             });
-            RadioSession session = new RadioSession();
-            RadioSession.Attempt attempt = session.start("http://radio.example/live");
+            PlaybackSession session = new PlaybackSession();
+            PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
             try (RadioHttpResponse response = transport().execute(
                     RadioHttpRequest.audio(server.uri("/blocked-body")), attempt.cancellation())) {
                 assertTrue(bodyStarted.await(1, TimeUnit.SECONDS));
@@ -783,8 +783,8 @@ class RadioHttpTransportImplTest {
                     usedProxy.set(suppliedProxy);
                     return connection;
                 });
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
 
         URI requested = URI.create("http://radio.example/a%20b%23c?q=x%20y%23z#ignored");
         RadioHttpResponse response = transport.execute(RadioHttpRequest.audio(requested), attempt.cancellation());
@@ -835,8 +835,8 @@ class RadioHttpTransportImplTest {
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 5);
     }
 
-    private static RadioSession.Attempt attempt() {
-        return new RadioSession().start("http://radio.example/live");
+    private static PlaybackSession.Attempt attempt() {
+        return new PlaybackSession().start("http://radio.example/live");
     }
 
     private static void redirect(com.sun.net.httpserver.HttpExchange exchange, String location) throws IOException {

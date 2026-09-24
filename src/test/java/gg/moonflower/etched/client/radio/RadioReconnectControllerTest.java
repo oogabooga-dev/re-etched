@@ -26,9 +26,9 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, clock::get, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
-        List<RadioSession.Attempt> retries = new ArrayList<>();
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
+        List<PlaybackSession.Attempt> retries = new ArrayList<>();
         AtomicInteger stateChanges = new AtomicInteger();
 
         controller.failure(session, attempt,
@@ -54,9 +54,9 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
-        List<RadioSession.Attempt> retries = new ArrayList<>();
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
+        List<PlaybackSession.Attempt> retries = new ArrayList<>();
 
         controller.failure(session, attempt,
                 new gg.moonflower.etched.client.radio.net.RadioTransportException(
@@ -76,8 +76,8 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.failure(session, attempt, new IOException("Invalid frame"), ignored -> {
         }, () -> {
@@ -94,8 +94,8 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, ownerTasks::add, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.failure(session, attempt, new IOException("Invalid frame"), ignored -> {
         }, () -> {
@@ -112,8 +112,8 @@ class RadioReconnectControllerTest {
         scheduler.reject = true;
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.failure(session, attempt,
                 new gg.moonflower.etched.client.radio.net.RadioTransportException(
@@ -133,9 +133,9 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, ownerTasks::add, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
-        List<RadioSession.Attempt> retries = new ArrayList<>();
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
+        List<PlaybackSession.Attempt> retries = new ArrayList<>();
         controller.failure(session, attempt,
                 new gg.moonflower.etched.client.radio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
@@ -157,9 +157,9 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, ownerTasks::add, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt first = session.start("https://radio.example/live");
-        List<RadioSession.Attempt> automatic = new ArrayList<>();
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt first = session.start("https://radio.example/live");
+        List<PlaybackSession.Attempt> automatic = new ArrayList<>();
         controller.failure(session, first,
                 new gg.moonflower.etched.client.radio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
@@ -168,7 +168,7 @@ class RadioReconnectControllerTest {
         ownerTasks.remove().run();
         scheduler.fireRaw(0);
 
-        RadioSession.Attempt manual = session.retry(first.generation()).orElseThrow();
+        PlaybackSession.Attempt manual = session.retry(first.generation()).orElseThrow();
         ownerTasks.remove().run();
 
         assertTrue(automatic.isEmpty());
@@ -181,8 +181,8 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.termination(session, attempt, new gg.moonflower.etched.client.radio.stream.RadioAudioStream.Termination(
                 gg.moonflower.etched.client.radio.stream.RadioAudioStream.TerminalState.EOF, null),
@@ -206,9 +206,9 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, ownerTasks::add, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
-        List<RadioSession.Attempt> retries = new ArrayList<>();
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
+        List<PlaybackSession.Attempt> retries = new ArrayList<>();
         controller.failure(session, attempt,
                 new gg.moonflower.etched.client.radio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
@@ -229,8 +229,8 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.soundEngineStopped(session, attempt, ignored -> {
         }, () -> {
@@ -253,8 +253,8 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.soundEngineStopped(session, attempt, ignored -> {
         }, () -> {
@@ -275,8 +275,8 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("https://radio.example/album");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://radio.example/album");
         session.advance(attempt, RadioPlaybackState.CONNECTING, 0L);
         session.advance(attempt, RadioPlaybackState.BUFFERING, 0L);
         session.advance(attempt, RadioPlaybackState.PLAYING, 0L);
@@ -299,10 +299,10 @@ class RadioReconnectControllerTest {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler, 1);
-        RadioSession first = new RadioSession();
-        RadioSession second = new RadioSession();
-        RadioSession.Attempt firstAttempt = first.start("https://radio.example/first");
-        RadioSession.Attempt secondAttempt = second.start("https://radio.example/second");
+        PlaybackSession first = new PlaybackSession();
+        PlaybackSession second = new PlaybackSession();
+        PlaybackSession.Attempt firstAttempt = first.start("https://radio.example/first");
+        PlaybackSession.Attempt secondAttempt = second.start("https://radio.example/second");
         RadioFailure transientFailure = RadioFailure.recoverable(
                 RadioFailure.Code.CONNECT_TIMEOUT, "Timed out", null);
 

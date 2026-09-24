@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.net;
 
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
@@ -256,8 +256,8 @@ class BandcampRadioSourceResolverTest {
 
     @Test
     void cancellationDuringPageReadClosesTheIntermediateResponse() throws Exception {
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start(ALBUM.toString());
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(ALBUM.toString());
         TrackingConnection page = response(ALBUM, 200, trackHtml(FIRST_MEDIA));
         page.onFirstRead = session::stop;
         RequestRouter router = new RequestRouter().add(ALBUM, page);
@@ -283,7 +283,7 @@ class BandcampRadioSourceResolverTest {
 
     private static RadioResolveContext context(RadioHttpTransport transport, RadioResolveLimits limits) {
         return new RadioResolveContext(transport, ALLOW_ALL,
-                new RadioSession().start(ALBUM.toString()).cancellation(), limits);
+                new PlaybackSession().start(ALBUM.toString()).cancellation(), limits);
     }
 
     private static RadioResolveLimits limits() {

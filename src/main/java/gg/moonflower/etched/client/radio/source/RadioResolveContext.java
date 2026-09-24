@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.net.DefaultRadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransport;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
@@ -11,11 +11,11 @@ import net.minecraft.client.Minecraft;
 import java.util.Objects;
 
 public record RadioResolveContext(RadioHttpTransport transport, RadioNetworkPolicy networkPolicy,
-                                  RadioCancellation cancellation, RadioResolveLimits limits,
+                                  AudioCancellation cancellation, RadioResolveLimits limits,
                                   RadioResolutionBudget budget) {
 
     public RadioResolveContext(RadioHttpTransport transport, RadioNetworkPolicy networkPolicy,
-                               RadioCancellation cancellation, RadioResolveLimits limits) {
+                               AudioCancellation cancellation, RadioResolveLimits limits) {
         this(transport, networkPolicy, cancellation, limits, new RadioResolutionBudget(limits));
     }
 
@@ -27,7 +27,7 @@ public record RadioResolveContext(RadioHttpTransport transport, RadioNetworkPoli
         Objects.requireNonNull(budget, "budget");
     }
 
-    public static RadioResolveContext createDefault(RadioCancellation cancellation) {
+    public static RadioResolveContext createDefault(AudioCancellation cancellation) {
         RadioNetworkPolicy networkPolicy = new DefaultRadioNetworkPolicy(
                 Etched.CLIENT_CONFIG.allowPrivateNetworkStations::get);
         RadioHttpTransport transport = new RadioHttpTransportImpl(

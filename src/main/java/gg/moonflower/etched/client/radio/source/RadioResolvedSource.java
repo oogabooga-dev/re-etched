@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.net.RadioHttpResponse;
 
 import java.io.ByteArrayInputStream;
@@ -27,7 +27,7 @@ public final class RadioResolvedSource implements AutoCloseable {
     private final InputStream body;
 
     RadioResolvedSource(RadioHttpResponse response, Format format, byte[] prefix,
-                        List<URI> stationEndpoints, RadioCancellation cancellation) {
+                        List<URI> stationEndpoints, AudioCancellation cancellation) {
         this.response = Objects.requireNonNull(response, "response");
         this.uri = response.uri();
         this.format = Objects.requireNonNull(format, "format");
@@ -79,10 +79,10 @@ public final class RadioResolvedSource implements AutoCloseable {
 
         private final SequenceInputStream delegate;
         private final RadioHttpResponse response;
-        private final RadioCancellation cancellation;
+        private final AudioCancellation cancellation;
         private volatile boolean closed;
 
-        private ReplayBody(byte[] prefix, RadioHttpResponse response, RadioCancellation cancellation) {
+        private ReplayBody(byte[] prefix, RadioHttpResponse response, AudioCancellation cancellation) {
             this.delegate = new SequenceInputStream(new ByteArrayInputStream(prefix), response.body());
             this.response = response;
             this.cancellation = cancellation;

@@ -97,8 +97,8 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     @Override
     public void start(PlaybackOwnerKey key, PlaybackState state,
-                      RadioSession session,
-                      RadioSession.Attempt attempt, PlaybackBackend.Events events) {
+                      PlaybackSession session,
+                      PlaybackSession.Attempt attempt, PlaybackBackend.Events events) {
         Objects.requireNonNull(state, "state");
         if (!this.supports(key, state)) {
             throw new IllegalArgumentException("The live backend does not support this playback owner or state");
@@ -135,7 +135,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
-    public void stop(PlaybackOwnerKey key, RadioSession session) {
+    public void stop(PlaybackOwnerKey key, PlaybackSession session) {
         ActiveAttempt active;
         synchronized (this.lock) {
             active = this.attempts.get(key);
@@ -151,8 +151,8 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
-    public void abort(PlaybackOwnerKey key, RadioSession session,
-                      RadioSession.Attempt attempt) {
+    public void abort(PlaybackOwnerKey key, PlaybackSession session,
+                      PlaybackSession.Attempt attempt) {
         ActiveAttempt active;
         synchronized (this.lock) {
             active = this.attempts.get(key);
@@ -632,13 +632,13 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     @FunctionalInterface
     interface ContextFactory {
-        RadioResolveContext create(RadioCancellation cancellation);
+        RadioResolveContext create(AudioCancellation cancellation);
     }
 
     private static final class ActiveAttempt {
         private final PlaybackOwnerKey key;
-        private final RadioSession session;
-        private final RadioSession.Attempt attempt;
+        private final PlaybackSession session;
+        private final PlaybackSession.Attempt attempt;
         private final PlaybackBackend.Events events;
         private final RadioResolveContext context;
         private Future<?> worker;
@@ -647,8 +647,8 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private boolean closed;
         private boolean soundOutputAvailable = true;
 
-        private ActiveAttempt(PlaybackOwnerKey key, RadioSession session,
-                              RadioSession.Attempt attempt,
+        private ActiveAttempt(PlaybackOwnerKey key, PlaybackSession session,
+                              PlaybackSession.Attempt attempt,
                               PlaybackBackend.Events events, RadioResolveContext context) {
             this.key = key;
             this.session = session;
@@ -660,7 +660,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     private static final class TrackPlayback {
         private final int index;
-        private final RadioCancellation cancellation = new RadioCancellation();
+        private final AudioCancellation cancellation = new AudioCancellation();
         private Future<?> worker;
         private RadioStreamPipeline.Preparation preparation;
         private RadioAudioStream audio;

@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.net;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.RadioResourceDisposer;
 
@@ -78,7 +78,7 @@ public final class RadioHttpTransportImpl implements RadioHttpTransport {
     }
 
     @Override
-    public RadioHttpResponse execute(RadioHttpRequest request, RadioCancellation cancellation)
+    public RadioHttpResponse execute(RadioHttpRequest request, AudioCancellation cancellation)
             throws RadioTransportException {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(cancellation, "cancellation");
@@ -179,7 +179,7 @@ public final class RadioHttpTransportImpl implements RadioHttpTransport {
     }
 
     private void connect(ActiveExchange exchange, HttpURLConnection connection,
-                         RadioCancellation cancellation)
+                         AudioCancellation cancellation)
             throws RadioTransportException {
         try {
             exchange.connect(connection);
@@ -201,7 +201,7 @@ public final class RadioHttpTransportImpl implements RadioHttpTransport {
         }
     }
 
-    private int responseCode(HttpURLConnection connection, RadioCancellation cancellation)
+    private int responseCode(HttpURLConnection connection, AudioCancellation cancellation)
             throws RadioTransportException {
         try {
             return connection.getResponseCode();
@@ -217,7 +217,7 @@ public final class RadioHttpTransportImpl implements RadioHttpTransport {
     }
 
     private InputStream openBody(HttpURLConnection connection, int statusCode,
-                                 RadioCancellation cancellation) throws RadioTransportException {
+                                 AudioCancellation cancellation) throws RadioTransportException {
         try {
             if (statusCode >= 400) {
                 InputStream error = connection.getErrorStream();

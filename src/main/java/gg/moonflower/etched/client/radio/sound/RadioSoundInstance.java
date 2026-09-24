@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.sound;
 
-import gg.moonflower.etched.client.radio.RadioCancellation;
+import gg.moonflower.etched.client.radio.AudioCancellation;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.radio.RadioResourceDisposer;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
@@ -30,7 +30,7 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
     private final PlaybackOwnerKey.BlockOwner key;
     private final long generation;
     private final RadioAudioStream stream;
-    private final RadioCancellation cancellation;
+    private final AudioCancellation cancellation;
     private final int attenuationDistance;
     private final Runnable streamHandedOff;
     private final Runnable soundStopped;
@@ -40,14 +40,14 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
     private volatile boolean stopRequested;
 
     public RadioSoundInstance(PlaybackOwnerKey.BlockOwner key, long generation, RadioAudioStream stream,
-                               RadioCancellation cancellation, float volume,
+                               AudioCancellation cancellation, float volume,
                                int attenuationDistance, Runnable streamStarted) {
         this(key, generation, stream, cancellation, volume, attenuationDistance, streamStarted, () -> {
         });
     }
 
     public RadioSoundInstance(PlaybackOwnerKey.BlockOwner key, long generation, RadioAudioStream stream,
-                              RadioCancellation cancellation, float volume,
+                              AudioCancellation cancellation, float volume,
                               int attenuationDistance, Runnable streamHandedOff, Runnable soundStopped) {
         super(EVENT, SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         this.key = Objects.requireNonNull(key, "key");

@@ -19,7 +19,7 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
     private final Map<PlaybackOwnerKey.BlockOwner, ActiveEffect> active = new HashMap<>();
 
     @Override
-    public void update(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
+    public void update(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
         Component message = RadioStatusMessages.forSnapshot(snapshot);
         if (message == null) {
             this.stop(key);

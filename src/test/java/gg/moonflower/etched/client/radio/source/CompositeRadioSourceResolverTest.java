@@ -69,7 +69,7 @@ class CompositeRadioSourceResolverTest {
                 (request, cancellation) -> {
                     throw new AssertionError("Transport should not be used by this test");
                 }, uri -> {
-                }, new gg.moonflower.etched.client.radio.RadioCancellation(),
+                }, new gg.moonflower.etched.client.radio.AudioCancellation(),
                 new RadioResolveLimits(4, 64, 2, 32, 1, 4));
     }
 

@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
@@ -56,7 +56,7 @@ class DirectRadioSourceProgramTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 3);
         return new RadioResolveContext(transport, ALLOW_TEST_SERVER,
-                new RadioSession().start("http://radio.example/live").cancellation(),
+                new PlaybackSession().start("http://radio.example/live").cancellation(),
                 new RadioResolveLimits(4, 128, 4, 64, 1, maxSteps));
     }
 

@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.source;
 
 import com.sun.net.httpserver.Headers;
 import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
@@ -132,10 +132,10 @@ class DirectRadioSourceResolverTest {
             DirectRadioSourceResolver resolver = resolver();
             RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                     Proxy.NO_PROXY, ALLOW_TEST_SERVER, TEST_TIMEOUT, TEST_TIMEOUT, 5);
-            RadioSession firstSession = new RadioSession();
-            RadioSession secondSession = new RadioSession();
-            RadioSession.Attempt firstAttempt = firstSession.start(server.uri("/live").toString());
-            RadioSession.Attempt secondAttempt = secondSession.start(server.uri("/live").toString());
+            PlaybackSession firstSession = new PlaybackSession();
+            PlaybackSession secondSession = new PlaybackSession();
+            PlaybackSession.Attempt firstAttempt = firstSession.start(server.uri("/live").toString());
+            PlaybackSession.Attempt secondAttempt = secondSession.start(server.uri("/live").toString());
             RadioResolveContext firstContext = new RadioResolveContext(
                     transport, ALLOW_TEST_SERVER, firstAttempt.cancellation(), limits());
             RadioResolveContext secondContext = new RadioResolveContext(
@@ -572,8 +572,8 @@ class DirectRadioSourceResolverTest {
     void cancellationWhileReadingAPlaylistStopsResolution() throws Exception {
         CountDownLatch bodyStarted = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        RadioSession session = new RadioSession();
-        RadioSession.Attempt attempt = session.start("http://radio.example/live");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("http://radio.example/live");
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/blocked.m3u", exchange -> {
                 exchange.sendResponseHeaders(200, 0);
@@ -620,7 +620,7 @@ class DirectRadioSourceResolverTest {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, policy, TEST_TIMEOUT, TEST_TIMEOUT, 5);
         return new RadioResolveContext(transport, policy,
-                new RadioSession().start("http://radio.example/live").cancellation(), limits);
+                new PlaybackSession().start("http://radio.example/live").cancellation(), limits);
     }
 
     private static RadioResolveLimits limits() {
