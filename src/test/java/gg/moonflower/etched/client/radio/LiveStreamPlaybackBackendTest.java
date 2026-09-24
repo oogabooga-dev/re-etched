@@ -5,12 +5,12 @@ import com.sun.net.httpserver.HttpServer;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
+import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
-import gg.moonflower.etched.client.radio.source.RadioSourceProgramResolver;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
@@ -268,7 +268,7 @@ class LiveStreamPlaybackBackendTest {
         CountDownLatch release = new CountDownLatch(1);
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
-        RadioSourceProgramResolver blocking = new RadioSourceProgramResolver() {
+        AudioSourceResolver blocking = new AudioSourceResolver() {
             @Override
             public boolean supports(URI input) {
                 return true;
@@ -498,7 +498,7 @@ class LiveStreamPlaybackBackendTest {
     @Test
     void malformedSourceIsReportedAsInvalidUrl() throws Exception {
         AtomicInteger resolverCalls = new AtomicInteger();
-        RadioSourceProgramResolver resolver = new RadioSourceProgramResolver() {
+        AudioSourceResolver resolver = new AudioSourceResolver() {
             @Override
             public boolean supports(URI input) {
                 return true;
@@ -620,7 +620,7 @@ class LiveStreamPlaybackBackendTest {
         driver.shutdown();
     }
 
-    private LiveStreamPlaybackBackend driver(RadioSourceProgramResolver resolver,
+    private LiveStreamPlaybackBackend driver(AudioSourceResolver resolver,
                                              FakeSoundOutput sounds) {
         RadioNetworkPolicy allowTestServer = ignored -> {
         };
@@ -642,8 +642,8 @@ class LiveStreamPlaybackBackendTest {
                 context -> new DirectRadioSourceResolver().resolve(uri, context));
     }
 
-    private static RadioSourceProgramResolver fixed(RadioSourceProgram program) {
-        return new RadioSourceProgramResolver() {
+    private static AudioSourceResolver fixed(RadioSourceProgram program) {
+        return new AudioSourceResolver() {
             @Override
             public boolean supports(URI input) {
                 return true;

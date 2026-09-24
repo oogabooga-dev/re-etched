@@ -31,7 +31,7 @@ import java.util.concurrent.FutureTask;
 /**
  * A single-request HTTP transport with explicit redirects and connection ownership.
  */
-public final class RadioHttpTransportImpl implements RadioHttpTransport {
+public final class RadioHttpTransportImpl implements AudioHttpTransport {
 
     public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(15);

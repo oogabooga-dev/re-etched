@@ -23,7 +23,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Resolves Bandcamp track and album pages into finite radio programs. */
-public final class BandcampRadioSourceResolver implements RadioSourceProgramResolver {
+public final class BandcampRadioSourceResolver implements AudioSourceResolver {
 
     private static final Pattern TRALBUM_DATA = Pattern.compile(
             "(?is)\\bdata-tralbum\\s*=\\s*([\"'])(.*?)\\1");

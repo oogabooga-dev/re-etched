@@ -2,6 +2,7 @@ package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.sound.MinecraftSoundEngineSink;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
+import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
 import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.CompositeRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
@@ -9,7 +10,6 @@ import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
-import gg.moonflower.etched.client.radio.source.RadioSourceProgramResolver;
 import gg.moonflower.etched.client.radio.source.SoundCloudRadioSourceResolver;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import gg.moonflower.etched.client.radio.stream.RadioStreamPipeline;
@@ -47,7 +47,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     private final Object lock = new Object();
     private final Map<PlaybackOwnerKey, ActiveAttempt> attempts = new HashMap<>();
     private final Map<PlaybackOwnerKey, Integer> serviceCursors = new HashMap<>();
-    private final RadioSourceProgramResolver resolver;
+    private final AudioSourceResolver resolver;
     private final ContextFactory contexts;
     private final ExecutorService resolverExecutor;
     private final ExecutorService producerExecutor;
@@ -71,7 +71,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                 () -> Etched.CLIENT_CONFIG.forceStereo.get());
     }
 
-    LiveStreamPlaybackBackend(RadioSourceProgramResolver resolver, ContextFactory contexts,
+    LiveStreamPlaybackBackend(AudioSourceResolver resolver, ContextFactory contexts,
                               ExecutorService resolverExecutor, ExecutorService producerExecutor,
                               ExecutorService decoderExecutor, Executor ownerExecutor,
                               SoundEngineSink sounds, BooleanSupplier forceStereo) {

@@ -2,8 +2,11 @@ package gg.moonflower.etched.client.radio.source;
 
 import java.net.URI;
 
-/** Resolves a station or an ordered service album without opening shared audio streams. */
-public interface RadioSourceProgramResolver {
+/**
+ * Resolves a remote station or ordered service album. Each track opens its own
+ * stream through the supplied context when requested for playback.
+ */
+public interface AudioSourceResolver {
 
     boolean supports(URI input);
 

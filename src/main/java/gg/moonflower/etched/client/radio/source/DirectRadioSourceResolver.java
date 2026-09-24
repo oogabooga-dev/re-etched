@@ -16,7 +16,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
-public final class DirectRadioSourceResolver implements RadioSourceProgramResolver {
+public final class DirectRadioSourceResolver implements AudioSourceResolver {
 
     private static final int MINIMUM_SNIFF_BYTES = 4;
 
