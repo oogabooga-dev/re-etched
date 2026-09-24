@@ -16,10 +16,10 @@ import java.util.Objects;
 /** Keeps radio overlays and nearby-record state aligned with actual playback. */
 final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
 
-    private final Map<RadioKey, ActiveEffect> active = new HashMap<>();
+    private final Map<PlaybackOwnerKey.BlockOwner, ActiveEffect> active = new HashMap<>();
 
     @Override
-    public void update(RadioKey key, RadioSession.Snapshot snapshot) {
+    public void update(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
         Component message = RadioStatusMessages.forSnapshot(snapshot);
         if (message == null) {
             this.stop(key);
@@ -60,7 +60,7 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
     }
 
     @Override
-    public void stop(RadioKey key) {
+    public void stop(PlaybackOwnerKey.BlockOwner key) {
         ActiveEffect effect = this.active.remove(key);
         if (effect == null) {
             return;
@@ -75,7 +75,7 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
     }
 
     @Nullable
-    private Component showOverlay(RadioKey key, Component message, boolean playing) {
+    private Component showOverlay(PlaybackOwnerKey.BlockOwner key, Component message, boolean playing) {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = getLevel(key);
         if (level == null || playing && !level.getBlockState(key.pos().above()).isAir()
@@ -89,11 +89,11 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
     }
 
     private void refreshActiveNearbyState() {
-        for (Map.Entry<RadioKey, ActiveEffect> entry : this.active.entrySet()) {
+        for (Map.Entry<PlaybackOwnerKey.BlockOwner, ActiveEffect> entry : this.active.entrySet()) {
             if (!entry.getValue().playing) {
                 continue;
             }
-            RadioKey activeKey = entry.getKey();
+            PlaybackOwnerKey.BlockOwner activeKey = entry.getKey();
             ClientLevel level = getLevel(activeKey);
             if (level == null) {
                 continue;
@@ -102,7 +102,7 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
         }
     }
 
-    private void setRecordPlayingNearby(ClientLevel level, RadioKey key, boolean playing) {
+    private void setRecordPlayingNearby(ClientLevel level, PlaybackOwnerKey.BlockOwner key, boolean playing) {
         for (LivingEntity living : level.getEntitiesOfClass(
                 LivingEntity.class, new AABB(key.pos()).inflate(3.45))) {
             living.setRecordPlayingNearby(key.pos(), playing);
@@ -121,7 +121,7 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
     }
 
     @Nullable
-    private static ClientLevel getLevel(RadioKey key) {
+    private static ClientLevel getLevel(PlaybackOwnerKey.BlockOwner key) {
         ClientLevel level = Minecraft.getInstance().level;
         return level != null && level.dimension().equals(key.dimension()) ? level : null;
     }

@@ -5,15 +5,15 @@ interface RadioPlaybackEffects {
 
     RadioPlaybackEffects NOOP = new RadioPlaybackEffects() {
         @Override
-        public void update(RadioKey key, RadioSession.Snapshot snapshot) {
+        public void update(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
         }
 
         @Override
-        public void stop(RadioKey key) {
+        public void stop(PlaybackOwnerKey.BlockOwner key) {
         }
     };
 
-    void update(RadioKey key, RadioSession.Snapshot snapshot);
+    void update(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot);
 
-    void stop(RadioKey key);
+    void stop(PlaybackOwnerKey.BlockOwner key);
 }

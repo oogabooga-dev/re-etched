@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.sound;
 
 import gg.moonflower.etched.client.radio.RadioCancellation;
-import gg.moonflower.etched.client.radio.RadioKey;
+import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.radio.RadioResourceDisposer;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import gg.moonflower.etched.api.sound.SoundStopListener;
@@ -27,7 +27,7 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
     private static final ResourceLocation LOCATION = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "radio_stream");
     private static final SoundEvent EVENT = SoundEvent.createVariableRangeEvent(LOCATION);
 
-    private final RadioKey key;
+    private final PlaybackOwnerKey.BlockOwner key;
     private final long generation;
     private final RadioAudioStream stream;
     private final RadioCancellation cancellation;
@@ -39,14 +39,14 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
     private boolean stopReported;
     private volatile boolean stopRequested;
 
-    public RadioSoundInstance(RadioKey key, long generation, RadioAudioStream stream,
+    public RadioSoundInstance(PlaybackOwnerKey.BlockOwner key, long generation, RadioAudioStream stream,
                                RadioCancellation cancellation, float volume,
                                int attenuationDistance, Runnable streamStarted) {
         this(key, generation, stream, cancellation, volume, attenuationDistance, streamStarted, () -> {
         });
     }
 
-    public RadioSoundInstance(RadioKey key, long generation, RadioAudioStream stream,
+    public RadioSoundInstance(PlaybackOwnerKey.BlockOwner key, long generation, RadioAudioStream stream,
                               RadioCancellation cancellation, float volume,
                               int attenuationDistance, Runnable streamHandedOff, Runnable soundStopped) {
         super(EVENT, SoundSource.RECORDS, SoundInstance.createUnseededRandom());
@@ -73,7 +73,7 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
         cancellation.onCancel(this::requestStop);
     }
 
-    public RadioKey key() {
+    public PlaybackOwnerKey.BlockOwner key() {
         return this.key;
     }
 

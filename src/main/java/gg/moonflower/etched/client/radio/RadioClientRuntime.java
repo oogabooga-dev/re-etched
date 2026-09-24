@@ -29,7 +29,7 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
     private final RadioStationHistory history;
     private final RadioHistoryStorage storage;
     private final Supplier<Optional<String>> contextSupplier;
-    private final Map<RadioKey, PendingStation> pendingStations = new HashMap<>();
+    private final Map<PlaybackOwnerKey.BlockOwner, PendingStation> pendingStations = new HashMap<>();
     private boolean initialized;
     private Optional<String> currentContext;
 
@@ -73,17 +73,17 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
 
     public synchronized void expectStation(ResourceKey<Level> dimension, BlockPos pos, String url) {
         this.currentContextKey().ifPresent(context -> this.pendingStations.put(
-                new RadioKey(dimension, pos), new PendingStation(context, url,
+                PlaybackOwnerKey.block(dimension, pos), new PendingStation(context, url,
                         System.nanoTime() + PENDING_TIMEOUT_NANOS)));
     }
 
     public synchronized void cancelExpectedStation(ResourceKey<Level> dimension, BlockPos pos) {
-        this.pendingStations.remove(new RadioKey(dimension, pos));
+        this.pendingStations.remove(PlaybackOwnerKey.block(dimension, pos));
     }
 
     @Override
     public void update(ResourceKey<Level> dimension, BlockPos pos, RadioConfiguration configuration) {
-        RadioKey key = new RadioKey(dimension, pos);
+        PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(dimension, pos);
         PendingStation confirmed = null;
         synchronized (this) {
             PendingStation pending = this.pendingStations.get(key);
@@ -104,7 +104,7 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
     @Override
     public void remove(ResourceKey<Level> dimension, BlockPos pos) {
         synchronized (this) {
-            this.pendingStations.remove(new RadioKey(dimension, pos));
+            this.pendingStations.remove(PlaybackOwnerKey.block(dimension, pos));
         }
         this.playback.remove(dimension, pos);
     }
@@ -112,9 +112,10 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
     @Override
     public void tick(ResourceKey<Level> dimension, BlockPos pos, RadioConfiguration configuration) {
         synchronized (this) {
-            PendingStation pending = this.pendingStations.get(new RadioKey(dimension, pos));
+            PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(dimension, pos);
+            PendingStation pending = this.pendingStations.get(key);
             if (pending != null && pending.expired()) {
-                this.pendingStations.remove(new RadioKey(dimension, pos));
+                this.pendingStations.remove(key);
             }
         }
         this.playback.tick(dimension, pos, configuration);

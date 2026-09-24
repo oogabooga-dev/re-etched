@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.sound;
 
-import gg.moonflower.etched.client.radio.RadioKey;
+import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.client.radio.RadioSession;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
@@ -89,7 +89,7 @@ class RadioSoundInstanceTest {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
         RadioSoundInstance sound = new RadioSoundInstance(
-                new RadioKey(dimension, BlockPos.ZERO), attempt.generation(), stream,
+                PlaybackOwnerKey.block(dimension, BlockPos.ZERO), attempt.generation(), stream,
                 attempt.cancellation(), 4.0F, 8, () -> {
             throw new IllegalStateException("handoff failed");
         });
@@ -125,7 +125,7 @@ class RadioSoundInstanceTest {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
         RadioSoundInstance sound = new RadioSoundInstance(
-                new RadioKey(dimension, BlockPos.ZERO), attempt.generation(), new FakeAudioStream(),
+                PlaybackOwnerKey.block(dimension, BlockPos.ZERO), attempt.generation(), new FakeAudioStream(),
                 attempt.cancellation(), 4.0F, 8, () -> {
         }, stopped::incrementAndGet);
 
@@ -139,7 +139,7 @@ class RadioSoundInstanceTest {
                                              AtomicInteger started) {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
-        return new RadioSoundInstance(new RadioKey(dimension, new BlockPos(2, 3, 4)),
+        return new RadioSoundInstance(PlaybackOwnerKey.block(dimension, new BlockPos(2, 3, 4)),
                 attempt.generation(), stream, attempt.cancellation(), 4.0F, 8,
                 started::incrementAndGet);
     }
