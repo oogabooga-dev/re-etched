@@ -1,8 +1,9 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.client.radio.PlaybackOwnerKey.BlockOwner;
-import gg.moonflower.etched.common.radio.RadioConfiguration;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.PlaybackState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -13,7 +14,9 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -23,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RadioPlaybackManagerTest {
+class AudioPlaybackManagerTest {
 
     private static final RadioReconnectPolicy NO_JITTER = new RadioReconnectPolicy(
             new long[]{1_000L, 2_000L, 5_000L, 10_000L, 20_000L, 30_000L},
@@ -35,22 +38,22 @@ class RadioPlaybackManagerTest {
 
     private static final ResourceKey<Level> FIRST_DIMENSION = dimension("first");
     private static final ResourceKey<Level> SECOND_DIMENSION = dimension("second");
-    private static final RadioConfiguration ENABLED =
-            configuration(1L, "https://radio.example/live", false);
+    private static final String LIVE_SOURCE = "https://radio.example/live";
+    private static final PlaybackState ENABLED = liveState(1L, LIVE_SOURCE, true);
 
     @Test
-    void deduplicatesConfigurationAndAppliesMeaningfulChanges() {
+    void deduplicatesStateAndAppliesMeaningfulChanges() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, new BlockPos(1, 2, 3));
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, new BlockPos(1, 2, 3));
 
         assertTrue(manager.update(key, ENABLED));
         assertFalse(manager.update(key, ENABLED));
-        RadioConfiguration powered = configuration(2L, ENABLED.url(), true);
-        assertTrue(manager.update(key, powered));
+        PlaybackState stopped = liveState(2L, LIVE_SOURCE, false);
+        assertTrue(manager.update(key, stopped));
 
         assertEquals(2, driver.applied.size());
-        assertEquals(powered, manager.getConfiguration(key).orElseThrow());
+        assertEquals(stopped, manager.getPlaybackState(key).orElseThrow());
         assertEquals(RadioPlaybackState.STOPPED,
                 manager.getSessionSnapshot(key).orElseThrow().state());
     }
@@ -58,65 +61,83 @@ class RadioPlaybackManagerTest {
     @Test
     void rejectsStaleAndConflictingRevisions() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        RadioConfiguration current = configuration(10L, "https://radio.example/current", false);
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackState current = liveState(10L, "https://radio.example/current", true);
 
         assertTrue(manager.update(key, current));
-        assertFalse(manager.update(key, configuration(9L, "https://radio.example/stale", false)));
-        assertFalse(manager.update(key, configuration(10L, "https://radio.example/conflict", false)));
+        assertFalse(manager.update(key, liveState(9L, "https://radio.example/stale", true)));
+        assertFalse(manager.update(key, liveState(10L, "https://radio.example/conflict", true)));
 
-        assertEquals(current, manager.getConfiguration(key).orElseThrow());
+        assertEquals(current, manager.getPlaybackState(key).orElseThrow());
         assertEquals(1, driver.applied.size());
     }
 
     @Test
     void acceptsRevisionAfterLongWrap() {
-        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver());
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver());
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
-        assertTrue(manager.update(key, configuration(
-                Long.MAX_VALUE, "https://radio.example/before-wrap", false)));
-        assertTrue(manager.update(key, configuration(
-                Long.MIN_VALUE, "https://radio.example/after-wrap", false)));
+        assertTrue(manager.update(key, liveState(
+                Long.MAX_VALUE, "https://radio.example/before-wrap", true)));
+        assertTrue(manager.update(key, liveState(
+                Long.MIN_VALUE, "https://radio.example/after-wrap", true)));
 
-        assertEquals(Long.MIN_VALUE, manager.getConfiguration(key).orElseThrow().revision());
+        assertEquals(Long.MIN_VALUE, manager.getPlaybackState(key).orElseThrow().revision());
     }
 
     @Test
-    void removesRadiosIdempotently() {
+    void removesPlaybackIdempotently() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
 
         assertTrue(manager.remove(key));
         assertFalse(manager.remove(key));
 
         assertEquals(List.of(key), driver.stopped);
-        assertTrue(manager.getConfiguration(key).isEmpty());
+        assertTrue(manager.getPlaybackState(key).isEmpty());
     }
 
     @Test
     void keepsEqualPositionsInDifferentDimensionsIndependent() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(SECOND_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(SECOND_DIMENSION, BlockPos.ZERO);
 
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
         manager.remove(first);
 
-        assertTrue(manager.getConfiguration(first).isEmpty());
-        assertEquals(ENABLED, manager.getConfiguration(second).orElseThrow());
+        assertTrue(manager.getPlaybackState(first).isEmpty());
+        assertEquals(ENABLED, manager.getPlaybackState(second).orElseThrow());
     }
 
     @Test
-    void tickSelfHealsMissedUpdatesWithoutRestartingKnownRadio() {
+    void keepsBlockAndEntityOwnersIndependent() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey block = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey entity = PlaybackOwnerKey.entity(FIRST_DIMENSION,
+                UUID.fromString("d860f8b6-c8e7-4c4d-9d5e-cf7503845df4"));
+
+        assertTrue(manager.update(block, ENABLED));
+        assertTrue(manager.update(entity, ENABLED));
+        assertTrue(manager.remove(block));
+
+        assertTrue(manager.getPlaybackState(block).isEmpty());
+        assertEquals(ENABLED, manager.getPlaybackState(entity).orElseThrow());
+        assertEquals(List.of(block), driver.stopped);
+        assertTrue(manager.isPlaying(entity));
+    }
+
+    @Test
+    void tickSelfHealsMissedUpdatesWithoutRestartingKnownPlayback() {
+        RecordingDriver driver = new RecordingDriver();
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.tick(key, ENABLED);
         manager.tick(key, ENABLED);
@@ -128,22 +149,22 @@ class RadioPlaybackManagerTest {
     @Test
     void fallbackTickUsesAcceptedStateAfterStaleUpdate() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        RadioConfiguration current = configuration(2L, "https://radio.example/current", false);
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackState current = liveState(2L, "https://radio.example/current", true);
 
         manager.update(key, current);
-        manager.tick(key, configuration(1L, "https://radio.example/stale", false));
+        manager.tick(key, liveState(1L, "https://radio.example/stale", true));
 
-        assertEquals(current, driver.tickedConfigurations.get(0).configuration());
+        assertEquals(current, driver.tickedStates.get(0).state());
     }
 
     @Test
-    void reportsActualDriverStateOnlyForTrackedRadios() {
+    void reportsActualDriverStateOnlyForTrackedPlayback() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner tracked = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner missing = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey tracked = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey missing = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(tracked, ENABLED);
 
         assertTrue(manager.isPlaying(tracked));
@@ -152,11 +173,11 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void clearStopsEveryRadioAndIsIdempotent() {
+    void clearStopsEveryPlaybackAndIsIdempotent() {
         RecordingDriver driver = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(driver);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        AudioPlaybackManager manager = new AudioPlaybackManager(driver);
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
 
@@ -165,29 +186,29 @@ class RadioPlaybackManagerTest {
 
         assertEquals(Set.of(first, second), new HashSet<>(driver.stopped));
         assertEquals(2, driver.stopped.size());
-        assertTrue(manager.getConfiguration(first).isEmpty());
-        assertTrue(manager.getConfiguration(second).isEmpty());
+        assertTrue(manager.getPlaybackState(first).isEmpty());
+        assertTrue(manager.getPlaybackState(second).isEmpty());
     }
 
     @Test
-    void replacementAndRedstoneCancelThePreviousGeneration() {
+    void replacementAndDisableCancelThePreviousGeneration() {
         RecordingDriver playback = new RecordingDriver();
         RecordingSessionDriver sessions = new RecordingSessionDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(playback, sessions);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(playback, sessions);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.update(key, ENABLED);
         StartedSession first = sessions.started.get(0);
         assertFalse(manager.update(key, ENABLED));
         assertFalse(first.attempt().cancellation().isCancelled());
-        manager.update(key, configuration(2L, "https://radio.example/new", false));
+        manager.update(key, liveState(2L, "https://radio.example/new", true));
         StartedSession second = sessions.started.get(1);
 
         assertTrue(first.attempt().cancellation().isCancelled());
         assertFalse(first.session().advance(first.attempt().generation(), RadioPlaybackState.CONNECTING));
         assertFalse(second.attempt().cancellation().isCancelled());
 
-        manager.update(key, configuration(3L, second.configuration().url(), true));
+        manager.update(key, liveState(3L, source(second.state()), false));
 
         assertTrue(second.attempt().cancellation().isCancelled());
         assertEquals(2, sessions.started.size());
@@ -196,26 +217,26 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void repeatedUrlAndRedstoneChurnNeverOverlapsBackendOwnership() {
+    void repeatedSourceAndEnabledStateChurnNeverOverlapsBackendOwnership() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 4, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.update(key, ENABLED);
         long revision = ENABLED.revision();
         for (int i = 0; i < 100; i++) {
-            String url = "https://radio.example/live/" + i;
+            String source = "https://radio.example/live/" + i;
             StartedSession previous = sessions.started.get(sessions.started.size() - 1);
-            manager.update(key, configuration(++revision, url, false));
+            manager.update(key, liveState(++revision, source, true));
             assertTrue(previous.attempt().cancellation().isCancelled());
             StartedSession started = sessions.started.get(sessions.started.size() - 1);
-            manager.update(key, configuration(++revision, url, true));
+            manager.update(key, liveState(++revision, source, false));
             assertTrue(started.attempt().cancellation().isCancelled());
-            manager.update(key, configuration(++revision, url, false));
+            manager.update(key, liveState(++revision, source, true));
         }
         manager.remove(key);
 
@@ -228,20 +249,20 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void replacingQueuedRadioStartsOnlyItsLatestConfiguration() {
+    void replacingQueuedPlaybackStartsOnlyItsLatestState() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 1, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner incumbent = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner queued = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        PlaybackOwnerKey incumbent = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey queued = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(incumbent, ENABLED);
 
         for (int i = 0; i < 50; i++) {
-            manager.update(queued, configuration(
-                    i + 1L, "https://radio.example/queued/" + i, false));
+            manager.update(queued, liveState(
+                    i + 1L, "https://radio.example/queued/" + i, true));
             assertEquals(1, connections.queuedCount());
         }
         manager.remove(incumbent);
@@ -254,24 +275,58 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void startsOnlyWhenAuthoritativeStateHasAnEnabledStation() {
+    void startsOnlyWhenAuthoritativeStateHasAnEnabledLiveProgram() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver(), sessions);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
-        manager.update(key, RadioConfiguration.empty(1L, false));
-        manager.update(key, configuration(2L, "https://radio.example/live", false));
+        manager.update(key, new PlaybackState(1L, Optional.empty(), false));
+        manager.update(key, liveState(2L, "https://radio.example/live", true));
 
         assertEquals(1, sessions.started.size());
         assertEquals("https://radio.example/live", sessions.started.get(0).attempt().source());
     }
 
     @Test
+    void tracksEnabledFiniteStateWithoutSendingItToTheLiveBackend() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackState finite = finiteState(1L, true);
+
+        assertTrue(manager.update(key, finite));
+
+        assertEquals(finite, manager.getPlaybackState(key).orElseThrow());
+        assertEquals(RadioPlaybackState.STOPPED,
+                manager.getSessionSnapshot(key).orElseThrow().state());
+        assertTrue(sessions.started.isEmpty());
+    }
+
+    @Test
+    void replacingLivePlaybackWithUnsupportedStateReleasesItsBackendAndEffects() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        RecordingEffects effects = new RecordingEffects();
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions, effects);
+        PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+
+        manager.update(key, ENABLED);
+        StartedSession live = sessions.started.get(0);
+        PlaybackState finite = finiteState(2L, true);
+        manager.update(key, finite);
+
+        assertTrue(live.attempt().cancellation().isCancelled());
+        assertEquals(List.of(key), sessions.stopped);
+        assertEquals(List.of(key), effects.stopped);
+        assertEquals(finite, manager.getPlaybackState(key).orElseThrow());
+        assertEquals(1, sessions.started.size());
+    }
+
+    @Test
     void removeAndClearCancelEveryOwnedSession() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver(), sessions);
-        BlockOwner firstKey = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner secondKey = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions);
+        PlaybackOwnerKey firstKey = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey secondKey = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(firstKey, ENABLED);
         manager.update(secondKey, ENABLED);
         StartedSession first = sessions.started.get(0);
@@ -290,8 +345,8 @@ class RadioPlaybackManagerTest {
         RecordingDriver playback = new RecordingDriver();
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RecordingEffects effects = new RecordingEffects();
-        RadioPlaybackManager manager = new RadioPlaybackManager(playback, sessions, effects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(playback, sessions, effects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.update(key, ENABLED);
         StartedSession started = sessions.started.get(0);
@@ -318,8 +373,8 @@ class RadioPlaybackManagerTest {
     void drainsMetadataToEffectsAndRejectsDetachedSessionUpdates() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RecordingEffects effects = new RecordingEffects();
-        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver(), sessions, effects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions, effects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.update(key, ENABLED);
         StartedSession first = sessions.started.get(0);
@@ -338,12 +393,12 @@ class RadioPlaybackManagerTest {
         assertEquals(RadioPlaybackState.PLAYING, playing.snapshot().state());
         assertEquals("Current title", playing.snapshot().streamTitle());
 
-        manager.update(key, configuration(2L, "https://radio.example/replacement", false));
+        manager.update(key, liveState(2L, "https://radio.example/replacement", true));
         StartedSession second = sessions.started.get(1);
         assertEquals(first.attempt().generation(), second.attempt().generation());
         assertFalse(first.session().offerStreamTitle(first.attempt(), "Stale title"));
         assertFalse(second.session().offerStreamTitle(first.attempt(), "Stale title"));
-        manager.tick(key, second.configuration());
+        manager.tick(key, second.state());
         assertNull(manager.getSessionSnapshot(key).orElseThrow().streamTitle());
     }
 
@@ -352,14 +407,14 @@ class RadioPlaybackManagerTest {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         sessions.throwOnStart = true;
         RecordingEffects effects = new RecordingEffects();
-        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver(), sessions, effects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions, effects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         assertTrue(manager.update(key, ENABLED));
 
         assertEquals(RadioPlaybackState.FAILED,
                 manager.getSessionSnapshot(key).orElseThrow().state());
-        assertEquals(ENABLED, manager.getConfiguration(key).orElseThrow());
+        assertEquals(ENABLED, manager.getPlaybackState(key).orElseThrow());
         assertEquals(List.of(key), sessions.aborted);
         sessions.throwOnStart = false;
         assertTrue(manager.retry(key));
@@ -367,12 +422,12 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void stopFailureCannotOrphanEffectsOrOtherRadiosDuringClear() {
+    void stopFailureCannotOrphanEffectsOrOtherPlaybackDuringClear() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RecordingEffects effects = new RecordingEffects();
-        RadioPlaybackManager manager = new RadioPlaybackManager(new RecordingDriver(), sessions, effects);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions, effects);
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
         sessions.throwOnStop = true;
@@ -380,8 +435,8 @@ class RadioPlaybackManagerTest {
         assertThrows(IllegalStateException.class, manager::clearAll);
 
         assertEquals(Set.of(first, second), new HashSet<>(effects.stopped));
-        assertTrue(manager.getConfiguration(first).isEmpty());
-        assertTrue(manager.getConfiguration(second).isEmpty());
+        assertTrue(manager.getPlaybackState(first).isEmpty());
+        assertTrue(manager.getPlaybackState(second).isEmpty());
     }
 
     @Test
@@ -393,9 +448,9 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, clock::get, Runnable::run, scheduler);
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 1, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, effects, reconnects, connections);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
         StartedSession first = sessions.started.get(0);
 
@@ -419,14 +474,14 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void explicitRetryRestartsTheSameFailedConfigurationAndResetsBackoff() {
+    void explicitRetryRestartsTheSameFailedStateAndResetsBackoff() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         ManualRetryScheduler scheduler = new ManualRetryScheduler();
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
         StartedSession first = sessions.started.get(0);
         first.events().failure(new java.io.IOException("Invalid audio"));
@@ -436,7 +491,7 @@ class RadioPlaybackManagerTest {
         assertTrue(manager.retry(key));
 
         assertEquals(2, sessions.started.size());
-        assertEquals(first.configuration(), sessions.started.get(1).configuration());
+        assertEquals(first.state(), sessions.started.get(1).state());
         assertEquals(1, manager.getSessionSnapshot(key).orElseThrow().attemptNumber());
         assertFalse(manager.retry(key));
     }
@@ -448,10 +503,10 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, retryScheduler);
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
 
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
@@ -477,12 +532,12 @@ class RadioPlaybackManagerTest {
         ManualRetryScheduler scheduler = new ManualRetryScheduler();
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, effects, reconnects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
         StartedSession detached = sessions.started.get(0);
-        RadioConfiguration replacement = configuration(2L, "https://radio.example/new", false);
+        PlaybackState replacement = liveState(2L, "https://radio.example/new", true);
         manager.update(key, replacement);
         StartedSession current = sessions.started.get(1);
         int updates = effects.updated.size();
@@ -508,9 +563,9 @@ class RadioPlaybackManagerTest {
         ManualRetryScheduler scheduler = new ManualRetryScheduler();
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
         sessions.started.get(0).events().failure(new RadioTransportException(
                 RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null));
@@ -519,7 +574,7 @@ class RadioPlaybackManagerTest {
 
         assertTrue(scheduler.closed);
         assertTrue(scheduler.tasks.get(0).cancelled);
-        assertTrue(manager.getConfiguration(key).isEmpty());
+        assertTrue(manager.getPlaybackState(key).isEmpty());
         assertTrue(sessions.shutdown);
     }
 
@@ -529,10 +584,10 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 1, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
         StartedSession started = sessions.started.get(0);
@@ -554,10 +609,10 @@ class RadioPlaybackManagerTest {
     }
 
     @Test
-    void shutdownRejectsLateLegacyUpdatesAndTicks() {
+    void shutdownRejectsLateUpdatesAndTicks() {
         RecordingDriver playback = new RecordingDriver();
-        RadioPlaybackManager manager = new RadioPlaybackManager(playback);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        AudioPlaybackManager manager = new AudioPlaybackManager(playback);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.shutdown();
 
@@ -565,7 +620,7 @@ class RadioPlaybackManagerTest {
         manager.tick(key, ENABLED);
         assertTrue(playback.applied.isEmpty());
         assertTrue(playback.ticked.isEmpty());
-        assertTrue(manager.getConfiguration(key).isEmpty());
+        assertTrue(manager.getPlaybackState(key).isEmpty());
     }
 
     @Test
@@ -574,10 +629,10 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 1, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
 
@@ -595,10 +650,10 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
 
         manager.update(first, ENABLED);
         sessions.throwOnStart = false;
@@ -618,9 +673,9 @@ class RadioPlaybackManagerTest {
         ManualRetryScheduler scheduler = new ManualRetryScheduler();
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
 
         manager.update(key, ENABLED);
 
@@ -641,10 +696,10 @@ class RadioPlaybackManagerTest {
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         AtomicIntegerExecutor owner = new AtomicIntegerExecutor();
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 1, owner);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
-        BlockOwner second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
         manager.update(first, ENABLED);
         manager.update(second, ENABLED);
         owner.reject = true;
@@ -663,9 +718,9 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, new ManualRetryScheduler());
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
 
         sessions.started.get(0).events().ownerUnavailable(
@@ -686,9 +741,9 @@ class RadioPlaybackManagerTest {
         RadioReconnectController reconnects = new RadioReconnectController(
                 NO_JITTER, () -> 0L, Runnable::run, scheduler);
         RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
-        RadioPlaybackManager manager = new RadioPlaybackManager(
+        AudioPlaybackManager manager = new AudioPlaybackManager(
                 new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
-        BlockOwner key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
         manager.update(key, ENABLED);
         sessions.throwOnAbort = true;
 
@@ -708,22 +763,39 @@ class RadioPlaybackManagerTest {
         return ResourceKey.create(Registries.DIMENSION, ResourceLocation.fromNamespaceAndPath("etched_test", path));
     }
 
-    private static RadioConfiguration configuration(long revision, String url, boolean powered) {
-        return RadioConfiguration.forStation(revision, url, true, powered);
+    private static PlaybackState liveState(long revision, String source, boolean enabled) {
+        return state(revision, AudioProgram.Kind.LIVE,
+                new AudioTrack(AudioTrack.SourceType.REMOTE, source, "", ""), enabled);
     }
 
-    private static final class RecordingDriver implements RadioPlaybackManager.PlaybackDriver {
+    private static PlaybackState finiteState(long revision, boolean enabled) {
+        return state(revision, AudioProgram.Kind.FINITE,
+                new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
+                        "minecraft:music_disc.13", "", ""), enabled);
+    }
 
-        private final List<AppliedConfiguration> applied = new ArrayList<>();
-        private final List<BlockOwner> stopped = new ArrayList<>();
-        private final List<BlockOwner> ticked = new ArrayList<>();
-        private final List<AppliedConfiguration> tickedConfigurations = new ArrayList<>();
-        private final Set<BlockOwner> playing = new HashSet<>();
+    private static PlaybackState state(long revision, AudioProgram.Kind kind,
+                                       AudioTrack track, boolean enabled) {
+        return new PlaybackState(revision,
+                Optional.of(new AudioProgram(kind, List.of(track))), enabled);
+    }
+
+    private static String source(PlaybackState state) {
+        return state.program().orElseThrow().tracks().get(0).source();
+    }
+
+    private static final class RecordingDriver implements AudioPlaybackManager.PlaybackDriver {
+
+        private final List<AppliedState> applied = new ArrayList<>();
+        private final List<PlaybackOwnerKey> stopped = new ArrayList<>();
+        private final List<PlaybackOwnerKey> ticked = new ArrayList<>();
+        private final List<AppliedState> tickedStates = new ArrayList<>();
+        private final Set<PlaybackOwnerKey> playing = new HashSet<>();
 
         @Override
-        public void apply(BlockOwner key, RadioConfiguration configuration) {
-            this.applied.add(new AppliedConfiguration(key, configuration));
-            if (configuration.isEnabled()) {
+        public void apply(PlaybackOwnerKey key, PlaybackState state) {
+            this.applied.add(new AppliedState(key, state));
+            if (state.enabled()) {
                 this.playing.add(key);
             } else {
                 this.playing.remove(key);
@@ -731,30 +803,30 @@ class RadioPlaybackManagerTest {
         }
 
         @Override
-        public void stop(BlockOwner key) {
+        public void stop(PlaybackOwnerKey key) {
             this.stopped.add(key);
             this.playing.remove(key);
         }
 
         @Override
-        public void tick(BlockOwner key, RadioConfiguration configuration) {
+        public void tick(PlaybackOwnerKey key, PlaybackState state) {
             this.ticked.add(key);
-            this.tickedConfigurations.add(new AppliedConfiguration(key, configuration));
+            this.tickedStates.add(new AppliedState(key, state));
         }
 
         @Override
-        public boolean isPlaying(BlockOwner key) {
+        public boolean isPlaying(PlaybackOwnerKey key) {
             return this.playing.contains(key);
         }
     }
 
-    private static final class RecordingSessionDriver implements RadioPlaybackManager.SessionDriver {
+    private static final class RecordingSessionDriver implements AudioPlaybackManager.SessionDriver {
 
         private final List<StartedSession> started = new ArrayList<>();
-        private final List<BlockOwner> stopped = new ArrayList<>();
-        private final List<BlockOwner> aborted = new ArrayList<>();
+        private final List<PlaybackOwnerKey> stopped = new ArrayList<>();
+        private final List<PlaybackOwnerKey> aborted = new ArrayList<>();
         private final List<String> lifecycle = new ArrayList<>();
-        private final Set<BlockOwner> open = new HashSet<>();
+        private final Set<PlaybackOwnerKey> open = new HashSet<>();
         private final Set<RadioSession> openSessions = new HashSet<>();
         private boolean throwOnStart;
         private boolean openBeforeThrow;
@@ -765,8 +837,13 @@ class RadioPlaybackManagerTest {
         private RuntimeException startFailure;
 
         @Override
-        public void start(BlockOwner key, RadioConfiguration configuration, RadioSession session,
-                          RadioSession.Attempt attempt, RadioPlaybackManager.SessionEvents events) {
+        public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
+            return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent();
+        }
+
+        @Override
+        public void start(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
+                          RadioSession.Attempt attempt, AudioPlaybackManager.SessionEvents events) {
             if (this.throwOnStart) {
                 if (this.openBeforeThrow) {
                     this.open.add(key);
@@ -776,7 +853,7 @@ class RadioPlaybackManagerTest {
                 throw this.startFailure == null
                         ? new IllegalStateException("start failed") : this.startFailure;
             }
-            this.started.add(new StartedSession(key, configuration, session, attempt, events));
+            this.started.add(new StartedSession(key, state, session, attempt, events));
             this.open.add(key);
             this.openSessions.add(session);
             this.maximumOpen = Math.max(this.maximumOpen, this.openSessions.size());
@@ -784,7 +861,7 @@ class RadioPlaybackManagerTest {
         }
 
         @Override
-        public void stop(BlockOwner key, RadioSession session) {
+        public void stop(PlaybackOwnerKey key, RadioSession session) {
             StartedSession startedSession = this.started.stream()
                     .filter(started -> started.session() == session)
                     .findFirst()
@@ -802,7 +879,7 @@ class RadioPlaybackManagerTest {
         }
 
         @Override
-        public void abort(BlockOwner key, RadioSession session, RadioSession.Attempt attempt) {
+        public void abort(PlaybackOwnerKey key, RadioSession session, RadioSession.Attempt attempt) {
             this.aborted.add(key);
             this.open.remove(key);
             this.openSessions.remove(session);
@@ -821,15 +898,15 @@ class RadioPlaybackManagerTest {
     private static final class RecordingEffects implements RadioPlaybackEffects {
 
         private final List<EffectUpdate> updated = new ArrayList<>();
-        private final List<BlockOwner> stopped = new ArrayList<>();
+        private final List<PlaybackOwnerKey.BlockOwner> stopped = new ArrayList<>();
 
         @Override
-        public void update(BlockOwner key, RadioSession.Snapshot snapshot) {
+        public void update(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
             this.updated.add(new EffectUpdate(key, snapshot));
         }
 
         @Override
-        public void stop(BlockOwner key) {
+        public void stop(PlaybackOwnerKey.BlockOwner key) {
             this.stopped.add(key);
         }
     }
@@ -884,13 +961,13 @@ class RadioPlaybackManagerTest {
         }
     }
 
-    private record AppliedConfiguration(BlockOwner key, RadioConfiguration configuration) {
+    private record AppliedState(PlaybackOwnerKey key, PlaybackState state) {
     }
 
-    private record StartedSession(BlockOwner key, RadioConfiguration configuration, RadioSession session,
-                                  RadioSession.Attempt attempt, RadioPlaybackManager.SessionEvents events) {
+    private record StartedSession(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
+                                  RadioSession.Attempt attempt, AudioPlaybackManager.SessionEvents events) {
     }
 
-    private record EffectUpdate(BlockOwner key, RadioSession.Snapshot snapshot) {
+    private record EffectUpdate(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {
     }
 }
