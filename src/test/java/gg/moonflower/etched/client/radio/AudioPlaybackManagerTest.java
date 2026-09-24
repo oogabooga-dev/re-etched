@@ -820,7 +820,7 @@ class AudioPlaybackManagerTest {
         }
     }
 
-    private static final class RecordingSessionDriver implements AudioPlaybackManager.SessionDriver {
+    private static final class RecordingSessionDriver implements PlaybackBackend {
 
         private final List<StartedSession> started = new ArrayList<>();
         private final List<PlaybackOwnerKey> stopped = new ArrayList<>();
@@ -843,7 +843,7 @@ class AudioPlaybackManagerTest {
 
         @Override
         public void start(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
-                          RadioSession.Attempt attempt, AudioPlaybackManager.SessionEvents events) {
+                          RadioSession.Attempt attempt, PlaybackBackend.Events events) {
             if (this.throwOnStart) {
                 if (this.openBeforeThrow) {
                     this.open.add(key);
@@ -965,7 +965,7 @@ class AudioPlaybackManagerTest {
     }
 
     private record StartedSession(PlaybackOwnerKey key, PlaybackState state, RadioSession session,
-                                  RadioSession.Attempt attempt, AudioPlaybackManager.SessionEvents events) {
+                                  RadioSession.Attempt attempt, PlaybackBackend.Events events) {
     }
 
     private record EffectUpdate(PlaybackOwnerKey.BlockOwner key, RadioSession.Snapshot snapshot) {

@@ -4,7 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
-import gg.moonflower.etched.client.radio.sound.RadioSoundInstance;
+import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioResolveContext;
 import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
@@ -15,7 +15,6 @@ import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
-import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -48,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-class ProductionRadioSessionDriverTest {
+class LiveStreamPlaybackBackendTest {
 
     static {
         MinecraftTestBootstrap.bootStrap();
@@ -70,14 +69,14 @@ class ProductionRadioSessionDriverTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        try (var fixture = ProductionRadioSessionDriverTest.class.getResourceAsStream(
+        try (var fixture = LiveStreamPlaybackBackendTest.class.getResourceAsStream(
                 "/gg/moonflower/etched/client/radio/audio/mono.mp3")) {
             if (fixture == null) {
                 throw new IllegalStateException("Missing MP3 fixture");
             }
             this.mp3 = fixture.readAllBytes();
         }
-        try (var fixture = ProductionRadioSessionDriverTest.class.getResourceAsStream(
+        try (var fixture = LiveStreamPlaybackBackendTest.class.getResourceAsStream(
                 "/gg/moonflower/etched/client/radio/audio/stereo-long.mp3")) {
             if (fixture == null) {
                 throw new IllegalStateException("Missing long MP3 fixture");
@@ -117,10 +116,10 @@ class ProductionRadioSessionDriverTest {
     }
 
     @Test
-    void supportsOnlyLiveProgramsOwnedByBlocks() {
+    void supportsOnlyLiveProgramsAcceptedByTheSoundEngineSink() {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), new FakeSoundOutput(false));
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), new FakeSoundOutput(false));
         PlaybackState live = state("https://radio.example/live");
         PlaybackState finite = new PlaybackState(0L, Optional.of(new AudioProgram(
                 AudioProgram.Kind.FINITE, List.of(new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
@@ -134,19 +133,39 @@ class ProductionRadioSessionDriverTest {
     }
 
     @Test
+    void playsAnyOwnerSupportedByTheSoundEngineSink() throws Exception {
+        RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
+                List.of(this.track("one")));
+        FakeSoundOutput sounds = new FakeSoundOutput(false, true, true);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
+        PlaybackOwnerKey entity = PlaybackOwnerKey.entity(DIMENSION,
+                UUID.fromString("9edc3932-5405-416c-b25a-6222ffc4d2d6"));
+        RadioSession session = new RadioSession();
+        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/entity").toString());
+        RecordingEvents events = new RecordingEvents(session, attempt);
+
+        assertTrue(driver.supports(entity, state(attempt.source())));
+        driver.start(entity, state(attempt.source()), session, attempt, events);
+        await(() -> sounds.audio.size() == 1);
+
+        assertEquals(RadioPlaybackState.PLAYING, session.snapshot().state());
+        session.stop();
+        driver.stop(entity, session);
+        driver.shutdown();
+    }
+
+    @Test
     void playsFiniteAlbumInOrderAndCompletesWithoutRepeating() throws Exception {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.SERVICE_TRACKS,
                 List.of(this.track("one"), this.track("two")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/album").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
 
         driver.start(KEY, state(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
-        assertEquals(4.0F, sounds.played.get(0).getVolume());
-        assertEquals(SoundInstance.Attenuation.LINEAR, sounds.played.get(0).getAttenuation());
         drain(sounds.audio.get(0));
         assertEquals(1, sounds.audio.size());
         sounds.played.get(0).onStop();
@@ -179,7 +198,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/station").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -202,7 +221,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/station-race").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -225,7 +244,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.SERVICE_TRACKS,
                 List.of(this.track("one"), this.track("two")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/album-race").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -269,7 +288,7 @@ class ProductionRadioSessionDriverTest {
             }
         };
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(blocking, sounds);
+        LiveStreamPlaybackBackend driver = this.driver(blocking, sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/blocked").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -292,7 +311,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(true);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -312,11 +331,31 @@ class ProductionRadioSessionDriverTest {
     }
 
     @Test
+    void sinkCreationFailureUsesTheTerminalFailurePath() throws Exception {
+        RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
+                List.of(this.track("one")));
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        sounds.failCreate = true;
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
+        RadioSession session = new RadioSession();
+        RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/create-failure").toString());
+        RecordingEvents events = new RecordingEvents(session, attempt);
+
+        driver.start(KEY, state(attempt.source()), session, attempt, events);
+        await(() -> events.failures.size() == 1);
+
+        assertTrue(sounds.played.isEmpty());
+        session.stop();
+        driver.abort(KEY, session, attempt);
+        driver.shutdown();
+    }
+
+    @Test
     void silentSoundManagerRejectionBecomesATerminalFailure() throws Exception {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false, false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/silent").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -336,7 +375,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/closed").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -357,7 +396,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-ownership").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -395,7 +434,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("stalled")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stalled").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -439,7 +478,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start(this.baseUri.resolve("/stop-failure").toString());
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -471,7 +510,7 @@ class ProductionRadioSessionDriverTest {
                 throw new AssertionError("Malformed URI reached resolver");
             }
         };
-        ProductionRadioSessionDriver driver = this.driver(resolver, new FakeSoundOutput(false));
+        LiveStreamPlaybackBackend driver = this.driver(resolver, new FakeSoundOutput(false));
         RadioSession session = new RadioSession();
         RadioSession.Attempt attempt = session.start("https://bad host/");
         RecordingEvents events = new RecordingEvents(session, attempt);
@@ -493,7 +532,7 @@ class ProductionRadioSessionDriverTest {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.SERVICE_TRACKS,
                 List.of(this.track("one"), this.track("retry")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
-        ProductionRadioSessionDriver driver = this.driver(fixed(program), sounds);
+        LiveStreamPlaybackBackend driver = this.driver(fixed(program), sounds);
         RadioSession session = new RadioSession();
         RadioSession.Attempt first = session.start(this.baseUri.resolve("/album-retry").toString());
         RecordingEvents firstEvents = new RecordingEvents(session, first);
@@ -528,7 +567,7 @@ class ProductionRadioSessionDriverTest {
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         RadioNetworkPolicy allowTestServer = ignored -> {
         };
-        ProductionRadioSessionDriver driver = new ProductionRadioSessionDriver(
+        LiveStreamPlaybackBackend driver = new LiveStreamPlaybackBackend(
                 fixed(program), cancellation -> new RadioResolveContext(
                 new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
@@ -555,7 +594,7 @@ class ProductionRadioSessionDriverTest {
         AtomicInteger ownerDispatches = new AtomicInteger();
         RadioNetworkPolicy allowTestServer = ignored -> {
         };
-        ProductionRadioSessionDriver driver = new ProductionRadioSessionDriver(
+        LiveStreamPlaybackBackend driver = new LiveStreamPlaybackBackend(
                 fixed(program), cancellation -> new RadioResolveContext(
                 new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
@@ -581,11 +620,11 @@ class ProductionRadioSessionDriverTest {
         driver.shutdown();
     }
 
-    private ProductionRadioSessionDriver driver(RadioSourceProgramResolver resolver,
-                                                FakeSoundOutput sounds) {
+    private LiveStreamPlaybackBackend driver(RadioSourceProgramResolver resolver,
+                                             FakeSoundOutput sounds) {
         RadioNetworkPolicy allowTestServer = ignored -> {
         };
-        return new ProductionRadioSessionDriver(resolver, cancellation ->
+        return new LiveStreamPlaybackBackend(resolver, cancellation ->
                 new RadioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
                         cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
@@ -651,52 +690,102 @@ class ProductionRadioSessionDriverTest {
         }
     }
 
-    private static final class FakeSoundOutput implements ProductionRadioSessionDriver.SoundOutput {
-        private final List<RadioSoundInstance> played = new CopyOnWriteArrayList<>();
+    private static final class FakeSoundOutput implements SoundEngineSink {
+        private final List<FakeSoundHandle> played = new CopyOnWriteArrayList<>();
         private final List<RadioAudioStream> audio = new CopyOnWriteArrayList<>();
         private final AtomicInteger stops = new AtomicInteger();
         private final boolean failPlay;
         private final boolean acceptPlay;
+        private final boolean supportAllOwners;
+        private volatile boolean failCreate;
         private volatile boolean failStop;
 
         private FakeSoundOutput(boolean failPlay) {
-            this(failPlay, true);
+            this(failPlay, true, false);
         }
 
         private FakeSoundOutput(boolean failPlay, boolean acceptPlay) {
+            this(failPlay, acceptPlay, false);
+        }
+
+        private FakeSoundOutput(boolean failPlay, boolean acceptPlay, boolean supportAllOwners) {
             this.failPlay = failPlay;
             this.acceptPlay = acceptPlay;
+            this.supportAllOwners = supportAllOwners;
         }
 
         @Override
-        public boolean play(RadioSoundInstance sound) {
+        public boolean supports(PlaybackOwnerKey key) {
+            return this.supportAllOwners || key instanceof PlaybackOwnerKey.BlockOwner;
+        }
+
+        @Override
+        public Handle create(PlaybackOwnerKey key, long generation, RadioAudioStream stream,
+                             RadioCancellation cancellation, Runnable streamHandedOff,
+                             Runnable soundStopped) {
+            if (this.failCreate) {
+                throw new IllegalStateException("SoundEngine sink failed to create playback");
+            }
+            FakeSoundHandle sound = new FakeSoundHandle(stream, streamHandedOff, soundStopped);
             this.played.add(sound);
-            if (this.failPlay) {
-                throw new IllegalStateException("SoundManager rejected playback");
-            }
-            if (!this.acceptPlay) {
-                return false;
-            }
-            sound.resolve(null);
-            try {
-                this.audio.add((RadioAudioStream) sound.getStream(null, sound.getSound(), false).get());
-            } catch (Exception exception) {
-                throw new IllegalStateException(exception);
-            }
-            return true;
+            return sound;
         }
 
-        @Override
-        public void stop(RadioSoundInstance sound) {
-            this.stops.incrementAndGet();
-            if (this.failStop) {
-                throw new IllegalStateException("SoundManager failed to stop playback");
+        private final class FakeSoundHandle implements Handle {
+            private final RadioAudioStream stream;
+            private final Runnable streamHandedOff;
+            private final Runnable soundStopped;
+            private boolean transferred;
+
+            private FakeSoundHandle(RadioAudioStream stream, Runnable streamHandedOff,
+                                    Runnable soundStopped) {
+                this.stream = stream;
+                this.streamHandedOff = streamHandedOff;
+                this.soundStopped = soundStopped;
             }
-            sound.onStop();
+
+            @Override
+            public boolean play() {
+                if (failPlay) {
+                    throw new IllegalStateException("SoundManager rejected playback");
+                }
+                if (!acceptPlay) {
+                    return false;
+                }
+                this.streamHandedOff.run();
+                this.transferred = true;
+                audio.add(this.stream);
+                return true;
+            }
+
+            @Override
+            public void requestStop() {
+                if (!this.transferred) {
+                    RadioResourceDisposer.dispose(() -> {
+                        try {
+                            this.stream.close();
+                        } catch (IOException ignored) {
+                        }
+                    });
+                }
+            }
+
+            @Override
+            public void stop() {
+                stops.incrementAndGet();
+                if (failStop) {
+                    throw new IllegalStateException("SoundManager failed to stop playback");
+                }
+                this.onStop();
+            }
+
+            private void onStop() {
+                this.soundStopped.run();
+            }
         }
     }
 
-    private static final class RecordingEvents implements AudioPlaybackManager.SessionEvents {
+    private static final class RecordingEvents implements PlaybackBackend.Events {
         private final RadioSession session;
         private final RadioSession.Attempt attempt;
         private final List<RadioPlaybackState> progress = new CopyOnWriteArrayList<>();
