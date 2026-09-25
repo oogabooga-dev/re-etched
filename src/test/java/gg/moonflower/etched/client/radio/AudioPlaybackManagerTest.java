@@ -382,6 +382,29 @@ class AudioPlaybackManagerTest {
     }
 
     @Test
+    void finiteControlsRejectLiveAndNonPlayingSessions() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        manager.update(key, ENABLED);
+        long liveGeneration = manager.getSessionSnapshot(key).orElseThrow().generation();
+        assertFalse(manager.setFiniteLoop(key, ENABLED.revision(), liveGeneration, FiniteLoopMode.ALL));
+        assertFalse(manager.skipFiniteTrack(key, ENABLED.revision(), liveGeneration));
+
+        manager.update(key, finiteRemoteState(2L, "https://audio.example/one"));
+        long finiteGeneration = manager.getSessionSnapshot(key).orElseThrow().generation();
+        assertFalse(manager.skipFiniteTrack(key, 2L, finiteGeneration));
+        StartedSession finite = sessions.started.get(1);
+        finite.events().progress(RadioPlaybackState.CONNECTING);
+        finite.events().progress(RadioPlaybackState.BUFFERING);
+        assertFalse(manager.setFiniteLoop(key, 2L, finiteGeneration, FiniteLoopMode.ONE));
+        finite.events().progress(RadioPlaybackState.PLAYING);
+        assertFalse(manager.skipFiniteTrack(key, 2L, finiteGeneration));
+        manager.shutdown();
+    }
+
+    @Test
     void finiteFailureStopsWithoutSchedulingLiveBackoff() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         sessions.supportsFinite = true;

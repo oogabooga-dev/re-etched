@@ -195,6 +195,36 @@ public final class AudioPlaybackManager {
         return true;
     }
 
+    /** Changes the repeat policy of the exact active finite attempt, even while it is still buffering. */
+    public boolean setFiniteLoop(PlaybackOwnerKey key, long revision, long generation, FiniteLoopMode mode) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(mode, "mode");
+        ManagedPlayback managed = this.controllableFinite(key, revision, generation);
+        return managed != null && this.backend.setFiniteLoop(key, managed.session(),
+                managed.currentAttempt(), mode);
+    }
+
+    public boolean skipFiniteTrack(PlaybackOwnerKey key, long revision, long generation) {
+        Objects.requireNonNull(key, "key");
+        ManagedPlayback managed = this.controllableFinite(key, revision, generation);
+        return managed != null && managed.session().snapshot().state() == RadioPlaybackState.PLAYING
+                && this.backend.skipFiniteTrack(key, managed.session(), managed.currentAttempt());
+    }
+
+    private ManagedPlayback controllableFinite(PlaybackOwnerKey key, long revision, long generation) {
+        ManagedPlayback managed = this.playbacks.get(key);
+        if (managed == null) {
+            return null;
+        }
+        PlaybackSession.Snapshot snapshot = managed.session().snapshot();
+        if (this.closed || !this.backend.enabled() || !managed.backendSupported()
+                || !managed.state().enabled() || managed.state().revision() != revision || !isFinite(managed)
+                || snapshot.generation() != generation) {
+            return null;
+        }
+        return managed.currentAttempt() == null ? null : managed;
+    }
+
     public void clearAll() {
         ArrayList<Map.Entry<PlaybackOwnerKey, ManagedPlayback>> entries =
                 new ArrayList<>(this.playbacks.entrySet());
@@ -523,6 +553,10 @@ public final class AudioPlaybackManager {
 
         private synchronized boolean ownsAttempt(PlaybackSession.Attempt attempt) {
             return this.attemptLease != null && this.attemptLease.attempt() == attempt;
+        }
+
+        private synchronized @org.jetbrains.annotations.Nullable PlaybackSession.Attempt currentAttempt() {
+            return this.attemptLease == null ? null : this.attemptLease.attempt();
         }
 
         private synchronized void releaseAttempt(

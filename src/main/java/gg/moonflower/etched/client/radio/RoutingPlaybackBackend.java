@@ -99,6 +99,27 @@ final class RoutingPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public boolean setFiniteLoop(PlaybackOwnerKey key, PlaybackSession session,
+                                 PlaybackSession.Attempt attempt, FiniteLoopMode mode) {
+        PlaybackBackend backend = this.activeBackend(key, session, attempt);
+        return backend != null && backend.setFiniteLoop(key, session, attempt, mode);
+    }
+
+    @Override
+    public boolean skipFiniteTrack(PlaybackOwnerKey key, PlaybackSession session,
+                                   PlaybackSession.Attempt attempt) {
+        PlaybackBackend backend = this.activeBackend(key, session, attempt);
+        return backend != null && backend.skipFiniteTrack(key, session, attempt);
+    }
+
+    private synchronized PlaybackBackend activeBackend(PlaybackOwnerKey key, PlaybackSession session,
+                                                       PlaybackSession.Attempt attempt) {
+        Binding binding = this.bindings.get(key);
+        return this.closed || binding == null || binding.session != session || binding.attempt != attempt
+                ? null : binding.backend;
+    }
+
+    @Override
     public void shutdown() {
         List<Map.Entry<PlaybackOwnerKey, Binding>> active;
         synchronized (this) {

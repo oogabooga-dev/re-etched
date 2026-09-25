@@ -45,6 +45,17 @@ interface PlaybackBackend {
 
     void abort(PlaybackOwnerKey key, PlaybackSession session, PlaybackSession.Attempt attempt);
 
+    /** Controls only the exact active finite attempt, never a replacement or a live station. */
+    default boolean setFiniteLoop(PlaybackOwnerKey key, PlaybackSession session,
+                                  PlaybackSession.Attempt attempt, FiniteLoopMode mode) {
+        return false;
+    }
+
+    default boolean skipFiniteTrack(PlaybackOwnerKey key, PlaybackSession session,
+                                    PlaybackSession.Attempt attempt) {
+        return false;
+    }
+
     default void shutdown() {
     }
 
