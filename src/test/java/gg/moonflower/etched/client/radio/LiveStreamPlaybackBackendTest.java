@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
@@ -30,6 +31,7 @@ import java.net.Proxy;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -190,6 +192,128 @@ class LiveStreamPlaybackBackendTest {
         assertTrue(events.terminations.isEmpty());
         assertTrue(events.failures.isEmpty());
         assertTrue(attempt.cancellation().isCancelled());
+        driver.shutdown();
+    }
+
+    @Test
+    void finiteRemoteProgramOpensEachTrackIndependentlyAndCompletes() throws Exception {
+        RadioSourceProgram unrelated = this.program(RadioSourceProgram.Kind.STATION,
+                List.of(this.track("one")));
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FiniteRemotePlaybackBackend driver = new FiniteRemotePlaybackBackend(
+                this.driver(LiveStreamPlaybackBackend.Mode.FINITE, fixed(unrelated), sounds));
+        PlaybackState finite = this.finiteState("one", "two");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/one").toString());
+        RecordingEvents events = new RecordingEvents(session, attempt);
+
+        assertTrue(driver.supports(KEY, finite));
+        assertFalse(driver.supports(KEY, state(attempt.source())));
+        assertFalse(driver.supports(KEY, new PlaybackState(0L, Optional.of(new AudioProgram(
+                AudioProgram.Kind.FINITE, List.of(new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
+                "minecraft:music_disc.13", "", "")))), true)));
+        driver.start(KEY, finite, session, attempt, events);
+        await(() -> sounds.audio.size() == 1);
+        assertTrue(session.applyPendingStreamTitle());
+        assertEquals("one", session.snapshot().streamTitle());
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> sounds.audio.size() == 2);
+        assertTrue(session.applyPendingStreamTitle());
+        assertEquals("two", session.snapshot().streamTitle());
+        drain(sounds.audio.get(1));
+        sounds.played.get(1).onStop();
+        await(() -> session.snapshot().state() == RadioPlaybackState.STOPPED);
+
+        assertEquals(List.of("one", "two"), this.requests);
+        assertEquals(1, events.completions.get());
+        assertTrue(events.terminations.isEmpty());
+        assertTrue(events.failures.isEmpty());
+        assertTrue(attempt.cancellation().isCancelled());
+        driver.shutdown();
+    }
+
+    @Test
+    void sharedManagerRoutesFiniteRemoteTracksAlongsideLiveBackend() throws Exception {
+        RadioSourceProgram station = this.program(RadioSourceProgram.Kind.STATION,
+                List.of(this.track("one")));
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        LiveStreamPlaybackBackend live = this.driver(fixed(station), sounds);
+        FiniteRemotePlaybackBackend finite = new FiniteRemotePlaybackBackend(
+                this.driver(LiveStreamPlaybackBackend.Mode.FINITE, fixed(station), sounds));
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new RoutingPlaybackBackend(List.of(live, finite)));
+
+        manager.update(KEY, this.finiteState("one", "two"));
+        await(() -> sounds.audio.size() == 1);
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> sounds.audio.size() == 2);
+        drain(sounds.audio.get(1));
+        sounds.played.get(1).onStop();
+        await(() -> manager.getSessionSnapshot(KEY).orElseThrow().state() == RadioPlaybackState.STOPPED);
+
+        assertEquals(List.of("one", "two"), this.requests);
+        assertFalse(manager.isPlaying(KEY));
+        manager.shutdown();
+        assertTrue(this.resolvers.isShutdown());
+        assertTrue(this.producers.isShutdown());
+        assertTrue(this.decoders.isShutdown());
+    }
+
+    @Test
+    void stoppingFiniteRemotePlaybackNeverOpensTheNextTrack() throws Exception {
+        RadioSourceProgram unrelated = this.program(RadioSourceProgram.Kind.STATION,
+                List.of(this.track("one")));
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FiniteRemotePlaybackBackend driver = new FiniteRemotePlaybackBackend(
+                this.driver(LiveStreamPlaybackBackend.Mode.FINITE, fixed(unrelated), sounds));
+        PlaybackState finite = this.finiteState("one", "two");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/one").toString());
+        RecordingEvents events = new RecordingEvents(session, attempt);
+        driver.start(KEY, finite, session, attempt, events);
+        await(() -> sounds.audio.size() == 1);
+
+        session.stop();
+        driver.stop(KEY, session);
+        sounds.played.get(0).onStop();
+
+        assertEquals(List.of("one"), this.requests);
+        assertEquals(0, events.completions.get());
+        assertTrue(attempt.cancellation().isCancelled());
+        driver.shutdown();
+    }
+
+    @Test
+    void finiteRemoteTrackChecksTheNextDestinationBeforeConnecting() throws Exception {
+        RadioSourceProgram unrelated = this.program(RadioSourceProgram.Kind.STATION,
+                List.of(this.track("one")));
+        AudioNetworkPolicy policy = uri -> {
+            if (uri.getPath().equals("/two")) {
+                throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false,
+                        "Blocked test destination", null);
+            }
+        };
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FiniteRemotePlaybackBackend driver = new FiniteRemotePlaybackBackend(
+                this.driver(LiveStreamPlaybackBackend.Mode.FINITE, fixed(unrelated), sounds, policy));
+        PlaybackState finite = this.finiteState("one", "two");
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start(this.baseUri.resolve("/one").toString());
+        RecordingEvents events = new RecordingEvents(session, attempt);
+        driver.start(KEY, finite, session, attempt, events);
+        await(() -> sounds.audio.size() == 1);
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> events.failures.size() == 1);
+
+        assertEquals(List.of("one"), this.requests);
+        RadioSourceException failure = assertInstanceOf(RadioSourceException.class, events.failures.get(0));
+        assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, failure.code());
+        assertEquals(0, events.completions.get());
+        session.stop();
+        driver.stop(KEY, session);
         driver.shutdown();
     }
 
@@ -621,12 +745,23 @@ class LiveStreamPlaybackBackendTest {
     }
 
     private LiveStreamPlaybackBackend driver(AudioSourceResolver resolver,
-                                             FakeSoundOutput sounds) {
+                                              FakeSoundOutput sounds) {
+        return this.driver(LiveStreamPlaybackBackend.Mode.LIVE, resolver, sounds);
+    }
+
+    private LiveStreamPlaybackBackend driver(LiveStreamPlaybackBackend.Mode mode,
+                                             AudioSourceResolver resolver, FakeSoundOutput sounds) {
         AudioNetworkPolicy allowTestServer = ignored -> {
         };
-        return new LiveStreamPlaybackBackend(resolver, cancellation ->
-                new AudioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
-                        Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
+        return this.driver(mode, resolver, sounds, allowTestServer);
+    }
+
+    private LiveStreamPlaybackBackend driver(LiveStreamPlaybackBackend.Mode mode,
+                                             AudioSourceResolver resolver, FakeSoundOutput sounds,
+                                             AudioNetworkPolicy policy) {
+        return new LiveStreamPlaybackBackend(mode, resolver, cancellation ->
+                new AudioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, policy,
+                        Duration.ofSeconds(2), Duration.ofSeconds(2), 2), policy,
                         cancellation, AudioResolveLimits.DEFAULT), this.resolvers, this.producers,
                 this.decoders, Runnable::run, sounds, () -> true);
     }
@@ -660,6 +795,12 @@ class LiveStreamPlaybackBackendTest {
         AudioTrack track = new AudioTrack(AudioTrack.SourceType.REMOTE, source, "", "");
         return new PlaybackState(0L,
                 Optional.of(new AudioProgram(AudioProgram.Kind.LIVE, List.of(track))), true);
+    }
+
+    private PlaybackState finiteState(String... paths) {
+        return new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                Arrays.stream(paths).map(path -> new AudioTrack(AudioTrack.SourceType.REMOTE,
+                        this.baseUri.resolve("/" + path).toString(), "", path)).toList())), true);
     }
 
     private void serve(HttpExchange exchange, String name) throws IOException {

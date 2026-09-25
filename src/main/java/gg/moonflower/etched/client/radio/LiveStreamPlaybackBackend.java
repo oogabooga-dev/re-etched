@@ -15,6 +15,7 @@ import gg.moonflower.etched.client.radio.stream.AudioStreamPipeline;
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.client.radio.stream.RadioStreamException;
 import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
@@ -39,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
-/** Playback backend for resolved, independently buffered live streams. */
+/** Remote stream lifecycle shared by live stations and independently opened finite tracks. */
 public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     private static final int WORK_QUEUE_CAPACITY = 32;
@@ -47,7 +48,9 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     private final Object lock = new Object();
     private final Map<PlaybackOwnerKey, ActiveAttempt> attempts = new HashMap<>();
     private final Map<PlaybackOwnerKey, Integer> serviceCursors = new HashMap<>();
+    private final Mode mode;
     private final AudioSourceResolver resolver;
+    private final DirectRadioSourceResolver direct = new DirectRadioSourceResolver();
     private final ContextFactory contexts;
     private final ExecutorService resolverExecutor;
     private final ExecutorService producerExecutor;
@@ -58,7 +61,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     private boolean closed;
 
     public LiveStreamPlaybackBackend() {
-        this(new CompositeRadioSourceResolver(List.of(
+        this(Mode.LIVE, new CompositeRadioSourceResolver(List.of(
                         new SoundCloudRadioSourceResolver(),
                         new BandcampRadioSourceResolver(),
                         new DirectRadioSourceResolver())),
@@ -71,10 +74,30 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                 () -> Etched.CLIENT_CONFIG.forceStereo.get());
     }
 
+    static LiveStreamPlaybackBackend finiteRemote() {
+        return new LiveStreamPlaybackBackend(Mode.FINITE, new DirectRadioSourceResolver(),
+                AudioResolveContext::createDefault,
+                boundedExecutor("Etched finite resolver", 2),
+                boundedExecutor("Etched finite producer", 8),
+                boundedExecutor("Etched finite decoder", 2),
+                command -> Minecraft.getInstance().execute(command),
+                new MinecraftSoundEngineSink(),
+                () -> Etched.CLIENT_CONFIG.forceStereo.get());
+    }
+
     LiveStreamPlaybackBackend(AudioSourceResolver resolver, ContextFactory contexts,
                               ExecutorService resolverExecutor, ExecutorService producerExecutor,
                               ExecutorService decoderExecutor, Executor ownerExecutor,
                               SoundEngineSink sounds, BooleanSupplier forceStereo) {
+        this(Mode.LIVE, resolver, contexts, resolverExecutor, producerExecutor,
+                decoderExecutor, ownerExecutor, sounds, forceStereo);
+    }
+
+    LiveStreamPlaybackBackend(Mode mode, AudioSourceResolver resolver, ContextFactory contexts,
+                              ExecutorService resolverExecutor, ExecutorService producerExecutor,
+                              ExecutorService decoderExecutor, Executor ownerExecutor,
+                              SoundEngineSink sounds, BooleanSupplier forceStereo) {
+        this.mode = Objects.requireNonNull(mode, "mode");
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.contexts = Objects.requireNonNull(contexts, "contexts");
         this.resolverExecutor = Objects.requireNonNull(resolverExecutor, "resolverExecutor");
@@ -91,8 +114,10 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     @Override
     public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
-        return this.sounds.supports(key)
-                && state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent();
+        return this.sounds.supports(key) && state.program().filter(program ->
+                this.mode == Mode.LIVE ? program.kind() == AudioProgram.Kind.LIVE
+                        : program.kind() == AudioProgram.Kind.FINITE && program.tracks().stream()
+                                .allMatch(track -> track.sourceType() == AudioTrack.SourceType.REMOTE)).isPresent();
     }
 
     @Override
@@ -101,13 +126,15 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                       PlaybackSession.Attempt attempt, PlaybackBackend.Events events) {
         Objects.requireNonNull(state, "state");
         if (!this.supports(key, state)) {
-            throw new IllegalArgumentException("The live backend does not support this playback owner or state");
+            throw new IllegalArgumentException(this.mode == Mode.LIVE
+                    ? "The live backend does not support this playback owner or state"
+                    : "The finite backend does not support this playback owner or state");
         }
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(attempt, "attempt");
         Objects.requireNonNull(events, "events");
 
-        ActiveAttempt active = new ActiveAttempt(key, session, attempt, events,
+        ActiveAttempt active = new ActiveAttempt(key, state, session, attempt, events,
                 this.contexts.create(attempt.cancellation()));
         synchronized (this.lock) {
             if (this.closed) {
@@ -190,7 +217,9 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                 throw new RadioSourceException(RadioFailure.Code.INVALID_URL, false,
                         "Radio source is not a valid URI", exception);
             }
-            RadioSourceProgram program = this.resolver.resolveProgram(input, active.context);
+            RadioSourceProgram program = this.mode == Mode.LIVE
+                    ? this.resolver.resolveProgram(input, active.context)
+                    : this.finiteProgram(active.state.program().orElseThrow(), input);
             this.dispatch(() -> {
                 if (!this.isCurrent(active)) {
                     return;
@@ -211,6 +240,17 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         } catch (Exception failure) {
             this.reportFailure(active, null, failure);
         }
+    }
+
+    private RadioSourceProgram finiteProgram(AudioProgram program, URI firstSource) {
+        List<RadioSourceProgram.Track> tracks = new ArrayList<>(program.tracks().size());
+        for (AudioTrack track : program.tracks()) {
+            URI source = URI.create(track.source());
+            tracks.add(new RadioSourceProgram.Track(source,
+                    track.title().isBlank() ? null : track.title(),
+                    context -> this.direct.resolve(source, context)));
+        }
+        return new RadioSourceProgram(RadioSourceProgram.Kind.SERVICE_TRACKS, firstSource, tracks);
     }
 
     private void openTrack(ActiveAttempt active, int index) {
@@ -635,8 +675,14 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         AudioResolveContext create(AudioCancellation cancellation);
     }
 
+    enum Mode {
+        LIVE,
+        FINITE
+    }
+
     private static final class ActiveAttempt {
         private final PlaybackOwnerKey key;
+        private final PlaybackState state;
         private final PlaybackSession session;
         private final PlaybackSession.Attempt attempt;
         private final PlaybackBackend.Events events;
@@ -647,10 +693,11 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private boolean closed;
         private boolean soundOutputAvailable = true;
 
-        private ActiveAttempt(PlaybackOwnerKey key, PlaybackSession session,
+        private ActiveAttempt(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                               PlaybackSession.Attempt attempt,
                               PlaybackBackend.Events events, AudioResolveContext context) {
             this.key = key;
+            this.state = state;
             this.session = session;
             this.attempt = attempt;
             this.events = events;
