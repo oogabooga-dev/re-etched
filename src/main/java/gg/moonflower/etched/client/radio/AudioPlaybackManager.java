@@ -12,6 +12,7 @@ import org.apache.logging.log4j.Logger;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,7 +26,9 @@ public final class AudioPlaybackManager {
     private static final int MAX_ACTIVE_PLAYBACKS = 8;
     private static final int MAX_QUEUED_PLAYBACKS = 32;
     private static final AudioPlaybackManager INSTANCE = new AudioPlaybackManager(
-            PlaybackDriver.NOOP, new LiveStreamPlaybackBackend(), new MinecraftRadioPlaybackEffects(),
+            PlaybackDriver.NOOP, new RoutingPlaybackBackend(List.of(
+                    new LiveStreamPlaybackBackend(), new FiniteRemotePlaybackBackend())),
+            new MinecraftRadioPlaybackEffects(),
             RadioReconnectController.createDefault(command -> Minecraft.getInstance().execute(command)));
 
     private final Map<PlaybackOwnerKey, ManagedPlayback> playbacks;
