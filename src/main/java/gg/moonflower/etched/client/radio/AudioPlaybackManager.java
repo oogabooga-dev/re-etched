@@ -2,6 +2,7 @@ package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.audio.PlaybackRevision;
 import net.minecraft.client.Minecraft;
@@ -93,12 +94,12 @@ public final class AudioPlaybackManager {
             this.stopSession(key, previous);
         }
         PlaybackSession session = new PlaybackSession();
-        boolean backendSupported = this.supportsLiveBackend(key, state);
+        boolean backendSupported = this.supportsBackend(key, state);
         ManagedPlayback playback = new ManagedPlayback(state, session, backendSupported);
         this.playbacks.put(key, playback);
         if (this.backend.enabled()) {
             if (state.enabled() && backendSupported) {
-                PlaybackSession.Attempt attempt = session.start(liveSource(state));
+                PlaybackSession.Attempt attempt = session.start(state.program().orElseThrow().tracks().get(0).source());
                 this.startSession(key, playback, attempt);
             } else if (state.enabled()) {
                 LOGGER.warn("No playback backend supports enabled state for {}", key);
@@ -176,7 +177,8 @@ public final class AudioPlaybackManager {
             return false;
         }
         ManagedPlayback managed = this.playbacks.get(key);
-        if (managed == null || !managed.backendSupported() || !managed.state().enabled()) {
+        if (managed == null || !managed.backendSupported() || !managed.state().enabled()
+                || isFinite(managed)) {
             return false;
         }
         Optional<PlaybackSession.Attempt> retried = managed.session().retry(managed.session().snapshot().generation());
@@ -268,15 +270,11 @@ public final class AudioPlaybackManager {
                 } finally {
                     playback.releaseAttempt(attempt);
                 }
-                this.reconnects.failure(playback.session(), attempt, exception,
-                        retry -> this.startCurrentSession(key, playback, retry),
-                        () -> this.terminalStateChanged(key, playback, attempt));
+                this.handleFailure(key, playback, attempt, exception);
             }
         }, () -> this.admissionDispatchFailed(playback, attempt));
         if (!accepted) {
-            this.reconnects.failure(playback.session(), attempt, RadioConnectionScheduler.limitFailure(),
-                    retry -> this.startCurrentSession(key, playback, retry),
-                    () -> this.terminalStateChanged(key, playback, attempt));
+            this.handleFailure(key, playback, attempt, RadioConnectionScheduler.limitFailure());
         }
     }
 
@@ -311,23 +309,31 @@ public final class AudioPlaybackManager {
 
                     @Override
                     public void failure(Throwable failure) {
-                        reconnects.failure(playback.session(), attempt, failure,
-                                retry -> startCurrentSession(key, playback, retry),
-                                () -> terminalStateChanged(key, playback, attempt));
+                        handleFailure(key, playback, attempt, failure);
                     }
 
                     @Override
                     public void termination(PlaybackAudioStream.Termination termination) {
-                        reconnects.termination(playback.session(), attempt, termination,
-                                retry -> startCurrentSession(key, playback, retry),
-                                () -> terminalStateChanged(key, playback, attempt));
+                        if (isFinite(playback)) {
+                            reconnects.finiteTermination(playback.session(), attempt, termination,
+                                    () -> terminalStateChanged(key, playback, attempt));
+                        } else {
+                            reconnects.termination(playback.session(), attempt, termination,
+                                    retry -> startCurrentSession(key, playback, retry),
+                                    () -> terminalStateChanged(key, playback, attempt));
+                        }
                     }
 
                     @Override
                     public void soundEngineStopped() {
-                        reconnects.soundEngineStopped(playback.session(), attempt,
-                                retry -> startCurrentSession(key, playback, retry),
-                                () -> terminalStateChanged(key, playback, attempt));
+                        if (isFinite(playback)) {
+                            reconnects.finiteSoundEngineStopped(playback.session(), attempt,
+                                    () -> terminalStateChanged(key, playback, attempt));
+                        } else {
+                            reconnects.soundEngineStopped(playback.session(), attempt,
+                                    retry -> startCurrentSession(key, playback, retry),
+                                    () -> terminalStateChanged(key, playback, attempt));
+                        }
                     }
 
                     @Override
@@ -377,6 +383,30 @@ public final class AudioPlaybackManager {
         this.startSession(key, playback, attempt);
     }
 
+    private void handleFailure(PlaybackOwnerKey key, ManagedPlayback playback,
+                               PlaybackSession.Attempt attempt, Throwable failure) {
+        if (isFinite(playback)) {
+            this.reconnects.finiteFailure(playback.session(), attempt, failure,
+                    () -> this.terminalStateChanged(key, playback, attempt));
+        } else {
+            this.reconnects.failure(playback.session(), attempt, failure,
+                    retry -> this.startCurrentSession(key, playback, retry),
+                    () -> this.terminalStateChanged(key, playback, attempt));
+        }
+    }
+
+    private void handleFailure(PlaybackOwnerKey key, ManagedPlayback playback,
+                               PlaybackSession.Attempt attempt, RadioFailure failure) {
+        if (isFinite(playback)) {
+            this.reconnects.finiteFailure(playback.session(), attempt, failure,
+                    () -> this.terminalStateChanged(key, playback, attempt));
+        } else {
+            this.reconnects.failure(playback.session(), attempt, failure,
+                    retry -> this.startCurrentSession(key, playback, retry),
+                    () -> this.terminalStateChanged(key, playback, attempt));
+        }
+    }
+
     private void updateEffects(PlaybackOwnerKey key, ManagedPlayback playback) {
         if (this.playbacks.get(key) == playback) {
             this.effects.update(key, playback.session().snapshot());
@@ -387,13 +417,16 @@ public final class AudioPlaybackManager {
         this.effects.stop(key);
     }
 
-    private boolean supportsLiveBackend(PlaybackOwnerKey key, PlaybackState state) {
-        return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent()
-                && this.backend.supports(key, state);
+    private boolean supportsBackend(PlaybackOwnerKey key, PlaybackState state) {
+        // Local sound events need a separate path that bypasses connection admission.
+        return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE
+                || (program.kind() == AudioProgram.Kind.FINITE && program.tracks().stream()
+                        .allMatch(track -> track.sourceType() == AudioTrack.SourceType.REMOTE)))
+                .isPresent() && this.backend.supports(key, state);
     }
 
-    private static String liveSource(PlaybackState state) {
-        return state.program().orElseThrow().tracks().get(0).source();
+    private static boolean isFinite(ManagedPlayback playback) {
+        return playback.state().program().orElseThrow().kind() == AudioProgram.Kind.FINITE;
     }
 
     private static String sourceHost(String source) {

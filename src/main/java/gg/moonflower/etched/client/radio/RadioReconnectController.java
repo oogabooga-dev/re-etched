@@ -89,6 +89,18 @@ public final class RadioReconnectController implements AutoCloseable {
                 retryStarter, stateChanged));
     }
 
+    /** Records a finite-program failure without scheduling a live-stream reconnect. */
+    public void finiteFailure(PlaybackSession session, PlaybackSession.Attempt attempt, Throwable throwable,
+                              Runnable stateChanged) {
+        this.execute(() -> this.finishFinite(session, attempt, this.policy.classify(throwable), stateChanged));
+    }
+
+    public void finiteFailure(PlaybackSession session, PlaybackSession.Attempt attempt, RadioFailure failure,
+                              Runnable stateChanged) {
+        this.execute(() -> this.finishFinite(session, attempt,
+                Optional.of(Objects.requireNonNull(failure, "failure")), stateChanged));
+    }
+
     public void termination(PlaybackSession session, PlaybackSession.Attempt attempt,
                             PlaybackAudioStream.Termination termination,
                             Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
@@ -96,9 +108,24 @@ public final class RadioReconnectController implements AutoCloseable {
                 retryStarter, stateChanged));
     }
 
+    public void finiteTermination(PlaybackSession session, PlaybackSession.Attempt attempt,
+                                  PlaybackAudioStream.Termination termination, Runnable stateChanged) {
+        this.execute(() -> this.finishFinite(session, attempt,
+                this.policy.classify(termination), stateChanged));
+    }
+
     public void soundEngineStopped(PlaybackSession session, PlaybackSession.Attempt attempt,
                                    Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
-        this.execute(() -> this.deferSoundEngineStop(session, attempt, retryStarter, stateChanged));
+        this.execute(() -> this.deferSoundEngineStop(attempt,
+                () -> this.handle(session, attempt, Optional.of(this.policy.soundEngineStopped()),
+                        retryStarter, stateChanged)));
+    }
+
+    public void finiteSoundEngineStopped(PlaybackSession session, PlaybackSession.Attempt attempt,
+                                         Runnable stateChanged) {
+        this.execute(() -> this.deferSoundEngineStop(attempt,
+                () -> this.finishFinite(session, attempt,
+                        Optional.of(this.policy.soundEngineStopped()), stateChanged)));
     }
 
     public void sequenceAdvance(PlaybackSession session, PlaybackSession.Attempt attempt,
@@ -168,8 +195,24 @@ public final class RadioReconnectController implements AutoCloseable {
         stateChanged.run();
     }
 
-    private void deferSoundEngineStop(PlaybackSession session, PlaybackSession.Attempt attempt,
-                                      Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
+    private void finishFinite(PlaybackSession session, PlaybackSession.Attempt attempt,
+                              Optional<RadioFailure> classified, Runnable stateChanged) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(attempt, "attempt");
+        Objects.requireNonNull(stateChanged, "stateChanged");
+        if (classified.isEmpty() || attempt.cancellation().isCancelled()) {
+            return;
+        }
+        this.cancelPendingSoundStop(attempt);
+        RadioFailure failure = classified.orElseThrow();
+        RadioFailure terminal = failure.recoverable()
+                ? RadioFailure.fatal(failure.code(), failure.message(), failure.cause()) : failure;
+        if (session.fail(attempt, terminal)) {
+            stateChanged.run();
+        }
+    }
+
+    private void deferSoundEngineStop(PlaybackSession.Attempt attempt, Runnable timedOut) {
         if (attempt.cancellation().isCancelled()) {
             return;
         }
@@ -182,16 +225,14 @@ public final class RadioReconnectController implements AutoCloseable {
             registration.attach(this.scheduler.schedule(() -> {
                 this.execute(() -> {
                     if (this.pendingSoundStops.remove(attempt, registration) && registration.fire()) {
-                        this.handle(session, attempt, Optional.of(this.policy.soundEngineStopped()),
-                                retryStarter, stateChanged);
+                        timedOut.run();
                     }
                 });
             }, SOUND_STOP_GRACE_MILLIS));
         } catch (RuntimeException exception) {
             this.pendingSoundStops.remove(attempt, registration);
             registration.cancel();
-            this.handle(session, attempt, Optional.of(this.policy.soundEngineStopped()),
-                    retryStarter, stateChanged);
+            timedOut.run();
             return;
         }
         attempt.cancellation().onCancel(() -> {

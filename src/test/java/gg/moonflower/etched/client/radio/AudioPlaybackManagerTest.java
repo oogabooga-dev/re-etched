@@ -13,6 +13,7 @@ import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -336,6 +337,193 @@ class AudioPlaybackManagerTest {
         assertEquals(RadioPlaybackState.STOPPED,
                 manager.getSessionSnapshot(key).orElseThrow().state());
         assertTrue(sessions.started.isEmpty());
+    }
+
+    @Test
+    void supportedFiniteProgramAdvancesAndCompletesWithoutReconnect() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        ManualRetryScheduler scheduler = new ManualRetryScheduler();
+        RadioReconnectController reconnects = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
+        AudioPlaybackManager manager = new AudioPlaybackManager(
+                new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackState finite = finiteRemoteState(1L, "https://audio.example/one", "https://audio.example/two");
+
+        assertTrue(manager.update(key, finite));
+        StartedSession started = sessions.started.get(0);
+        assertEquals("https://audio.example/one", started.attempt().source());
+        started.events().progress(RadioPlaybackState.CONNECTING);
+        started.events().progress(RadioPlaybackState.BUFFERING);
+        started.events().progress(RadioPlaybackState.PLAYING);
+        AtomicLong openedNext = new AtomicLong();
+        started.events().sequenceAdvance(openedNext::incrementAndGet);
+        assertEquals(1L, openedNext.get());
+        assertEquals(RadioPlaybackState.CONNECTING, started.session().snapshot().state());
+        assertEquals(started.attempt().generation(), started.session().snapshot().generation());
+        started.events().progress(RadioPlaybackState.BUFFERING);
+        started.events().progress(RadioPlaybackState.PLAYING);
+
+        started.events().soundEngineStopped();
+        assertEquals(1, scheduler.tasks.size());
+        started.events().completion();
+        scheduler.fire();
+        started.events().completion();
+
+        assertEquals(RadioPlaybackState.STOPPED, started.session().snapshot().state());
+        assertEquals(List.of(key), sessions.aborted);
+        assertTrue(started.attempt().cancellation().isCancelled());
+        assertEquals(0, connections.activeCount());
+        assertTrue(scheduler.tasks.get(0).cancelled);
+        assertFalse(manager.retry(key));
+        assertEquals(1, sessions.started.size());
+    }
+
+    @Test
+    void finiteFailureStopsWithoutSchedulingLiveBackoff() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        ManualRetryScheduler scheduler = new ManualRetryScheduler();
+        RadioReconnectController reconnects = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        AudioPlaybackManager manager = new AudioPlaybackManager(
+                new RecordingDriver(), sessions, new RecordingEffects(), reconnects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        manager.update(key, finiteRemoteState(1L, "https://audio.example/track"));
+        StartedSession started = sessions.started.get(0);
+
+        started.events().failure(new RadioTransportException(
+                RadioFailure.Code.READ_TIMEOUT, true, "Timed out", null));
+
+        PlaybackSession.Snapshot failed = manager.getSessionSnapshot(key).orElseThrow();
+        assertEquals(RadioPlaybackState.FAILED, failed.state());
+        assertEquals(RadioFailure.Code.READ_TIMEOUT, failed.failure().code());
+        assertFalse(failed.failure().recoverable());
+        assertTrue(started.attempt().cancellation().isCancelled());
+        assertEquals(List.of(key), sessions.aborted);
+        assertTrue(scheduler.tasks.isEmpty());
+        assertFalse(manager.retry(key));
+    }
+
+    @Test
+    void finitePartialStartFailureAbortsAndReleasesAdmissionWithoutReconnect() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        sessions.throwOnStart = true;
+        sessions.openBeforeThrow = true;
+        ManualRetryScheduler scheduler = new ManualRetryScheduler();
+        RadioReconnectController reconnects = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
+        AudioPlaybackManager manager = new AudioPlaybackManager(
+                new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+
+        assertTrue(manager.update(key, finiteRemoteState(1L, "https://audio.example/track")));
+
+        assertEquals(RadioPlaybackState.FAILED, manager.getSessionSnapshot(key).orElseThrow().state());
+        assertEquals(List.of(key), sessions.aborted);
+        assertTrue(sessions.open.isEmpty());
+        assertEquals(0, connections.activeCount());
+        assertTrue(scheduler.tasks.isEmpty());
+    }
+
+    @Test
+    void staleFiniteOutcomeCannotAffectReplacementSession() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        ManualRetryScheduler scheduler = new ManualRetryScheduler();
+        RadioReconnectController reconnects = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        AudioPlaybackManager manager = new AudioPlaybackManager(
+                new RecordingDriver(), sessions, new RecordingEffects(), reconnects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        manager.update(key, finiteRemoteState(1L, "https://audio.example/old"));
+        StartedSession old = sessions.started.get(0);
+
+        manager.update(key, finiteRemoteState(2L, "https://audio.example/new"));
+        StartedSession replacement = sessions.started.get(1);
+        old.events().failure(new RadioTransportException(
+                RadioFailure.Code.READ_TIMEOUT, true, "Late timeout", null));
+        old.events().completion();
+        old.events().soundEngineStopped();
+
+        assertTrue(old.attempt().cancellation().isCancelled());
+        assertEquals(RadioPlaybackState.RESOLVING, replacement.session().snapshot().state());
+        assertFalse(replacement.attempt().cancellation().isCancelled());
+        assertTrue(scheduler.tasks.isEmpty());
+        assertEquals(2, sessions.started.size());
+    }
+
+    @Test
+    void replacingFiniteWithLivePreservesLiveReconnectPolicy() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        ManualRetryScheduler scheduler = new ManualRetryScheduler();
+        RadioReconnectController reconnects = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        AudioPlaybackManager manager = new AudioPlaybackManager(
+                new RecordingDriver(), sessions, new RecordingEffects(), reconnects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        manager.update(key, finiteRemoteState(1L, "https://audio.example/track"));
+        StartedSession finite = sessions.started.get(0);
+
+        manager.update(key, liveState(2L, LIVE_SOURCE, true));
+        StartedSession live = sessions.started.get(1);
+        live.events().failure(new RadioTransportException(
+                RadioFailure.Code.READ_TIMEOUT, true, "Timed out", null));
+
+        assertTrue(finite.attempt().cancellation().isCancelled());
+        assertEquals(List.of(key), sessions.stopped);
+        assertEquals(RadioPlaybackState.RECONNECT_WAIT, live.session().snapshot().state());
+        assertEquals(1, scheduler.tasks.size());
+    }
+
+    @Test
+    void finiteAdmissionLimitFailsWithoutLiveReconnect() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        ManualRetryScheduler scheduler = new ManualRetryScheduler();
+        RadioReconnectController reconnects = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
+        AudioPlaybackManager manager = new AudioPlaybackManager(
+                new RecordingDriver(), sessions, new RecordingEffects(), reconnects, connections);
+        PlaybackOwnerKey first = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey second = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        manager.update(first, finiteRemoteState(1L, "https://audio.example/first"));
+
+        manager.update(second, finiteRemoteState(1L, "https://audio.example/second"));
+
+        PlaybackSession.Snapshot rejected = manager.getSessionSnapshot(second).orElseThrow();
+        assertEquals(RadioPlaybackState.FAILED, rejected.state());
+        assertEquals(RadioFailure.Code.RESOURCE_LIMIT, rejected.failure().code());
+        assertFalse(rejected.failure().recoverable());
+        assertEquals(List.of(first), sessions.started.stream().map(StartedSession::key).toList());
+        assertEquals(1, connections.activeCount());
+        assertTrue(scheduler.tasks.isEmpty());
+    }
+
+    @Test
+    void finiteBackendDoesNotClaimSoundEventTracks() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+
+        assertTrue(manager.update(key, finiteState(1L, true)));
+
+        PlaybackState mixed = new PlaybackState(2L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/track", "", ""),
+                        new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.13", "", "")))),
+                true);
+        assertTrue(manager.update(key, mixed));
+
+        assertTrue(sessions.started.isEmpty());
+        assertEquals(RadioPlaybackState.STOPPED,
+                manager.getSessionSnapshot(key).orElseThrow().state());
     }
 
     @Test
@@ -810,6 +998,12 @@ class AudioPlaybackManagerTest {
                         "minecraft:music_disc.13", "", ""), enabled);
     }
 
+    private static PlaybackState finiteRemoteState(long revision, String... sources) {
+        return new PlaybackState(revision, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                Arrays.stream(sources).map(source ->
+                        new AudioTrack(AudioTrack.SourceType.REMOTE, source, "", "")).toList())), true);
+    }
+
     private static PlaybackState state(long revision, AudioProgram.Kind kind,
                                        AudioTrack track, boolean enabled) {
         return new PlaybackState(revision,
@@ -869,12 +1063,14 @@ class AudioPlaybackManagerTest {
         private boolean throwOnStop;
         private boolean throwOnAbort;
         private boolean shutdown;
+        private boolean supportsFinite;
         private int maximumOpen;
         private RuntimeException startFailure;
 
         @Override
         public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
-            return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE).isPresent();
+            return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE
+                    || this.supportsFinite && program.kind() == AudioProgram.Kind.FINITE).isPresent();
         }
 
         @Override

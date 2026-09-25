@@ -296,6 +296,63 @@ class RadioReconnectControllerTest {
     }
 
     @Test
+    void finiteTerminationIsTerminalEvenWhenLiveEofWouldReconnect() {
+        ManualScheduler scheduler = new ManualScheduler();
+        RadioReconnectController controller = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        PlaybackSession session = new PlaybackSession();
+        PlaybackSession.Attempt attempt = session.start("https://audio.example/track");
+        AtomicInteger changes = new AtomicInteger();
+
+        controller.finiteTermination(session, attempt, new PlaybackAudioStream.Termination(
+                PlaybackAudioStream.TerminalState.EOF, null), changes::incrementAndGet);
+        controller.finiteFailure(session, attempt, new IOException("Late failure"), changes::incrementAndGet);
+
+        assertEquals(RadioPlaybackState.FAILED, session.snapshot().state());
+        assertEquals(RadioFailure.Code.UNEXPECTED_EOF, session.snapshot().failure().code());
+        assertFalse(session.snapshot().failure().recoverable());
+        assertTrue(attempt.cancellation().isCancelled());
+        assertEquals(1, changes.get());
+        assertTrue(scheduler.tasks.isEmpty());
+    }
+
+    @Test
+    void finiteSoundStopGraceAllowsAdvanceButNeverSchedulesReconnect() {
+        ManualScheduler scheduler = new ManualScheduler();
+        RadioReconnectController controller = new RadioReconnectController(
+                NO_JITTER, () -> 0L, Runnable::run, scheduler);
+        PlaybackSession first = new PlaybackSession();
+        PlaybackSession.Attempt firstAttempt = first.start("https://audio.example/first");
+        first.advance(firstAttempt, RadioPlaybackState.CONNECTING, 0L);
+        first.advance(firstAttempt, RadioPlaybackState.BUFFERING, 0L);
+        first.advance(firstAttempt, RadioPlaybackState.PLAYING, 0L);
+        AtomicInteger advances = new AtomicInteger();
+
+        controller.finiteSoundEngineStopped(first, firstAttempt, () -> {
+        });
+        controller.sequenceAdvance(first, firstAttempt, advances::incrementAndGet, () -> {
+        });
+        scheduler.fireRaw(0);
+
+        assertEquals(1, advances.get());
+        assertEquals(RadioPlaybackState.CONNECTING, first.snapshot().state());
+        assertTrue(scheduler.tasks.get(0).cancelled);
+
+        PlaybackSession second = new PlaybackSession();
+        PlaybackSession.Attempt secondAttempt = second.start("https://audio.example/second");
+        controller.finiteSoundEngineStopped(second, secondAttempt, () -> {
+        });
+        assertEquals(50L, scheduler.tasks.get(1).delayMillis);
+        scheduler.fireRaw(1);
+
+        assertEquals(RadioPlaybackState.FAILED, second.snapshot().state());
+        assertEquals(RadioFailure.Code.SOUND_ENGINE_STOPPED, second.snapshot().failure().code());
+        assertFalse(second.snapshot().failure().recoverable());
+        assertTrue(secondAttempt.cancellation().isCancelled());
+        assertEquals(2, scheduler.tasks.size());
+    }
+
+    @Test
     void pendingRetryLimitPreventsUnboundedTimerQueue() {
         ManualScheduler scheduler = new ManualScheduler();
         RadioReconnectController controller = new RadioReconnectController(
