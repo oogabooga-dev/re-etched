@@ -2,6 +2,7 @@ package gg.moonflower.etched.client.radio;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
@@ -24,12 +25,14 @@ import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -311,6 +314,39 @@ class LiveStreamPlaybackBackendTest {
 
         assertEquals(List.of("one", "one", "two"), this.requests);
         assertEquals(RadioPlaybackState.PLAYING, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        manager.shutdown();
+    }
+
+    @Test
+    void finiteRemoteUsesIndependentCacheStreamsAndSkipsHttpOnTheSecondPlay(@TempDir Path temporary)
+            throws Exception {
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        BoundedMediaCache cache = new BoundedMediaCache(temporary.resolve("v5"));
+        AudioNetworkPolicy policy = ignored -> {
+        };
+        LiveStreamPlaybackBackend remote = new LiveStreamPlaybackBackend(
+                LiveStreamPlaybackBackend.Mode.FINITE,
+                fixed(this.program(RadioSourceProgram.Kind.STATION, List.of(this.track("one")))),
+                cancellation -> new AudioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, policy,
+                        Duration.ofSeconds(2), Duration.ofSeconds(2), 2), policy, cancellation,
+                        AudioResolveLimits.DEFAULT), this.resolvers, this.producers, this.decoders,
+                Runnable::run, sounds, () -> true, cache);
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new FiniteRemotePlaybackBackend(remote));
+
+        manager.update(KEY, this.finiteState("one"));
+        await(() -> sounds.audio.size() == 1);
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> manager.getSessionSnapshot(KEY).orElseThrow().state() == RadioPlaybackState.STOPPED);
+        manager.update(KEY, new PlaybackState(1L, this.finiteState("one").program(), true));
+        await(() -> sounds.audio.size() == 2);
+        drain(sounds.audio.get(1));
+        sounds.played.get(1).onStop();
+        await(() -> manager.getSessionSnapshot(KEY).orElseThrow().state() == RadioPlaybackState.STOPPED);
+
+        assertEquals(List.of("one"), this.requests);
+        assertEquals(2, sounds.audio.size());
         manager.shutdown();
     }
 
