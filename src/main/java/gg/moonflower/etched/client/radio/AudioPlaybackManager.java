@@ -30,30 +30,30 @@ public final class AudioPlaybackManager {
     private final Map<PlaybackOwnerKey, ManagedPlayback> playbacks;
     private final PlaybackDriver playback;
     private final PlaybackBackend backend;
-    private final RadioPlaybackEffects effects;
+    private final PlaybackEffects effects;
     private final RadioReconnectController reconnects;
     private final RadioConnectionScheduler connections;
     private boolean closed;
 
     AudioPlaybackManager(PlaybackDriver playback) {
-        this(playback, PlaybackBackend.NOOP, RadioPlaybackEffects.NOOP);
+        this(playback, PlaybackBackend.NOOP, PlaybackEffects.NOOP);
     }
 
     AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend) {
-        this(playback, backend, RadioPlaybackEffects.NOOP);
+        this(playback, backend, PlaybackEffects.NOOP);
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, RadioPlaybackEffects effects) {
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, PlaybackEffects effects) {
         this(playback, backend, effects, RadioReconnectController.createDefault(Runnable::run));
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, RadioPlaybackEffects effects,
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, PlaybackEffects effects,
                          RadioReconnectController reconnects) {
         this(playback, backend, effects, reconnects,
                 new RadioConnectionScheduler(MAX_ACTIVE_PLAYBACKS, MAX_QUEUED_PLAYBACKS, reconnects::execute));
     }
 
-    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, RadioPlaybackEffects effects,
+    AudioPlaybackManager(PlaybackDriver playback, PlaybackBackend backend, PlaybackEffects effects,
                          RadioReconnectController reconnects, RadioConnectionScheduler connections) {
         this.playbacks = new HashMap<>();
         this.playback = Objects.requireNonNull(playback, "playback");
@@ -378,15 +378,13 @@ public final class AudioPlaybackManager {
     }
 
     private void updateEffects(PlaybackOwnerKey key, ManagedPlayback playback) {
-        if (this.playbacks.get(key) == playback && key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
-            this.effects.update(blockOwner, playback.session().snapshot());
+        if (this.playbacks.get(key) == playback) {
+            this.effects.update(key, playback.session().snapshot());
         }
     }
 
     private void stopEffects(PlaybackOwnerKey key) {
-        if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
-            this.effects.stop(blockOwner);
-        }
+        this.effects.stop(key);
     }
 
     private boolean supportsLiveBackend(PlaybackOwnerKey key, PlaybackState state) {

@@ -14,20 +14,26 @@ import java.util.Map;
 import java.util.Objects;
 
 /** Keeps radio overlays and nearby-record state aligned with actual playback. */
-final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
+final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
 
     private final Map<PlaybackOwnerKey.BlockOwner, ActiveEffect> active = new HashMap<>();
 
     @Override
-    public void update(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
+    public void update(PlaybackOwnerKey key, PlaybackSession.Snapshot snapshot) {
+        if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
+            this.updateBlock(blockOwner, snapshot);
+        }
+    }
+
+    private void updateBlock(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
         Component message = RadioStatusMessages.forSnapshot(snapshot);
         if (message == null) {
-            this.stop(key);
+            this.stopBlock(key);
             return;
         }
         ClientLevel level = getLevel(key);
         if (level == null) {
-            this.stop(key);
+            this.stopBlock(key);
             return;
         }
 
@@ -60,7 +66,13 @@ final class MinecraftRadioPlaybackEffects implements RadioPlaybackEffects {
     }
 
     @Override
-    public void stop(PlaybackOwnerKey.BlockOwner key) {
+    public void stop(PlaybackOwnerKey key) {
+        if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
+            this.stopBlock(blockOwner);
+        }
+    }
+
+    private void stopBlock(PlaybackOwnerKey.BlockOwner key) {
         ActiveEffect effect = this.active.remove(key);
         if (effect == null) {
             return;
