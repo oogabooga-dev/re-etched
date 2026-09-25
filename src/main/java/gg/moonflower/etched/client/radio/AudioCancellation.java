@@ -26,7 +26,7 @@ public final class AudioCancellation {
         this.cancelled.thenRun(action);
     }
 
-    boolean cancel() {
+    public boolean cancel() {
         return this.cancelled.complete(null);
     }
 }
