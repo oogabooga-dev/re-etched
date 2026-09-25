@@ -59,6 +59,6 @@ class RadioSourceExceptionHttpStatusTest {
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 2);
         return new AudioResolveContext(transport, ALLOW_TEST_SERVER,
                 new PlaybackSession().start("http://radio.example/live").cancellation(),
-                new RadioResolveLimits(4, 64, 2, 32, 1, 4));
+                new AudioResolveLimits(4, 64, 2, 32, 1, 4));
     }
 }

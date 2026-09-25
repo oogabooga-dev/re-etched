@@ -12,12 +12,12 @@ import java.util.Objects;
 
 /** Shared cancellation, transport, policy, limits, and budget for one resolution operation. */
 public record AudioResolveContext(AudioHttpTransport transport, AudioNetworkPolicy networkPolicy,
-                                  AudioCancellation cancellation, RadioResolveLimits limits,
-                                  RadioResolutionBudget budget) {
+                                   AudioCancellation cancellation, AudioResolveLimits limits,
+                                   AudioResolutionBudget budget) {
 
     public AudioResolveContext(AudioHttpTransport transport, AudioNetworkPolicy networkPolicy,
-                               AudioCancellation cancellation, RadioResolveLimits limits) {
-        this(transport, networkPolicy, cancellation, limits, new RadioResolutionBudget(limits));
+                                AudioCancellation cancellation, AudioResolveLimits limits) {
+        this(transport, networkPolicy, cancellation, limits, new AudioResolutionBudget(limits));
     }
 
     public AudioResolveContext {
@@ -36,6 +36,6 @@ public record AudioResolveContext(AudioHttpTransport transport, AudioNetworkPoli
                 RadioHttpTransportImpl.DEFAULT_CONNECT_TIMEOUT,
                 RadioHttpTransportImpl.DEFAULT_READ_TIMEOUT,
                 RadioHttpTransportImpl.DEFAULT_MAX_REDIRECTS);
-        return new AudioResolveContext(transport, networkPolicy, cancellation, RadioResolveLimits.DEFAULT);
+        return new AudioResolveContext(transport, networkPolicy, cancellation, AudioResolveLimits.DEFAULT);
     }
 }

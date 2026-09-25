@@ -30,7 +30,7 @@ class DirectRadioSourceResolverSharedBudgetTest {
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
                 respond(exchange, 200, bytes("ID3-audio"));
             });
-            AudioResolveContext context = context(new RadioResolveLimits(4, 128, 4, 64, 1, 2));
+            AudioResolveContext context = context(new AudioResolveLimits(4, 128, 4, 64, 1, 2));
             DirectRadioSourceResolver resolver = new DirectRadioSourceResolver();
 
             try (RadioResolvedSource ignored = resolver.resolve(server.uri("/live"), context)) {
@@ -62,7 +62,7 @@ class DirectRadioSourceResolverSharedBudgetTest {
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
                 respond(exchange, 200, bytes("ID3-audio"));
             });
-            AudioResolveContext context = context(new RadioResolveLimits(4, 128, 1, 64, 1, 4));
+            AudioResolveContext context = context(new AudioResolveLimits(4, 128, 1, 64, 1, 4));
             DirectRadioSourceResolver resolver = new DirectRadioSourceResolver();
 
             try (RadioResolvedSource ignored = resolver.resolve(server.uri("/stations.m3u"), context)) {
@@ -77,7 +77,7 @@ class DirectRadioSourceResolverSharedBudgetTest {
         }
     }
 
-    private static AudioResolveContext context(RadioResolveLimits limits) {
+    private static AudioResolveContext context(AudioResolveLimits limits) {
         RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 3);
         return new AudioResolveContext(transport, ALLOW_TEST_SERVER,

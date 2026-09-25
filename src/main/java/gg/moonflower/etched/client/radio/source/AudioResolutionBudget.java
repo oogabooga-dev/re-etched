@@ -3,13 +3,13 @@ package gg.moonflower.etched.client.radio.source;
 import gg.moonflower.etched.client.radio.RadioFailure;
 
 /** Shared request and entry budget for one source-resolution operation. */
-public final class RadioResolutionBudget {
+public final class AudioResolutionBudget {
 
-    private final RadioResolveLimits limits;
+    private final AudioResolveLimits limits;
     private int steps;
     private int entries;
 
-    public RadioResolutionBudget(RadioResolveLimits limits) {
+    public AudioResolutionBudget(AudioResolveLimits limits) {
         this.limits = java.util.Objects.requireNonNull(limits, "limits");
     }
 

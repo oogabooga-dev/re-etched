@@ -6,9 +6,9 @@ import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
+import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
@@ -571,7 +571,7 @@ class LiveStreamPlaybackBackendTest {
                 fixed(program), cancellation -> new AudioResolveContext(
                 new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
-                cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
+                cancellation, AudioResolveLimits.DEFAULT), this.resolvers, this.producers,
                 this.decoders, command -> {
                     throw new java.util.concurrent.RejectedExecutionException("owner stopped");
                 }, sounds, () -> true);
@@ -598,7 +598,7 @@ class LiveStreamPlaybackBackendTest {
                 fixed(program), cancellation -> new AudioResolveContext(
                 new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
-                cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
+                cancellation, AudioResolveLimits.DEFAULT), this.resolvers, this.producers,
                 this.decoders, command -> {
                     if (ownerDispatches.incrementAndGet() > 2) {
                         throw new java.util.concurrent.RejectedExecutionException("owner stopped");
@@ -627,7 +627,7 @@ class LiveStreamPlaybackBackendTest {
         return new LiveStreamPlaybackBackend(resolver, cancellation ->
                 new AudioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, allowTestServer,
                         Duration.ofSeconds(2), Duration.ofSeconds(2), 2), allowTestServer,
-                        cancellation, RadioResolveLimits.DEFAULT), this.resolvers, this.producers,
+                        cancellation, AudioResolveLimits.DEFAULT), this.resolvers, this.producers,
                 this.decoders, Runnable::run, sounds, () -> true);
     }
 

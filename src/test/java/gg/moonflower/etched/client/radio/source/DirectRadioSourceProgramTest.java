@@ -57,7 +57,7 @@ class DirectRadioSourceProgramTest {
                 Proxy.NO_PROXY, ALLOW_TEST_SERVER, Duration.ofSeconds(2), Duration.ofSeconds(2), 3);
         return new AudioResolveContext(transport, ALLOW_TEST_SERVER,
                 new PlaybackSession().start("http://radio.example/live").cancellation(),
-                new RadioResolveLimits(4, 128, 4, 64, 1, maxSteps));
+                new AudioResolveLimits(4, 128, 4, 64, 1, maxSteps));
     }
 
     private static byte[] bytes(String value) {

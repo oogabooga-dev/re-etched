@@ -284,7 +284,7 @@ class SoundCloudRadioSourceResolverTest {
                 scriptRequests.incrementAndGet();
                 respondJavascript(exchange, "client_id:\"unused\"");
             });
-            RadioResolveLimits limits = new RadioResolveLimits(16, 256, 10, 64, 2, 20);
+            AudioResolveLimits limits = new AudioResolveLimits(16, 256, 10, 64, 2, 20);
 
             RadioSourceException exception = assertThrows(RadioSourceException.class,
                     () -> fixture.resolver.resolveProgram(TRACK, fixture.context(limits)));
@@ -306,7 +306,7 @@ class SoundCloudRadioSourceResolverTest {
                 apiRequests.incrementAndGet();
                 respondJson(exchange, 200, "{}");
             });
-            RadioResolveLimits limits = new RadioResolveLimits(16, 256, 10, 64, 2, 20);
+            AudioResolveLimits limits = new AudioResolveLimits(16, 256, 10, 64, 2, 20);
 
             RadioSourceException exception = assertThrows(RadioSourceException.class,
                     () -> fixture.resolver.resolveProgram(TRACK, fixture.context(limits)));
@@ -410,7 +410,7 @@ class SoundCloudRadioSourceResolverTest {
             fixture.installDiscovery("client-one");
             fixture.server.handle("/resolve", exchange -> respondJson(exchange, 200,
                     "x".repeat(257)));
-            RadioResolveLimits limits = new RadioResolveLimits(16, 256, 10, 64, 2, 20);
+            AudioResolveLimits limits = new AudioResolveLimits(16, 256, 10, 64, 2, 20);
 
             RadioSourceException exception = assertThrows(RadioSourceException.class,
                     () -> fixture.resolver.resolveProgram(TRACK, fixture.context(limits)));
@@ -428,7 +428,7 @@ class SoundCloudRadioSourceResolverTest {
             fixture.server.handle("/transcoding", exchange -> respondJson(exchange, 200,
                     "x".repeat(513)));
             RadioSourceProgram program = fixture.resolver.resolveProgram(TRACK, fixture.context());
-            RadioResolveLimits limits = new RadioResolveLimits(16, 512, 10, 64, 2, 20);
+            AudioResolveLimits limits = new AudioResolveLimits(16, 512, 10, 64, 2, 20);
 
             RadioSourceException exception = assertThrows(RadioSourceException.class,
                     () -> program.openTrack(0, fixture.context(limits)));
@@ -447,7 +447,7 @@ class SoundCloudRadioSourceResolverTest {
                 respondJson(exchange, 200, progressiveTrackJson("Track",
                         fixture.server.uri("/transcoding")));
             });
-            RadioResolveLimits limits = new RadioResolveLimits(16, 1024, 10, 64, 2, 2);
+            AudioResolveLimits limits = new AudioResolveLimits(16, 1024, 10, 64, 2, 2);
 
             RadioSourceException exception = assertThrows(RadioSourceException.class,
                     () -> fixture.resolver.resolveProgram(TRACK, fixture.context(limits)));
@@ -562,19 +562,19 @@ class SoundCloudRadioSourceResolverTest {
         }
 
         private AudioResolveContext context() {
-            return this.context(RadioResolveLimits.DEFAULT);
+            return this.context(AudioResolveLimits.DEFAULT);
         }
 
-        private AudioResolveContext context(RadioResolveLimits limits) {
+        private AudioResolveContext context(AudioResolveLimits limits) {
             AudioCancellation cancellation = new PlaybackSession().start(TRACK.toString()).cancellation();
             return this.context(cancellation, limits);
         }
 
         private AudioResolveContext context(AudioCancellation cancellation) {
-            return this.context(cancellation, RadioResolveLimits.DEFAULT);
+            return this.context(cancellation, AudioResolveLimits.DEFAULT);
         }
 
-        private AudioResolveContext context(AudioCancellation cancellation, RadioResolveLimits limits) {
+        private AudioResolveContext context(AudioCancellation cancellation, AudioResolveLimits limits) {
             RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
                     Proxy.NO_PROXY, ALLOW_TEST_SERVER, TIMEOUT, TIMEOUT, 5);
             return new AudioResolveContext(transport, ALLOW_TEST_SERVER, cancellation, limits);

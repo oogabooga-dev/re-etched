@@ -2,8 +2,8 @@ package gg.moonflower.etched.client.radio.net;
 
 import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
+import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
-import gg.moonflower.etched.client.radio.source.RadioResolveLimits;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import org.junit.jupiter.api.Test;
@@ -78,7 +78,7 @@ class DirectRadioSourceResolverOwnershipTest {
     private static AudioResolveContext context(AudioHttpTransport transport) {
         return new AudioResolveContext(transport, ALLOW_ALL,
                 new PlaybackSession().start("http://radio.example/live").cancellation(),
-                new RadioResolveLimits(16, 1024, 10, 256, 2, 20));
+                new AudioResolveLimits(16, 1024, 10, 256, 2, 20));
     }
 
     private static RadioHttpTransportImpl transport(
