@@ -55,9 +55,9 @@ class RadioMonoAudioStreamTest {
                 new FakeStream(stereoFormat(), shorts(1, 2, 3)));
 
         IOException failure = assertThrows(IOException.class, () -> stream.read(4));
-        RadioAudioStream.Termination termination = stream.termination().toCompletableFuture().join();
+        PlaybackAudioStream.Termination termination = stream.termination().toCompletableFuture().join();
 
-        assertEquals(RadioAudioStream.TerminalState.FAILED, termination.state());
+        assertEquals(PlaybackAudioStream.TerminalState.FAILED, termination.state());
         assertSame(failure, termination.failure());
     }
 
@@ -74,7 +74,7 @@ class RadioMonoAudioStreamTest {
         return buffer.flip();
     }
 
-    private static final class FakeStream implements RadioAudioStream {
+    private static final class FakeStream implements PlaybackAudioStream {
 
         private final AudioFormat format;
         private final ByteBuffer data;

@@ -11,7 +11,7 @@ import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
@@ -208,7 +208,7 @@ class LiveStreamPlaybackBackendTest {
         drain(sounds.audio.get(0));
         await(() -> events.terminations.size() == 1);
 
-        assertEquals(RadioAudioStream.TerminalState.EOF, events.terminations.get(0).state());
+        assertEquals(PlaybackAudioStream.TerminalState.EOF, events.terminations.get(0).state());
         assertEquals(0, events.completions.get());
         assertEquals(RadioPlaybackState.PLAYING, session.snapshot().state());
         session.stop();
@@ -233,7 +233,7 @@ class LiveStreamPlaybackBackendTest {
         drain(sounds.audio.get(0));
         await(() -> events.terminations.size() == 1);
 
-        assertEquals(RadioAudioStream.TerminalState.EOF, events.terminations.get(0).state());
+        assertEquals(PlaybackAudioStream.TerminalState.EOF, events.terminations.get(0).state());
         session.stop();
         driver.stop(KEY, session);
         driver.shutdown();
@@ -402,7 +402,7 @@ class LiveStreamPlaybackBackendTest {
         RecordingEvents events = new RecordingEvents(session, attempt);
         driver.start(KEY, state(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
-        RadioAudioStream audio = sounds.audio.get(0);
+        PlaybackAudioStream audio = sounds.audio.get(0);
 
         session.stop();
         driver.stop(KEY, session);
@@ -444,7 +444,7 @@ class LiveStreamPlaybackBackendTest {
             driver.start(KEY, state(attempt.source()), session, attempt, events);
             await(() -> sounds.audio.size() == 1);
             assertTrue(bodySent.await(5, TimeUnit.SECONDS));
-            RadioAudioStream audio = sounds.audio.get(0);
+            PlaybackAudioStream audio = sounds.audio.get(0);
             Future<Throwable> read = soundExecutor.submit(() -> {
                 try {
                     while (true) {
@@ -461,7 +461,7 @@ class LiveStreamPlaybackBackendTest {
             driver.stop(KEY, session);
 
             assertInstanceOf(IOException.class, read.get(2, TimeUnit.SECONDS));
-            assertEquals(RadioAudioStream.TerminalState.CANCELLED,
+            assertEquals(PlaybackAudioStream.TerminalState.CANCELLED,
                     audio.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
             assertEquals(1, sounds.stops.get());
         } finally {
@@ -484,13 +484,13 @@ class LiveStreamPlaybackBackendTest {
         RecordingEvents events = new RecordingEvents(session, attempt);
         driver.start(KEY, state(attempt.source()), session, attempt, events);
         await(() -> sounds.audio.size() == 1);
-        RadioAudioStream audio = sounds.audio.get(0);
+        PlaybackAudioStream audio = sounds.audio.get(0);
         sounds.failStop = true;
 
         session.stop();
         driver.stop(KEY, session);
 
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(PlaybackAudioStream.TerminalState.CLOSED,
                 audio.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         driver.shutdown();
     }
@@ -615,7 +615,7 @@ class LiveStreamPlaybackBackendTest {
         await(() -> events.unavailableOwners.get() == 1);
 
         assertEquals(0, sounds.stops.get());
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(PlaybackAudioStream.TerminalState.CLOSED,
                 sounds.audio.get(0).termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         driver.shutdown();
     }
@@ -671,7 +671,7 @@ class LiveStreamPlaybackBackendTest {
         }
     }
 
-    private static void drain(RadioAudioStream stream) throws IOException {
+    private static void drain(PlaybackAudioStream stream) throws IOException {
         while (true) {
             ByteBuffer bytes = stream.read(4096);
             if (!bytes.hasRemaining()) {
@@ -692,7 +692,7 @@ class LiveStreamPlaybackBackendTest {
 
     private static final class FakeSoundOutput implements SoundEngineSink {
         private final List<FakeSoundHandle> played = new CopyOnWriteArrayList<>();
-        private final List<RadioAudioStream> audio = new CopyOnWriteArrayList<>();
+        private final List<PlaybackAudioStream> audio = new CopyOnWriteArrayList<>();
         private final AtomicInteger stops = new AtomicInteger();
         private final boolean failPlay;
         private final boolean acceptPlay;
@@ -720,7 +720,7 @@ class LiveStreamPlaybackBackendTest {
         }
 
         @Override
-        public Handle create(PlaybackOwnerKey key, long generation, RadioAudioStream stream,
+        public Handle create(PlaybackOwnerKey key, long generation, PlaybackAudioStream stream,
                              AudioCancellation cancellation, Runnable streamHandedOff,
                              Runnable soundStopped) {
             if (this.failCreate) {
@@ -732,12 +732,12 @@ class LiveStreamPlaybackBackendTest {
         }
 
         private final class FakeSoundHandle implements Handle {
-            private final RadioAudioStream stream;
+            private final PlaybackAudioStream stream;
             private final Runnable streamHandedOff;
             private final Runnable soundStopped;
             private boolean transferred;
 
-            private FakeSoundHandle(RadioAudioStream stream, Runnable streamHandedOff,
+            private FakeSoundHandle(PlaybackAudioStream stream, Runnable streamHandedOff,
                                     Runnable soundStopped) {
                 this.stream = stream;
                 this.streamHandedOff = streamHandedOff;
@@ -790,7 +790,7 @@ class LiveStreamPlaybackBackendTest {
         private final PlaybackSession.Attempt attempt;
         private final List<RadioPlaybackState> progress = new CopyOnWriteArrayList<>();
         private final List<Throwable> failures = new CopyOnWriteArrayList<>();
-        private final List<RadioAudioStream.Termination> terminations = new CopyOnWriteArrayList<>();
+        private final List<PlaybackAudioStream.Termination> terminations = new CopyOnWriteArrayList<>();
         private final List<Boolean> soundStops = new CopyOnWriteArrayList<>();
         private final AtomicInteger completions = new AtomicInteger();
         private final AtomicInteger unavailableOwners = new AtomicInteger();
@@ -829,7 +829,7 @@ class LiveStreamPlaybackBackendTest {
         }
 
         @Override
-        public void termination(RadioAudioStream.Termination termination) {
+        public void termination(PlaybackAudioStream.Termination termination) {
             this.terminations.add(termination);
         }
 

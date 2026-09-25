@@ -19,7 +19,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Radio-local streaming MP3 decoder backed by JLayer. */
-public final class RadioMp3AudioStream extends AbstractRadioAudioStream {
+public final class RadioMp3AudioStream extends AbstractPlaybackAudioStream {
 
     private static final int MAX_PCM_READ = 1024 * 1024;
     private static final int MAX_ID3_BYTES = 1024 * 1024;

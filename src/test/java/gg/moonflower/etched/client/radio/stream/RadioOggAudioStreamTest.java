@@ -32,7 +32,7 @@ class RadioOggAudioStreamTest {
             }
 
             assertTrue(decoded > 10_000);
-            assertEquals(RadioAudioStream.TerminalState.EOF,
+            assertEquals(PlaybackAudioStream.TerminalState.EOF,
                     stream.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         }
     }
@@ -46,7 +46,7 @@ class RadioOggAudioStreamTest {
         stream.close();
         stream.close();
 
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(PlaybackAudioStream.TerminalState.CLOSED,
                 stream.termination().toCompletableFuture().join().state());
         assertThrows(IOException.class, () -> stream.read(1024));
     }

@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-abstract class AbstractRadioAudioStream implements RadioAudioStream {
+abstract class AbstractPlaybackAudioStream implements PlaybackAudioStream {
 
     private final CompletableFuture<Termination> termination = new CompletableFuture<>();
 

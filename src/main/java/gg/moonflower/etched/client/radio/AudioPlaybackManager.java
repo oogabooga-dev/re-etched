@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.audio.PlaybackRevision;
@@ -317,7 +317,7 @@ public final class AudioPlaybackManager {
                     }
 
                     @Override
-                    public void termination(RadioAudioStream.Termination termination) {
+                    public void termination(PlaybackAudioStream.Termination termination) {
                         reconnects.termination(playback.session(), attempt, termination,
                                 retry -> startCurrentSession(key, playback, retry),
                                 () -> terminalStateChanged(key, playback, attempt));

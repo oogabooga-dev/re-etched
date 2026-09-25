@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 
 /** AudioStream with a terminal signal that remains visible outside SoundEngine. */
-public interface RadioAudioStream extends AudioStream {
+public interface PlaybackAudioStream extends AudioStream {
 
     CompletionStage<Termination> termination();
 

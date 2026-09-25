@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
@@ -580,8 +581,8 @@ class AudioPlaybackManagerTest {
         detached.events().progress(RadioPlaybackState.CONNECTING);
         detached.events().failure(new RadioTransportException(
                 RadioFailure.Code.CONNECT_TIMEOUT, true, "Late", null));
-        detached.events().termination(new gg.moonflower.etched.client.radio.stream.RadioAudioStream.Termination(
-                gg.moonflower.etched.client.radio.stream.RadioAudioStream.TerminalState.EOF, null));
+        detached.events().termination(new PlaybackAudioStream.Termination(
+                PlaybackAudioStream.TerminalState.EOF, null));
         detached.events().soundEngineStopped();
         detached.events().completion();
 

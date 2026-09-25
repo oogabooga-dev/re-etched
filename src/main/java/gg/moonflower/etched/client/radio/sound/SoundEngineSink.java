@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.sound;
 
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.radio.AudioCancellation;
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 
 /**
  * Transfers prepared audio streams to a platform sound engine.
@@ -16,7 +16,7 @@ public interface SoundEngineSink {
 
     boolean supports(PlaybackOwnerKey key);
 
-    Handle create(PlaybackOwnerKey key, long generation, RadioAudioStream stream,
+    Handle create(PlaybackOwnerKey key, long generation, PlaybackAudioStream stream,
                   AudioCancellation cancellation, Runnable streamHandedOff, Runnable soundStopped);
 
     interface Handle {
