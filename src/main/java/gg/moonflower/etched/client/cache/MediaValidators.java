@@ -34,7 +34,14 @@ public final class MediaValidators {
         boolean mp3 = (prefix[0] & 0xFF) == 0xFF && (prefix[1] & 0xE0) == 0xE0
                 && (prefix[1] & 0x18) != 0x08 && (prefix[1] & 0x06) != 0;
         if (!ogg && !id3 && !mp3) {
-            throw new IOException("Cache entry is not MP3 or Ogg audio");
+            throw new UnsupportedAudioException();
+        }
+    }
+
+    /** A legacy file of another format can be streamed without writing a cache entry. */
+    public static final class UnsupportedAudioException extends IOException {
+        public UnsupportedAudioException() {
+            super("Cache entry is not MP3 or Ogg audio");
         }
     }
 

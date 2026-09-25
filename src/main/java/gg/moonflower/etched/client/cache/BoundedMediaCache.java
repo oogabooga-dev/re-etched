@@ -270,6 +270,7 @@ public final class BoundedMediaCache {
         }
 
         private Lease open(Entry entry, Validator validator) throws IOException {
+            this.verifyDirectory();
             if (!Files.isRegularFile(entry.file, LinkOption.NOFOLLOW_LINKS)
                     || Files.size(entry.file) != entry.size || this.expired(entry, clock.millis())) {
                 this.remove(entry);
@@ -289,6 +290,7 @@ public final class BoundedMediaCache {
         }
 
         private void download(String hash, Load pending, Loader loader, Validator validator) throws IOException {
+            this.verifyDirectory();
             Path part = Files.createTempFile(this.path, hash + "-", ".part");
             try {
                 pending.cancellation.throwIfCancelled();
@@ -323,14 +325,15 @@ public final class BoundedMediaCache {
                 validator.validate(part);
                 synchronized (this) {
                     pending.cancellation.throwIfCancelled();
+                    this.verifyDirectory();
                     this.evict(count, 1);
                     Path destination = this.path.resolve(hash + ".bin");
                     if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
                         throw new IOException("Cache destination already exists");
                     }
-                    Files.move(part, destination, StandardCopyOption.ATOMIC_MOVE);
                     long now = clock.millis();
-                    Files.setLastModifiedTime(destination, java.nio.file.attribute.FileTime.fromMillis(now));
+                    Files.setLastModifiedTime(part, java.nio.file.attribute.FileTime.fromMillis(now));
+                    Files.move(part, destination, StandardCopyOption.ATOMIC_MOVE);
                     this.entries.put(hash, new Entry(destination, count, now));
                     this.bytes += count;
                 }
@@ -352,12 +355,20 @@ public final class BoundedMediaCache {
         }
 
         private void remove(Entry entry) throws IOException {
+            this.verifyDirectory();
             if (entry.pins != 0) {
                 throw new IOException("Cache entry is in use");
             }
             Files.deleteIfExists(entry.file);
             this.entries.values().remove(entry);
             this.bytes -= entry.size;
+        }
+
+        private void verifyDirectory() throws IOException {
+            if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)
+                    || !Files.isDirectory(this.path, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Cache directory was replaced or removed");
+            }
         }
 
         private void detach(Load pending) {
