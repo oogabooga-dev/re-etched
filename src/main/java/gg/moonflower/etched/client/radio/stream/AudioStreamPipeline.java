@@ -17,10 +17,10 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 
-/** Builds one decoder from one independently owned resolved radio response. */
-public final class RadioStreamPipeline {
+/** Builds one decoder from one independently owned resolved live response. */
+public final class AudioStreamPipeline {
 
-    private RadioStreamPipeline() {
+    private AudioStreamPipeline() {
     }
 
     public static Preparation prepare(RadioResolvedSource source, AudioCancellation cancellation,
@@ -43,9 +43,9 @@ public final class RadioStreamPipeline {
             throw new IllegalArgumentException("Producer and decoder executors must be distinct");
         }
 
-        RadioBufferedInputStream buffer;
+        AudioBufferedInputStream buffer;
         try {
-            buffer = new RadioBufferedInputStream(source.body(), cancellation, producerExecutor);
+            buffer = new AudioBufferedInputStream(source.body(), cancellation, producerExecutor);
         } catch (RuntimeException exception) {
             source.close();
             throw exception;
@@ -72,7 +72,7 @@ public final class RadioStreamPipeline {
                 stream.completeExceptionally(failure);
                 return;
             }
-            if (startup == RadioBufferedInputStream.Startup.EMPTY_EOF) {
+            if (startup == AudioBufferedInputStream.Startup.EMPTY_EOF) {
                 buffer.close();
                 stream.completeExceptionally(new RadioStreamException(
                         RadioFailure.Code.UNEXPECTED_EOF, true,
@@ -96,7 +96,7 @@ public final class RadioStreamPipeline {
         return preparation;
     }
 
-    private static RadioAudioStream decode(RadioResolvedSource source, RadioBufferedInputStream buffer,
+    private static RadioAudioStream decode(RadioResolvedSource source, AudioBufferedInputStream buffer,
                                            AudioCancellation cancellation, boolean forceStereo,
                                            Consumer<String> streamTitleListener) {
         cancellation.throwIfCancelled();
@@ -164,14 +164,14 @@ public final class RadioStreamPipeline {
 
     public static final class Preparation implements AutoCloseable {
 
-        private final RadioBufferedInputStream buffer;
+        private final AudioBufferedInputStream buffer;
         private final CompletableFuture<RadioAudioStream> stream;
         private final ExecutorService decoderExecutor;
         private final Future<?> decoderTask;
         private boolean closed;
         private boolean transferred;
 
-        private Preparation(RadioBufferedInputStream buffer,
+        private Preparation(AudioBufferedInputStream buffer,
                             CompletableFuture<RadioAudioStream> stream,
                             ExecutorService decoderExecutor, Future<?> decoderTask) {
             this.buffer = buffer;
@@ -196,7 +196,7 @@ public final class RadioStreamPipeline {
             return this.buffer.bufferedBytes();
         }
 
-        public RadioBufferedInputStream.State bufferState() {
+        public AudioBufferedInputStream.State bufferState() {
             return this.buffer.state();
         }
 

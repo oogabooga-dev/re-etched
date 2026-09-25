@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RadioStreamPipelineTest {
+class AudioStreamPipelineTest {
 
     private final ExecutorService producers = Executors.newFixedThreadPool(2);
     private final ExecutorService decoders = Executors.newFixedThreadPool(2);
@@ -44,7 +44,7 @@ class RadioStreamPipelineTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        try (var fixture = RadioStreamPipelineTest.class.getResourceAsStream(
+        try (var fixture = AudioStreamPipelineTest.class.getResourceAsStream(
                 "/gg/moonflower/etched/client/radio/audio/mono.mp3")) {
             if (fixture == null) {
                 throw new IllegalStateException("Missing MP3 fixture");
@@ -69,7 +69,7 @@ class RadioStreamPipelineTest {
         PlaybackSession session = new PlaybackSession();
         PlaybackSession.Attempt attempt = session.start(this.uri.toString());
         RadioResolvedSource source = this.resolve(attempt);
-        RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(source,
+        AudioStreamPipeline.Preparation preparation = AudioStreamPipeline.prepare(source,
                 attempt.cancellation(), this.producers, this.decoders, true,
                 title -> session.offerStreamTitle(attempt, title));
         try (preparation) {
@@ -89,9 +89,9 @@ class RadioStreamPipelineTest {
     void identicalUrlsProduceIndependentBuffersAndDecoders() throws Exception {
         PlaybackSession.Attempt firstAttempt = new PlaybackSession().start(this.uri.toString());
         PlaybackSession.Attempt secondAttempt = new PlaybackSession().start(this.uri.toString());
-        RadioStreamPipeline.Preparation first = RadioStreamPipeline.prepare(
+        AudioStreamPipeline.Preparation first = AudioStreamPipeline.prepare(
                 this.resolve(firstAttempt), firstAttempt.cancellation(), this.producers, this.decoders, true);
-        RadioStreamPipeline.Preparation second = RadioStreamPipeline.prepare(
+        AudioStreamPipeline.Preparation second = AudioStreamPipeline.prepare(
                 this.resolve(secondAttempt), secondAttempt.cancellation(), this.producers, this.decoders, true);
         try (first; second) {
             RadioAudioStream firstAudio = first.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
@@ -108,7 +108,7 @@ class RadioStreamPipelineTest {
     @Test
     void transferredDecoderOutlivesPreparationLease() throws Exception {
         PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
-        RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
+        AudioStreamPipeline.Preparation preparation = AudioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, this.decoders, true);
         RadioAudioStream audio = preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
@@ -126,7 +126,7 @@ class RadioStreamPipelineTest {
         RadioResolvedSource source = this.resolve(attempt);
         try (source) {
             org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                    () -> RadioStreamPipeline.prepare(source, attempt.cancellation(),
+                    () -> AudioStreamPipeline.prepare(source, attempt.cancellation(),
                             this.producers, this.producers, true));
         }
     }
@@ -136,12 +136,12 @@ class RadioStreamPipelineTest {
         ExecutorService rejecting = Executors.newSingleThreadExecutor();
         rejecting.shutdownNow();
         PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
-        RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
+        AudioStreamPipeline.Preparation preparation = AudioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, rejecting, true);
         try (preparation) {
             org.junit.jupiter.api.Assertions.assertThrows(ExecutionException.class,
                     () -> preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS));
-            assertEquals(RadioBufferedInputStream.State.CANCELLED, preparation.bufferState());
+            assertEquals(AudioBufferedInputStream.State.CANCELLED, preparation.bufferState());
         }
     }
 
@@ -161,7 +161,7 @@ class RadioStreamPipelineTest {
         });
         assertTrue(occupied.await(2, TimeUnit.SECONDS));
         PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
-        RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
+        AudioStreamPipeline.Preparation preparation = AudioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, decoder, true);
         try {
             await(() -> decoder.getQueue().size() == 1);

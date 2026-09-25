@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RadioBufferedInputStreamTest {
+class AudioBufferedInputStreamTest {
 
     private final ExecutorService producer = Executors.newSingleThreadExecutor();
     private final ExecutorService consumers = Executors.newCachedThreadPool();
@@ -44,18 +44,18 @@ class RadioBufferedInputStreamTest {
     @Test
     void shortEofBelowThresholdCompletesStartupAndPreservesBytes() throws Exception {
         byte[] expected = {1, 2, 3, 4, 5};
-        try (RadioBufferedInputStream stream = this.buffer(expected, 16, 3, 12)) {
-            assertEquals(RadioBufferedInputStream.Startup.READY, startup(stream));
+        try (AudioBufferedInputStream stream = this.buffer(expected, 16, 3, 12)) {
+            assertEquals(AudioBufferedInputStream.Startup.READY, startup(stream));
             assertArrayEquals(expected, stream.readAllBytes());
-            assertEquals(RadioBufferedInputStream.State.EOF, stream.state());
+            assertEquals(AudioBufferedInputStream.State.EOF, stream.state());
             assertEquals(-1, stream.read());
         }
     }
 
     @Test
     void emptySourceCompletesStartupWithoutHanging() throws Exception {
-        try (RadioBufferedInputStream stream = this.buffer(new byte[0], 8, 4, 4)) {
-            assertEquals(RadioBufferedInputStream.Startup.EMPTY_EOF, startup(stream));
+        try (AudioBufferedInputStream stream = this.buffer(new byte[0], 8, 4, 4)) {
+            assertEquals(AudioBufferedInputStream.Startup.EMPTY_EOF, startup(stream));
             assertEquals(-1, stream.read());
         }
     }
@@ -67,8 +67,8 @@ class RadioBufferedInputStreamTest {
             expected[i] = (byte) (i * 3);
         }
 
-        try (RadioBufferedInputStream stream = this.buffer(expected, 11, 5, 7)) {
-            assertEquals(RadioBufferedInputStream.Startup.READY, startup(stream));
+        try (AudioBufferedInputStream stream = this.buffer(expected, 11, 5, 7)) {
+            assertEquals(AudioBufferedInputStream.Startup.READY, startup(stream));
             byte[] actual = new byte[expected.length + 8];
             Arrays.fill(actual, (byte) 0x6A);
             int offset = 4;
@@ -91,7 +91,7 @@ class RadioBufferedInputStreamTest {
 
     @Test
     void singleByteReadsAreUnsignedAndZeroLengthReadIsImmediate() throws Exception {
-        try (RadioBufferedInputStream stream = this.buffer(new byte[]{(byte) 0x80, (byte) 0xFF}, 4, 2, 2)) {
+        try (AudioBufferedInputStream stream = this.buffer(new byte[]{(byte) 0x80, (byte) 0xFF}, 4, 2, 2)) {
             assertEquals(0, stream.read(new byte[1], 0, 0));
             assertEquals(128, stream.read());
             assertEquals(255, stream.read());
@@ -103,9 +103,9 @@ class RadioBufferedInputStreamTest {
     void underrunWaitsForProducerInsteadOfReturningEof() throws Exception {
         PausedInputStream source = new PausedInputStream(new byte[]{1, 2, 3}, new byte[]{4, 5});
         AudioCancellation cancellation = cancellation();
-        try (RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        try (AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 source, cancellation, this.producer, 8, 3, 3)) {
-            assertEquals(RadioBufferedInputStream.Startup.READY, startup(stream));
+            assertEquals(AudioBufferedInputStream.Startup.READY, startup(stream));
             assertArrayEquals(new byte[]{1, 2, 3}, stream.readNBytes(3));
 
             CompletableFuture<Integer> waitingRead = CompletableFuture.supplyAsync(() -> {
@@ -127,7 +127,7 @@ class RadioBufferedInputStreamTest {
     @Test
     void returnsAvailablePartialDataWithoutFillingCallerRequest() throws Exception {
         PausedInputStream source = new PausedInputStream(new byte[]{1, 2, 3}, new byte[]{4});
-        try (RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        try (AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 source, cancellation(), this.producer, 8, 3, 3)) {
             startup(stream);
             byte[] output = new byte[20];
@@ -140,25 +140,25 @@ class RadioBufferedInputStreamTest {
     @Test
     void producerFailureBeforeStartupIsExposed() throws Exception {
         IOException expected = new IOException("test failure");
-        RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 new FailingInputStream(new byte[0], expected), cancellation(), this.producer, 8, 4, 4);
         try (stream) {
             ExecutionException startupFailure = assertThrows(ExecutionException.class,
                     () -> stream.startup().toCompletableFuture().get(2, TimeUnit.SECONDS));
             assertEquals(expected, startupFailure.getCause());
             assertEquals(expected, assertThrows(IOException.class, stream::read));
-            assertEquals(RadioBufferedInputStream.State.FAILED, stream.state());
+            assertEquals(AudioBufferedInputStream.State.FAILED, stream.state());
         }
     }
 
     @Test
     void producerFailureAfterStartupDrainsBufferedBytesFirst() throws Exception {
         IOException expected = new IOException("late failure");
-        RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 new FailingInputStream(new byte[]{9, 8, 7, 6}, expected), cancellation(),
                 this.producer, 8, 4, 4);
         try (stream) {
-            assertEquals(RadioBufferedInputStream.Startup.READY, startup(stream));
+            assertEquals(AudioBufferedInputStream.Startup.READY, startup(stream));
             assertArrayEquals(new byte[]{9, 8, 7, 6}, stream.readNBytes(4));
             assertEquals(expected, assertThrows(IOException.class, stream::read));
         }
@@ -167,7 +167,7 @@ class RadioBufferedInputStreamTest {
     @Test
     void closeWakesBlockedConsumerAndIsIdempotent() throws Exception {
         BlockingInputStream source = new BlockingInputStream();
-        RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 source, cancellation(), this.producer, 8, 4, 4);
         CompletableFuture<Throwable> read = CompletableFuture.supplyAsync(() -> {
             try {
@@ -184,7 +184,7 @@ class RadioBufferedInputStreamTest {
 
         assertInstanceOf(IOException.class, read.get(2, TimeUnit.SECONDS));
         await(() -> source.closeCount.get() == 1);
-        assertEquals(RadioBufferedInputStream.State.CANCELLED, stream.state());
+        assertEquals(AudioBufferedInputStream.State.CANCELLED, stream.state());
     }
 
     @Test
@@ -192,13 +192,13 @@ class RadioBufferedInputStreamTest {
         PlaybackSession session = new PlaybackSession();
         PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         CloseCountingInputStream source = new CloseCountingInputStream(new byte[32]);
-        RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 source, attempt.cancellation(), this.producer, 16, 4, 8);
         startup(stream);
 
         session.stop();
 
-        assertEquals(RadioBufferedInputStream.State.CANCELLED, stream.state());
+        assertEquals(AudioBufferedInputStream.State.CANCELLED, stream.state());
         assertEquals(0, stream.bufferedBytes());
         assertThrows(java.util.concurrent.CancellationException.class, stream::read);
         await(() -> source.closeCount.get() == 1);
@@ -218,19 +218,19 @@ class RadioBufferedInputStreamTest {
             }
         };
 
-        try (RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        try (AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 source, attempt.cancellation(), this.producer, 8, 4, 4)) {
             assertThrows(ExecutionException.class,
                     () -> stream.startup().toCompletableFuture().get(2, TimeUnit.SECONDS));
             assertEquals(0, reads.get());
-            assertEquals(RadioBufferedInputStream.State.CANCELLED, stream.state());
+            assertEquals(AudioBufferedInputStream.State.CANCELLED, stream.state());
         }
     }
 
     @Test
     void producerNeverBuffersPastConfiguredCapacity() throws Exception {
         byte[] source = new byte[128];
-        RadioBufferedInputStream stream = this.buffer(source, 13, 7, 13);
+        AudioBufferedInputStream stream = this.buffer(source, 13, 7, 13);
         try (stream) {
             startup(stream);
             Thread.sleep(50);
@@ -245,7 +245,7 @@ class RadioBufferedInputStreamTest {
         rejecting.shutdownNow();
         CloseCountingInputStream source = new CloseCountingInputStream(new byte[1]);
 
-        assertThrows(RejectedExecutionException.class, () -> new RadioBufferedInputStream(
+        assertThrows(RejectedExecutionException.class, () -> new AudioBufferedInputStream(
                 source, cancellation(), rejecting, 8, 4, 4));
         await(() -> source.closeCount.get() == 1);
     }
@@ -266,7 +266,7 @@ class RadioBufferedInputStreamTest {
         });
         assertTrue(occupied.await(2, TimeUnit.SECONDS));
         CloseCountingInputStream source = new CloseCountingInputStream(new byte[8]);
-        RadioBufferedInputStream stream = new RadioBufferedInputStream(
+        AudioBufferedInputStream stream = new AudioBufferedInputStream(
                 source, cancellation(), executor, 8, 4, 4);
         try {
             assertEquals(1, executor.getQueue().size());
@@ -290,14 +290,14 @@ class RadioBufferedInputStreamTest {
                 new int[]{8, 4, 0},
                 new int[]{8, 4, 9});
         for (int[] values : invalid) {
-            assertThrows(IllegalArgumentException.class, () -> new RadioBufferedInputStream(
+            assertThrows(IllegalArgumentException.class, () -> new AudioBufferedInputStream(
                     new ByteArrayInputStream(new byte[0]), cancellation(), this.producer,
                     values[0], values[1], values[2]));
         }
     }
 
-    private RadioBufferedInputStream buffer(byte[] data, int capacity, int chunk, int threshold) {
-        return new RadioBufferedInputStream(new ByteArrayInputStream(data), cancellation(),
+    private AudioBufferedInputStream buffer(byte[] data, int capacity, int chunk, int threshold) {
+        return new AudioBufferedInputStream(new ByteArrayInputStream(data), cancellation(),
                 this.producer, capacity, chunk, threshold);
     }
 
@@ -305,7 +305,7 @@ class RadioBufferedInputStreamTest {
         return new PlaybackSession().start("https://radio.example/live").cancellation();
     }
 
-    private static RadioBufferedInputStream.Startup startup(RadioBufferedInputStream stream) throws Exception {
+    private static AudioBufferedInputStream.Startup startup(AudioBufferedInputStream stream) throws Exception {
         return stream.startup().toCompletableFuture().get(2, TimeUnit.SECONDS);
     }
 

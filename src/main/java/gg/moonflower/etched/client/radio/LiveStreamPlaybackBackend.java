@@ -11,8 +11,8 @@ import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
 import gg.moonflower.etched.client.radio.source.SoundCloudRadioSourceResolver;
+import gg.moonflower.etched.client.radio.stream.AudioStreamPipeline;
 import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
-import gg.moonflower.etched.client.radio.stream.RadioStreamPipeline;
 import gg.moonflower.etched.client.radio.stream.RadioStreamException;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.PlaybackState;
@@ -253,7 +253,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                 return;
             }
 
-            RadioStreamPipeline.Preparation preparation = RadioStreamPipeline.prepare(
+            AudioStreamPipeline.Preparation preparation = AudioStreamPipeline.prepare(
                     source, track.cancellation, this.producerExecutor, this.decoderExecutor,
                     this.forceStereo.getAsBoolean(),
                     title -> active.session.offerStreamTitle(active.attempt, title));
@@ -281,7 +281,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     }
 
     private void prepared(ActiveAttempt active, TrackPlayback track,
-                          RadioStreamPipeline.Preparation preparation,
+                          AudioStreamPipeline.Preparation preparation,
                           RadioAudioStream audio, Throwable failure) {
         if (!this.isCurrentTrack(active, track)) {
             preparation.close();
@@ -334,7 +334,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     }
 
     private void streamHandedOff(ActiveAttempt active, TrackPlayback track,
-                                 RadioStreamPipeline.Preparation preparation,
+                                 AudioStreamPipeline.Preparation preparation,
                                  RadioAudioStream audio) {
         synchronized (this.lock) {
             if (!this.isCurrentTrackLocked(active, track) || track.preparation != preparation
@@ -520,7 +520,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             return;
         }
         SoundEngineSink.Handle sound;
-        RadioStreamPipeline.Preparation preparation;
+        AudioStreamPipeline.Preparation preparation;
         RadioAudioStream audio;
         Future<?> worker;
         boolean transferred;
@@ -662,7 +662,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private final int index;
         private final AudioCancellation cancellation = new AudioCancellation();
         private Future<?> worker;
-        private RadioStreamPipeline.Preparation preparation;
+        private AudioStreamPipeline.Preparation preparation;
         private RadioAudioStream audio;
         private SoundEngineSink.Handle sound;
         private boolean transferred;
