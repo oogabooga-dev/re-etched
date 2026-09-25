@@ -9,14 +9,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /** Downmixes stereo 16-bit radio PCM for positional playback. */
-public final class RadioMonoAudioStream implements RadioAudioStream {
+public final class RadioMonoAudioStream implements PlaybackAudioStream {
 
-    private final RadioAudioStream source;
+    private final PlaybackAudioStream source;
     private final AudioFormat sourceFormat;
     private final AudioFormat format;
     private final CompletableFuture<Termination> stereoTermination;
 
-    public RadioMonoAudioStream(RadioAudioStream source) {
+    public RadioMonoAudioStream(PlaybackAudioStream source) {
         this.source = Objects.requireNonNull(source, "source");
         this.sourceFormat = source.getFormat();
         int channels = this.sourceFormat.getChannels();

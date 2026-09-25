@@ -51,9 +51,9 @@ public final class AudioStreamPipeline {
             throw exception;
         }
 
-        CompletableFuture<RadioAudioStream> stream = new CompletableFuture<>();
+        CompletableFuture<PlaybackAudioStream> stream = new CompletableFuture<>();
         FutureTask<Void> decoderTask = new FutureTask<>(() -> {
-            RadioAudioStream audio = null;
+            PlaybackAudioStream audio = null;
             try {
                 audio = decode(source, buffer, cancellation, forceStereo, streamTitleListener);
                 if (!stream.complete(audio)) {
@@ -96,11 +96,11 @@ public final class AudioStreamPipeline {
         return preparation;
     }
 
-    private static RadioAudioStream decode(RadioResolvedSource source, AudioBufferedInputStream buffer,
-                                           AudioCancellation cancellation, boolean forceStereo,
-                                           Consumer<String> streamTitleListener) {
+    private static PlaybackAudioStream decode(RadioResolvedSource source, AudioBufferedInputStream buffer,
+                                              AudioCancellation cancellation, boolean forceStereo,
+                                              Consumer<String> streamTitleListener) {
         cancellation.throwIfCancelled();
-        RadioAudioStream decoded = null;
+        PlaybackAudioStream decoded = null;
         try {
             InputStream audioBody = audioBody(source, buffer, streamTitleListener);
             decoded = switch (source.format()) {
@@ -135,7 +135,7 @@ public final class AudioStreamPipeline {
         }
     }
 
-    private static void closeQuietly(RadioAudioStream stream) {
+    private static void closeQuietly(PlaybackAudioStream stream) {
         try {
             stream.close();
         } catch (IOException ignored) {
@@ -165,14 +165,14 @@ public final class AudioStreamPipeline {
     public static final class Preparation implements AutoCloseable {
 
         private final AudioBufferedInputStream buffer;
-        private final CompletableFuture<RadioAudioStream> stream;
+        private final CompletableFuture<PlaybackAudioStream> stream;
         private final ExecutorService decoderExecutor;
         private final Future<?> decoderTask;
         private boolean closed;
         private boolean transferred;
 
         private Preparation(AudioBufferedInputStream buffer,
-                            CompletableFuture<RadioAudioStream> stream,
+                            CompletableFuture<PlaybackAudioStream> stream,
                             ExecutorService decoderExecutor, Future<?> decoderTask) {
             this.buffer = buffer;
             this.stream = stream;
@@ -200,11 +200,11 @@ public final class AudioStreamPipeline {
             return this.buffer.state();
         }
 
-        public CompletionStage<RadioAudioStream> stream() {
+        public CompletionStage<PlaybackAudioStream> stream() {
             return this.stream.minimalCompletionStage();
         }
 
-        public synchronized boolean transfer(RadioAudioStream audio) {
+        public synchronized boolean transfer(PlaybackAudioStream audio) {
             Objects.requireNonNull(audio, "audio");
             if (this.closed || this.transferred || !this.stream.isDone()
                     || this.stream.isCompletedExceptionally() || this.stream.join() != audio) {
@@ -216,7 +216,7 @@ public final class AudioStreamPipeline {
 
         @Override
         public void close() {
-            RadioAudioStream audio = null;
+            PlaybackAudioStream audio = null;
             boolean closeBuffer;
             synchronized (this) {
                 if (this.closed) {
@@ -234,7 +234,7 @@ public final class AudioStreamPipeline {
                 this.buffer.close();
             }
             if (audio != null) {
-                RadioAudioStream orphaned = audio;
+                PlaybackAudioStream orphaned = audio;
                 RadioResourceDisposer.dispose(() -> closeQuietly(orphaned));
             }
         }

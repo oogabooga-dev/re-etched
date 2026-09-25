@@ -1,5 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -184,8 +185,8 @@ class RadioReconnectControllerTest {
         PlaybackSession session = new PlaybackSession();
         PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
-        controller.termination(session, attempt, new gg.moonflower.etched.client.radio.stream.RadioAudioStream.Termination(
-                gg.moonflower.etched.client.radio.stream.RadioAudioStream.TerminalState.EOF, null),
+        controller.termination(session, attempt, new PlaybackAudioStream.Termination(
+                PlaybackAudioStream.TerminalState.EOF, null),
                 ignored -> {
                 }, () -> {
                 });
@@ -236,8 +237,8 @@ class RadioReconnectControllerTest {
         }, () -> {
         });
         controller.termination(session, attempt,
-                new gg.moonflower.etched.client.radio.stream.RadioAudioStream.Termination(
-                        gg.moonflower.etched.client.radio.stream.RadioAudioStream.TerminalState.EOF, null),
+                new PlaybackAudioStream.Termination(
+                        PlaybackAudioStream.TerminalState.EOF, null),
                 ignored -> {
                 }, () -> {
                 });

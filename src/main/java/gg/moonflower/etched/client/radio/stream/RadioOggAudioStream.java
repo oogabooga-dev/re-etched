@@ -21,7 +21,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 /** Radio-local lifecycle wrapper around Minecraft's Vorbis decoder. */
-public final class RadioOggAudioStream extends AbstractRadioAudioStream {
+public final class RadioOggAudioStream extends AbstractPlaybackAudioStream {
 
     private static final int MAX_PCM_READ = 1024 * 1024;
     private static final int MAX_INITIALIZATION_BYTES = 256 * 1024;

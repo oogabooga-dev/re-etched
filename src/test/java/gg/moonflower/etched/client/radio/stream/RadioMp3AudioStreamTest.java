@@ -26,7 +26,7 @@ class RadioMp3AudioStreamTest {
             assertTrue(decodedBytes > 4_000);
             assertTrue(decodedBytes < 20_000,
                     "The decoder must not copy JLayer's unused backing-array tail");
-            assertEquals(RadioAudioStream.TerminalState.EOF,
+            assertEquals(PlaybackAudioStream.TerminalState.EOF,
                     stream.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         }
     }
@@ -92,7 +92,7 @@ class RadioMp3AudioStreamTest {
             assertTrue(finalPcm.hasRemaining());
             assertFalse(stream.termination().toCompletableFuture().isDone());
             assertFalse(stream.read(64 * 1024).hasRemaining());
-            assertEquals(RadioAudioStream.TerminalState.EOF,
+            assertEquals(PlaybackAudioStream.TerminalState.EOF,
                     stream.termination().toCompletableFuture().join().state());
         }
     }
@@ -118,7 +118,7 @@ class RadioMp3AudioStreamTest {
         stream.close();
         stream.close();
 
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(PlaybackAudioStream.TerminalState.CLOSED,
                 stream.termination().toCompletableFuture().join().state());
         assertThrows(IOException.class, () -> stream.read(10));
     }

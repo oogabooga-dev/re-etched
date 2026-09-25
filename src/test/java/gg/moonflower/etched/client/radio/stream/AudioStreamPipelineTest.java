@@ -73,7 +73,7 @@ class AudioStreamPipelineTest {
                 attempt.cancellation(), this.producers, this.decoders, true,
                 title -> session.offerStreamTitle(attempt, title));
         try (preparation) {
-            RadioAudioStream audio = preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            PlaybackAudioStream audio = preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
             try (audio) {
                 assertEquals(1, audio.getFormat().getChannels());
                 assertEquals(22_050.0F, audio.getFormat().getSampleRate());
@@ -94,8 +94,8 @@ class AudioStreamPipelineTest {
         AudioStreamPipeline.Preparation second = AudioStreamPipeline.prepare(
                 this.resolve(secondAttempt), secondAttempt.cancellation(), this.producers, this.decoders, true);
         try (first; second) {
-            RadioAudioStream firstAudio = first.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
-            RadioAudioStream secondAudio = second.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            PlaybackAudioStream firstAudio = first.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            PlaybackAudioStream secondAudio = second.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
             assertNotSame(firstAudio, secondAudio);
             try (firstAudio; secondAudio) {
                 assertTrue(firstAudio.read(512).hasRemaining());
@@ -110,7 +110,7 @@ class AudioStreamPipelineTest {
         PlaybackSession.Attempt attempt = new PlaybackSession().start(this.uri.toString());
         AudioStreamPipeline.Preparation preparation = AudioStreamPipeline.prepare(
                 this.resolve(attempt), attempt.cancellation(), this.producers, this.decoders, true);
-        RadioAudioStream audio = preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
+        PlaybackAudioStream audio = preparation.stream().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         assertTrue(preparation.transfer(audio));
         preparation.close();
@@ -213,7 +213,7 @@ class AudioStreamPipelineTest {
         return output.toByteArray();
     }
 
-    private static int drain(RadioAudioStream stream) throws IOException {
+    private static int drain(PlaybackAudioStream stream) throws IOException {
         int bytes = 0;
         while (true) {
             ByteBuffer output = stream.read(1024);

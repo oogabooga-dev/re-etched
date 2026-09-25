@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -90,7 +90,7 @@ public final class RadioReconnectController implements AutoCloseable {
     }
 
     public void termination(PlaybackSession session, PlaybackSession.Attempt attempt,
-                            RadioAudioStream.Termination termination,
+                            PlaybackAudioStream.Termination termination,
                             Consumer<PlaybackSession.Attempt> retryStarter, Runnable stateChanged) {
         this.execute(() -> this.handle(session, attempt, this.policy.classify(termination),
                 retryStarter, stateChanged));

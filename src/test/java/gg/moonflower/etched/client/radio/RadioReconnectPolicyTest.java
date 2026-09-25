@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -57,8 +57,8 @@ class RadioReconnectPolicyTest {
     @Test
     void classifiesOnlyExplicitlyRecoverableTerminalOutcomes() {
         RadioReconnectPolicy policy = policy(0.5D);
-        RadioFailure eof = policy.classify(new RadioAudioStream.Termination(
-                RadioAudioStream.TerminalState.EOF, null)).orElseThrow();
+        RadioFailure eof = policy.classify(new PlaybackAudioStream.Termination(
+                PlaybackAudioStream.TerminalState.EOF, null)).orElseThrow();
         RadioFailure decoder = policy.classify(new CompletionException(new IOException("bad frame")))
                 .orElseThrow();
         RadioFailure busy = policy.classify(new RejectedExecutionException("busy")).orElseThrow();
@@ -70,8 +70,8 @@ class RadioReconnectPolicyTest {
         assertEquals(RadioFailure.Code.RESOURCE_LIMIT, busy.code());
         assertTrue(busy.recoverable());
         assertTrue(policy.classify(new CancellationException()).isEmpty());
-        assertTrue(policy.classify(new RadioAudioStream.Termination(
-                RadioAudioStream.TerminalState.CLOSED, null)).isEmpty());
+        assertTrue(policy.classify(new PlaybackAudioStream.Termination(
+                PlaybackAudioStream.TerminalState.CLOSED, null)).isEmpty());
     }
 
     @Test

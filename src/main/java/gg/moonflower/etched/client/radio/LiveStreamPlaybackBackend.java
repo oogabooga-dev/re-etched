@@ -12,7 +12,7 @@ import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
 import gg.moonflower.etched.client.radio.source.SoundCloudRadioSourceResolver;
 import gg.moonflower.etched.client.radio.stream.AudioStreamPipeline;
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.client.radio.stream.RadioStreamException;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.PlaybackState;
@@ -282,7 +282,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     private void prepared(ActiveAttempt active, TrackPlayback track,
                           AudioStreamPipeline.Preparation preparation,
-                          RadioAudioStream audio, Throwable failure) {
+                          PlaybackAudioStream audio, Throwable failure) {
         if (!this.isCurrentTrack(active, track)) {
             preparation.close();
             return;
@@ -335,7 +335,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
 
     private void streamHandedOff(ActiveAttempt active, TrackPlayback track,
                                  AudioStreamPipeline.Preparation preparation,
-                                 RadioAudioStream audio) {
+                                 PlaybackAudioStream audio) {
         synchronized (this.lock) {
             if (!this.isCurrentTrackLocked(active, track) || track.preparation != preparation
                     || !preparation.transfer(audio)) {
@@ -349,7 +349,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     }
 
     private void observeTermination(ActiveAttempt active, TrackPlayback track,
-                                    RadioAudioStream.Termination termination, Throwable failure) {
+                                    PlaybackAudioStream.Termination termination, Throwable failure) {
         if (failure != null) {
             if (!this.claimTerminal(active, track)) {
                 return;
@@ -361,7 +361,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             }, active);
             return;
         }
-        if (termination.state() == RadioAudioStream.TerminalState.EOF
+        if (termination.state() == PlaybackAudioStream.TerminalState.EOF
                 && active.program.kind() == RadioSourceProgram.Kind.SERVICE_TRACKS) {
             boolean advance;
             synchronized (this.lock) {
@@ -387,7 +387,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             if (active.attempt.cancellation().isCancelled()) {
                 return;
             }
-            if (termination.state() == RadioAudioStream.TerminalState.CLOSED) {
+            if (termination.state() == PlaybackAudioStream.TerminalState.CLOSED) {
                 active.events.soundEngineStopped();
             } else {
                 active.events.termination(termination);
@@ -521,7 +521,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         }
         SoundEngineSink.Handle sound;
         AudioStreamPipeline.Preparation preparation;
-        RadioAudioStream audio;
+        PlaybackAudioStream audio;
         Future<?> worker;
         boolean transferred;
         synchronized (this.lock) {
@@ -562,7 +562,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             preparation.close();
         } else if (transferred && audio != null && !soundOutputOwnsAudio) {
             track.cancellation.cancel();
-            RadioAudioStream orphaned = audio;
+            PlaybackAudioStream orphaned = audio;
             RadioResourceDisposer.dispose(() -> closeQuietly(orphaned));
         }
     }
@@ -623,7 +623,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         return current;
     }
 
-    private static void closeQuietly(RadioAudioStream audio) {
+    private static void closeQuietly(PlaybackAudioStream audio) {
         try {
             audio.close();
         } catch (IOException ignored) {
@@ -663,7 +663,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private final AudioCancellation cancellation = new AudioCancellation();
         private Future<?> worker;
         private AudioStreamPipeline.Preparation preparation;
-        private RadioAudioStream audio;
+        private PlaybackAudioStream audio;
         private SoundEngineSink.Handle sound;
         private boolean transferred;
         private boolean terminal;

@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.client.radio.stream.RadioStreamException;
 
 import java.io.IOException;
@@ -78,7 +78,7 @@ public final class RadioReconnectPolicy {
         return playbackMillis >= this.sustainedPlaybackMillis;
     }
 
-    public Optional<RadioFailure> classify(RadioAudioStream.Termination termination) {
+    public Optional<RadioFailure> classify(PlaybackAudioStream.Termination termination) {
         java.util.Objects.requireNonNull(termination, "termination");
         return switch (termination.state()) {
             case EOF -> Optional.of(RadioFailure.recoverable(RadioFailure.Code.UNEXPECTED_EOF,

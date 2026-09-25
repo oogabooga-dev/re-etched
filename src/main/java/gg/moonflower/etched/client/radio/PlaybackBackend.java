@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.PlaybackState;
 
 interface PlaybackBackend {
@@ -53,7 +53,7 @@ interface PlaybackBackend {
 
         void failure(Throwable failure);
 
-        void termination(RadioAudioStream.Termination termination);
+        void termination(PlaybackAudioStream.Termination termination);
 
         void soundEngineStopped();
 

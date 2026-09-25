@@ -3,7 +3,7 @@ package gg.moonflower.etched.client.radio.sound;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.client.radio.PlaybackSession;
-import gg.moonflower.etched.client.radio.stream.RadioAudioStream;
+import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.core.BlockPos;
@@ -135,7 +135,7 @@ class RadioSoundInstanceTest {
         assertEquals(1, stopped.get());
     }
 
-    private static RadioSoundInstance sound(PlaybackSession.Attempt attempt, RadioAudioStream stream,
+    private static RadioSoundInstance sound(PlaybackSession.Attempt attempt, PlaybackAudioStream stream,
                                              AtomicInteger started) {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
@@ -154,7 +154,7 @@ class RadioSoundInstanceTest {
         }
     }
 
-    private static class FakeAudioStream implements RadioAudioStream {
+    private static class FakeAudioStream implements PlaybackAudioStream {
 
         private final CompletableFuture<Termination> termination = new CompletableFuture<>();
         protected final AtomicInteger closeCount = new AtomicInteger();
