@@ -30,6 +30,16 @@ final class RoutingPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public synchronized Admission admission(PlaybackOwnerKey key, PlaybackState state) {
+        if (this.closed) {
+            throw new RejectedExecutionException("Playback backends are shut down");
+        }
+        return this.backends.stream().filter(backend -> backend.enabled() && backend.supports(key, state))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException(
+                        "No playback backend supports " + key)).admission(key, state);
+    }
+
+    @Override
     public void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                       PlaybackSession.Attempt attempt, Events events) {
         PlaybackBackend backend;

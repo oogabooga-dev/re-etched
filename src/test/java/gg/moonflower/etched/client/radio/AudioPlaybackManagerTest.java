@@ -590,6 +590,55 @@ class AudioPlaybackManagerTest {
     }
 
     @Test
+    void localSoundEventBypassesFullRemoteConnectionAdmission() {
+        RecordingSessionDriver backend = new RecordingSessionDriver();
+        backend.supportsLocal = true;
+        RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), backend,
+                new RecordingEffects(), RadioReconnectController.createDefault(Runnable::run), connections);
+        PlaybackOwnerKey remote = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        PlaybackOwnerKey local = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO.above());
+        manager.update(remote, ENABLED);
+        assertEquals(1, connections.activeCount());
+
+        assertTrue(manager.update(local, finiteState(1L, true)));
+        StartedSession localSession = backend.started.get(1);
+        assertEquals("minecraft:music_disc.13", localSession.attempt().source());
+        assertEquals(1, connections.activeCount());
+        localSession.events().progress(RadioPlaybackState.CONNECTING);
+        localSession.events().progress(RadioPlaybackState.BUFFERING);
+        localSession.events().progress(RadioPlaybackState.PLAYING);
+        localSession.events().completion();
+
+        assertEquals(RadioPlaybackState.STOPPED, localSession.session().snapshot().state());
+        assertEquals(List.of(local), backend.aborted);
+        assertEquals(1, connections.activeCount());
+        manager.remove(remote);
+        assertEquals(0, connections.activeCount());
+        manager.shutdown();
+    }
+
+    @Test
+    void localPartialStartFailureAbortsWithoutUsingAConnectionSlot() {
+        RecordingSessionDriver backend = new RecordingSessionDriver();
+        backend.supportsLocal = true;
+        backend.throwOnStart = true;
+        backend.openBeforeThrow = true;
+        RadioConnectionScheduler connections = new RadioConnectionScheduler(1, 0, Runnable::run);
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), backend,
+                new RecordingEffects(), RadioReconnectController.createDefault(Runnable::run), connections);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+
+        assertTrue(manager.update(key, finiteState(1L, true)));
+
+        assertEquals(RadioPlaybackState.FAILED, manager.getSessionSnapshot(key).orElseThrow().state());
+        assertEquals(List.of(key), backend.aborted);
+        assertTrue(backend.openSessions.isEmpty());
+        assertEquals(0, connections.activeCount());
+        manager.shutdown();
+    }
+
+    @Test
     void replacingLivePlaybackWithUnsupportedStateReleasesItsBackendAndEffects() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         RecordingEffects effects = new RecordingEffects();
@@ -1127,6 +1176,7 @@ class AudioPlaybackManagerTest {
         private boolean throwOnAbort;
         private boolean shutdown;
         private boolean supportsFinite;
+        private boolean supportsLocal;
         private boolean supportsLive = true;
         private int maximumOpen;
         private RuntimeException startFailure;
@@ -1134,7 +1184,17 @@ class AudioPlaybackManagerTest {
         @Override
         public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
             return state.program().filter(program -> this.supportsLive && program.kind() == AudioProgram.Kind.LIVE
-                    || this.supportsFinite && program.kind() == AudioProgram.Kind.FINITE).isPresent();
+                    || program.kind() == AudioProgram.Kind.FINITE && (this.supportsFinite
+                    || this.supportsLocal && program.tracks().stream().allMatch(track ->
+                    track.sourceType() == AudioTrack.SourceType.SOUND_EVENT))).isPresent();
+        }
+
+        @Override
+        public Admission admission(PlaybackOwnerKey key, PlaybackState state) {
+            return this.supportsLocal && state.program().filter(program ->
+                    program.kind() == AudioProgram.Kind.FINITE && program.tracks().stream().allMatch(track ->
+                            track.sourceType() == AudioTrack.SourceType.SOUND_EVENT)).isPresent()
+                    ? Admission.LOCAL : Admission.CONNECTION;
         }
 
         @Override

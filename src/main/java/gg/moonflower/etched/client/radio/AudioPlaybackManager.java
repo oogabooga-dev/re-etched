@@ -27,7 +27,8 @@ public final class AudioPlaybackManager {
     private static final int MAX_QUEUED_PLAYBACKS = 32;
     private static final AudioPlaybackManager INSTANCE = new AudioPlaybackManager(
             PlaybackDriver.NOOP, new RoutingPlaybackBackend(List.of(
-                    new LiveStreamPlaybackBackend(), new FiniteRemotePlaybackBackend())),
+                    new LiveStreamPlaybackBackend(), new FiniteRemotePlaybackBackend(),
+                    new LocalSoundEventPlaybackBackend())),
             new MinecraftRadioPlaybackEffects(),
             RadioReconnectController.createDefault(command -> Minecraft.getInstance().execute(command)));
 
@@ -257,27 +258,39 @@ public final class AudioPlaybackManager {
 
     private void startSession(PlaybackOwnerKey key, ManagedPlayback playback,
                               PlaybackSession.Attempt attempt) {
-        boolean accepted = this.connections.submit(attempt.cancellation(), lease -> {
-            if (this.playbacks.get(key) != playback || attempt.cancellation().isCancelled()) {
-                lease.close();
-                return;
-            }
-            playback.ownAttempt(attempt, lease);
-            try {
-                this.startAdmittedSession(key, playback, attempt);
-            } catch (RuntimeException exception) {
-                try {
-                    this.backend.abort(key, playback.session(), attempt);
-                } catch (RuntimeException abortException) {
-                    exception.addSuppressed(abortException);
-                } finally {
-                    playback.releaseAttempt(attempt);
-                }
-                this.handleFailure(key, playback, attempt, exception);
-            }
-        }, () -> this.admissionDispatchFailed(playback, attempt));
+        if (this.backend.admission(key, playback.state()) == PlaybackBackend.Admission.LOCAL) {
+            this.startOwnedSession(key, playback, attempt, null);
+            return;
+        }
+        boolean accepted = this.connections.submit(attempt.cancellation(),
+                lease -> this.startOwnedSession(key, playback, attempt, lease),
+                () -> this.admissionDispatchFailed(playback, attempt));
         if (!accepted) {
             this.handleFailure(key, playback, attempt, RadioConnectionScheduler.limitFailure());
+        }
+    }
+
+    private void startOwnedSession(PlaybackOwnerKey key, ManagedPlayback playback,
+                                   PlaybackSession.Attempt attempt,
+                                   @org.jetbrains.annotations.Nullable RadioConnectionScheduler.Lease lease) {
+        if (this.playbacks.get(key) != playback || attempt.cancellation().isCancelled()) {
+            if (lease != null) {
+                lease.close();
+            }
+            return;
+        }
+        playback.ownAttempt(attempt, lease);
+        try {
+            this.startAdmittedSession(key, playback, attempt);
+        } catch (RuntimeException exception) {
+            try {
+                this.backend.abort(key, playback.session(), attempt);
+            } catch (RuntimeException abortException) {
+                exception.addSuppressed(abortException);
+            } finally {
+                playback.releaseAttempt(attempt);
+            }
+            this.handleFailure(key, playback, attempt, exception);
         }
     }
 
@@ -421,11 +434,17 @@ public final class AudioPlaybackManager {
     }
 
     private boolean supportsBackend(PlaybackOwnerKey key, PlaybackState state) {
-        // Local sound events need a separate path that bypasses connection admission.
-        return state.program().filter(program -> program.kind() == AudioProgram.Kind.LIVE
-                || (program.kind() == AudioProgram.Kind.FINITE && program.tracks().stream()
-                        .allMatch(track -> track.sourceType() == AudioTrack.SourceType.REMOTE)))
-                .isPresent() && this.backend.supports(key, state);
+        if (state.program().isEmpty() || !this.backend.supports(key, state)) {
+            return false;
+        }
+        AudioProgram program = state.program().orElseThrow();
+        PlaybackBackend.Admission admission = this.backend.admission(key, state);
+        if (program.kind() == AudioProgram.Kind.LIVE) {
+            return admission == PlaybackBackend.Admission.CONNECTION;
+        }
+        AudioTrack.SourceType sourceType = admission == PlaybackBackend.Admission.LOCAL
+                ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE;
+        return program.tracks().stream().allMatch(track -> track.sourceType() == sourceType);
     }
 
     private static boolean isFinite(ManagedPlayback playback) {
@@ -497,7 +516,7 @@ public final class AudioPlaybackManager {
         }
 
         private synchronized void ownAttempt(PlaybackSession.Attempt attempt,
-                                             RadioConnectionScheduler.Lease lease) {
+                                             @org.jetbrains.annotations.Nullable RadioConnectionScheduler.Lease lease) {
             this.releaseAttempt(null);
             this.attemptLease = new AttemptLease(attempt, lease);
         }
@@ -514,10 +533,13 @@ public final class AudioPlaybackManager {
             }
             RadioConnectionScheduler.Lease lease = this.attemptLease.lease();
             this.attemptLease = null;
-            lease.close();
+            if (lease != null) {
+                lease.close();
+            }
         }
     }
 
-    private record AttemptLease(PlaybackSession.Attempt attempt, RadioConnectionScheduler.Lease lease) {
+    private record AttemptLease(PlaybackSession.Attempt attempt,
+                                @org.jetbrains.annotations.Nullable RadioConnectionScheduler.Lease lease) {
     }
 }

@@ -33,6 +33,11 @@ interface PlaybackBackend {
         return true;
     }
 
+    /** Local sound events bypass remote connection admission entirely. */
+    default Admission admission(PlaybackOwnerKey key, PlaybackState state) {
+        return Admission.CONNECTION;
+    }
+
     void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                PlaybackSession.Attempt attempt, Events events);
 
@@ -41,6 +46,11 @@ interface PlaybackBackend {
     void abort(PlaybackOwnerKey key, PlaybackSession session, PlaybackSession.Attempt attempt);
 
     default void shutdown() {
+    }
+
+    enum Admission {
+        CONNECTION,
+        LOCAL
     }
 
     interface Events {
