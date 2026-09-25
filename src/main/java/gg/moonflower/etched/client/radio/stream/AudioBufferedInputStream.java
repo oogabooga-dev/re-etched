@@ -19,9 +19,9 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * A single-producer, single-consumer bounded buffer for one radio response body.
+ * A single-producer, single-consumer bounded buffer for one audio response body.
  */
-public final class RadioBufferedInputStream extends InputStream {
+public final class AudioBufferedInputStream extends InputStream {
 
     public static final int DEFAULT_CAPACITY = 512 * 1024;
     public static final int DEFAULT_CHUNK_SIZE = 16 * 1024;
@@ -47,13 +47,13 @@ public final class RadioBufferedInputStream extends InputStream {
     private int writePosition;
     private int bufferedBytes;
 
-    public RadioBufferedInputStream(InputStream source, AudioCancellation cancellation,
+    public AudioBufferedInputStream(InputStream source, AudioCancellation cancellation,
                                     ExecutorService producerExecutor) {
         this(source, cancellation, producerExecutor, DEFAULT_CAPACITY,
                 DEFAULT_CHUNK_SIZE, DEFAULT_STARTUP_THRESHOLD);
     }
 
-    public RadioBufferedInputStream(InputStream source, AudioCancellation cancellation,
+    public AudioBufferedInputStream(InputStream source, AudioCancellation cancellation,
                                     ExecutorService producerExecutor, int capacityBytes,
                                     int chunkSize, int startupThresholdBytes) {
         this.source = Objects.requireNonNull(source, "source");
