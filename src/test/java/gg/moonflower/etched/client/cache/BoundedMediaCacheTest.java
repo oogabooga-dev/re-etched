@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -189,6 +190,66 @@ class BoundedMediaCacheTest {
         assertThrows(IOException.class, () -> cache.acquire(BoundedMediaCache.Namespace.COVERS,
                 "too-wide", new AudioCancellation(), token -> new BoundedMediaCache.Content(
                         new ByteArrayInputStream(oversized), oversized.length), MediaValidators::cover));
+    }
+
+    @Test
+    void replacedNamespaceDirectoryIsNotFollowedAfterStartup() throws Exception {
+        BoundedMediaCache cache = cache();
+        var loader = (BoundedMediaCache.Loader) token -> new BoundedMediaCache.Content(
+                new ByteArrayInputStream(OGG), OGG.length);
+        try (var first = cache.acquire(BoundedMediaCache.Namespace.AUDIO, "one",
+                new AudioCancellation(), loader, MediaValidators::audio)) {
+            assertArrayEquals(OGG, first.body().readAllBytes());
+        }
+        Path namespace = temporary.resolve("v5/audio");
+        Path original = temporary.resolve("original-audio");
+        Files.move(namespace, original);
+        Files.createSymbolicLink(namespace, original);
+
+        assertThrows(IOException.class, () -> cache.acquire(BoundedMediaCache.Namespace.AUDIO, "one",
+                new AudioCancellation(), loader, MediaValidators::audio));
+        try (var files = Files.list(original)) {
+            assertEquals(1, files.count());
+        }
+    }
+
+    @Test
+    void cancellingTheOnlyDownloadRemovesItsPartialFile() throws Exception {
+        BoundedMediaCache cache = cache();
+        AudioCancellation cancellation = new AudioCancellation();
+        CountDownLatch reading = new CountDownLatch(1);
+        CountDownLatch closed = new CountDownLatch(1);
+        var worker = Executors.newSingleThreadExecutor();
+        try {
+            var load = worker.submit(() -> cache.acquire(BoundedMediaCache.Namespace.AUDIO, "slow",
+                    cancellation, token -> new BoundedMediaCache.Content(new InputStream() {
+                        @Override
+                        public int read() throws IOException {
+                            reading.countDown();
+                            try {
+                                closed.await(5, TimeUnit.SECONDS);
+                            } catch (InterruptedException exception) {
+                                Thread.currentThread().interrupt();
+                                throw new IOException(exception);
+                            }
+                            throw new IOException("Download closed");
+                        }
+
+                        @Override
+                        public void close() {
+                            closed.countDown();
+                        }
+                    }, -1), MediaValidators::audio));
+            assertTrue(reading.await(5, TimeUnit.SECONDS));
+            cancellation.cancel();
+            assertThrows(java.util.concurrent.ExecutionException.class, () -> load.get(5, TimeUnit.SECONDS));
+            try (var files = Files.list(temporary.resolve("v5/audio"))) {
+                assertEquals(0, files.count());
+            }
+        } finally {
+            closed.countDown();
+            worker.shutdownNow();
+        }
     }
 
     private static byte[] png(int width, int height) throws IOException {
