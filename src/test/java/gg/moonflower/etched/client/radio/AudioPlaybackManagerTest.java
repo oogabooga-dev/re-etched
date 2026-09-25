@@ -134,6 +134,41 @@ class AudioPlaybackManagerTest {
     }
 
     @Test
+    void supportedEntityOwnerReceivesSessionEffectsAndStop() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        RecordingEffects effects = new RecordingEffects();
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions, effects);
+        PlaybackOwnerKey entity = PlaybackOwnerKey.entity(FIRST_DIMENSION,
+                UUID.fromString("d860f8b6-c8e7-4c4d-9d5e-cf7503845df4"));
+
+        assertTrue(manager.update(entity, ENABLED));
+        StartedSession started = sessions.started.get(0);
+        assertEquals(entity, effects.updated.get(0).key());
+        assertEquals(RadioPlaybackState.RESOLVING, effects.updated.get(0).snapshot().state());
+
+        assertTrue(started.session().advance(started.attempt(), RadioPlaybackState.CONNECTING, 0L));
+        manager.tick(entity, ENABLED);
+        assertEquals(RadioPlaybackState.CONNECTING,
+                effects.updated.get(effects.updated.size() - 1).snapshot().state());
+
+        assertTrue(manager.remove(entity));
+        assertEquals(List.of(entity), effects.stopped);
+        assertTrue(started.attempt().cancellation().isCancelled());
+    }
+
+    @Test
+    void minecraftRadioEffectsIgnoreEntityOwner() {
+        MinecraftRadioPlaybackEffects effects = new MinecraftRadioPlaybackEffects();
+        PlaybackOwnerKey entity = PlaybackOwnerKey.entity(FIRST_DIMENSION,
+                UUID.fromString("d860f8b6-c8e7-4c4d-9d5e-cf7503845df4"));
+        PlaybackSession session = new PlaybackSession();
+        session.start(LIVE_SOURCE);
+
+        effects.update(entity, session.snapshot());
+        effects.stop(entity);
+    }
+
+    @Test
     void tickSelfHealsMissedUpdatesWithoutRestartingKnownPlayback() {
         RecordingDriver driver = new RecordingDriver();
         AudioPlaybackManager manager = new AudioPlaybackManager(driver);
@@ -895,18 +930,18 @@ class AudioPlaybackManagerTest {
         }
     }
 
-    private static final class RecordingEffects implements RadioPlaybackEffects {
+    private static final class RecordingEffects implements PlaybackEffects {
 
         private final List<EffectUpdate> updated = new ArrayList<>();
-        private final List<PlaybackOwnerKey.BlockOwner> stopped = new ArrayList<>();
+        private final List<PlaybackOwnerKey> stopped = new ArrayList<>();
 
         @Override
-        public void update(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
+        public void update(PlaybackOwnerKey key, PlaybackSession.Snapshot snapshot) {
             this.updated.add(new EffectUpdate(key, snapshot));
         }
 
         @Override
-        public void stop(PlaybackOwnerKey.BlockOwner key) {
+        public void stop(PlaybackOwnerKey key) {
             this.stopped.add(key);
         }
     }
@@ -968,6 +1003,6 @@ class AudioPlaybackManagerTest {
                                   PlaybackSession.Attempt attempt, PlaybackBackend.Events events) {
     }
 
-    private record EffectUpdate(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
+    private record EffectUpdate(PlaybackOwnerKey key, PlaybackSession.Snapshot snapshot) {
     }
 }
