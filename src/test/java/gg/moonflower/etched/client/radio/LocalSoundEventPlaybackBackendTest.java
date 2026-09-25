@@ -81,6 +81,99 @@ class LocalSoundEventPlaybackBackendTest {
     }
 
     @Test
+    void repeatOneReopensTheCurrentSoundAndSkipBypassesIt() {
+        FakeSink sounds = new FakeSink();
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new RoutingPlaybackBackend(List.of(new LocalSoundEventPlaybackBackend(sounds, Runnable::run))));
+        PlaybackState state = localState("minecraft:music_disc.13", "minecraft:music_disc.cat");
+        manager.update(KEY, state);
+        long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.ONE));
+        sounds.handles.get(0).complete();
+        assertEquals(List.of(ResourceLocation.parse("minecraft:music_disc.13"),
+                ResourceLocation.parse("minecraft:music_disc.13")), sounds.events);
+        assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        assertEquals(1, sounds.handles.get(1).stops);
+        sounds.handles.get(1).complete();
+        assertEquals(ResourceLocation.parse("minecraft:music_disc.cat"), sounds.events.get(2));
+        assertEquals(RadioPlaybackState.PLAYING, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.OFF));
+        sounds.handles.get(2).complete();
+
+        assertEquals(RadioPlaybackState.STOPPED, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        assertEquals(3, sounds.events.size());
+        assertFalse(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        manager.shutdown();
+    }
+
+    @Test
+    void repeatAllWrapsOnCompletionAndSkipOfLastTrack() {
+        FakeSink sounds = new FakeSink();
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new LocalSoundEventPlaybackBackend(sounds, Runnable::run));
+        PlaybackState state = localState("minecraft:music_disc.13", "minecraft:music_disc.cat");
+        manager.update(KEY, state);
+        long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.ALL));
+
+        sounds.handles.get(0).complete();
+        sounds.handles.get(1).complete();
+        assertEquals(ResourceLocation.parse("minecraft:music_disc.13"), sounds.events.get(2));
+        assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        assertEquals(List.of(ResourceLocation.parse("minecraft:music_disc.13"),
+                ResourceLocation.parse("minecraft:music_disc.cat"),
+                ResourceLocation.parse("minecraft:music_disc.13"),
+                ResourceLocation.parse("minecraft:music_disc.cat"),
+                ResourceLocation.parse("minecraft:music_disc.13")), sounds.events);
+        assertEquals(RadioPlaybackState.PLAYING, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        manager.remove(KEY);
+        sounds.handles.get(4).complete();
+        assertEquals(5, sounds.events.size());
+        manager.shutdown();
+    }
+
+    @Test
+    void controlsRejectStaleOwnerRevisionAndGeneration() {
+        FakeSink sounds = new FakeSink();
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new RoutingPlaybackBackend(List.of(new LocalSoundEventPlaybackBackend(sounds, Runnable::run))));
+        PlaybackState first = localState("minecraft:music_disc.13");
+        manager.update(KEY, first);
+        long oldGeneration = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        PlaybackState replacement = new PlaybackState(1L, first.program(), true);
+        manager.update(KEY, replacement);
+        long currentGeneration = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        assertEquals(oldGeneration, currentGeneration);
+
+        assertFalse(manager.setFiniteLoop(KEY, first.revision(), oldGeneration, FiniteLoopMode.ALL));
+        assertFalse(manager.skipFiniteTrack(KEY, first.revision(), oldGeneration));
+        assertFalse(manager.skipFiniteTrack(KEY, replacement.revision(), currentGeneration + 1));
+        assertTrue(manager.skipFiniteTrack(KEY, replacement.revision(), currentGeneration));
+        assertEquals(RadioPlaybackState.STOPPED, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        sounds.handles.get(0).complete();
+        assertEquals(2, sounds.events.size());
+        manager.shutdown();
+    }
+
+    @Test
+    void skippingSingleTrackInRepeatOneCompletesInsteadOfReopeningIt() {
+        FakeSink sounds = new FakeSink();
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new LocalSoundEventPlaybackBackend(sounds, Runnable::run));
+        manager.update(KEY, localState("minecraft:music_disc.13"));
+        long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        assertTrue(manager.setFiniteLoop(KEY, 0L, generation, FiniteLoopMode.ONE));
+
+        assertTrue(manager.skipFiniteTrack(KEY, 0L, generation));
+
+        assertEquals(1, sounds.events.size());
+        assertEquals(RadioPlaybackState.STOPPED, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        manager.shutdown();
+    }
+
+    @Test
     void cancelledAttemptStopsSoundAndCannotAdvanceAfterStaleCallback() {
         FakeSink sounds = new FakeSink();
         LocalSoundEventPlaybackBackend backend = new LocalSoundEventPlaybackBackend(sounds, Runnable::run);

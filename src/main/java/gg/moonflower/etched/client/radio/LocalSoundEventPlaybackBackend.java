@@ -98,6 +98,51 @@ final class LocalSoundEventPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public boolean setFiniteLoop(PlaybackOwnerKey key, PlaybackSession session,
+                                 PlaybackSession.Attempt attempt, FiniteLoopMode mode) {
+        Objects.requireNonNull(mode, "mode");
+        synchronized (this.lock) {
+            Active active = this.attempts.get(key);
+            if (active == null || active.session != session || active.attempt != attempt
+                    || !this.isCurrent(active) || attempt.cancellation().isCancelled()) {
+                return false;
+            }
+            active.loopMode = mode;
+            return true;
+        }
+    }
+
+    @Override
+    public boolean skipFiniteTrack(PlaybackOwnerKey key, PlaybackSession session,
+                                   PlaybackSession.Attempt attempt) {
+        Active active;
+        Track track;
+        int next;
+        synchronized (this.lock) {
+            active = this.attempts.get(key);
+            if (active == null || active.session != session || active.attempt != attempt
+                    || !this.isCurrent(active) || attempt.cancellation().isCancelled()
+                    || session.snapshot().state() != RadioPlaybackState.PLAYING
+                    || active.track == null || active.track.terminal || active.track.starting) {
+                return false;
+            }
+            track = active.track;
+            track.terminal = true;
+            active.track = null;
+            next = active.loopMode.nextIndex(track.index, active.tracks.size(), true);
+        }
+        try {
+            track.handle.requestStop();
+            track.handle.stop();
+        } catch (RuntimeException failure) {
+            active.events.failure(failure);
+            return true;
+        }
+        this.advance(active, next);
+        return true;
+    }
+
+    @Override
     public void shutdown() {
         List<Active> active;
         synchronized (this.lock) {
@@ -192,6 +237,7 @@ final class LocalSoundEventPlaybackBackend implements PlaybackBackend {
     }
 
     private void soundStopped(Active active, Track track) {
+        int next;
         synchronized (this.lock) {
             if (!this.isCurrentTrack(active, track) || track.terminal) {
                 return;
@@ -202,9 +248,13 @@ final class LocalSoundEventPlaybackBackend implements PlaybackBackend {
             }
             track.terminal = true;
             active.track = null;
+            next = active.loopMode.nextIndex(track.index, active.tracks.size(), false);
         }
-        int next = track.index + 1;
-        if (next < active.tracks.size()) {
+        this.advance(active, next);
+    }
+
+    private void advance(Active active, int next) {
+        if (next >= 0) {
             active.events.sequenceAdvance(() -> this.openTrack(active, next));
         } else {
             active.events.completion();
@@ -258,6 +308,7 @@ final class LocalSoundEventPlaybackBackend implements PlaybackBackend {
         private Track track;
         private boolean closed;
         private volatile boolean soundOutputAvailable = true;
+        private FiniteLoopMode loopMode = FiniteLoopMode.OFF;
 
         private Active(PlaybackOwnerKey key, PlaybackSession session, PlaybackSession.Attempt attempt,
                        Events events, List<AudioTrack> tracks) {

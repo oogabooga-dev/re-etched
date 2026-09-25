@@ -191,6 +191,43 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public boolean setFiniteLoop(PlaybackOwnerKey key, PlaybackSession session,
+                                 PlaybackSession.Attempt attempt, FiniteLoopMode mode) {
+        Objects.requireNonNull(mode, "mode");
+        synchronized (this.lock) {
+            ActiveAttempt active = this.attempts.get(key);
+            if (this.mode != Mode.FINITE || active == null || active.session != session
+                    || active.attempt != attempt || !this.isCurrentLocked(active)) {
+                return false;
+            }
+            active.loopMode = mode;
+            return true;
+        }
+    }
+
+    @Override
+    public boolean skipFiniteTrack(PlaybackOwnerKey key, PlaybackSession session,
+                                   PlaybackSession.Attempt attempt) {
+        ActiveAttempt active;
+        TrackPlayback track;
+        int next;
+        synchronized (this.lock) {
+            active = this.attempts.get(key);
+            if (this.mode != Mode.FINITE || active == null || active.session != session
+                    || active.attempt != attempt || !this.isCurrentLocked(active)
+                    || active.session.snapshot().state() != RadioPlaybackState.PLAYING
+                    || active.track == null || active.track.terminal || active.track.soundStopReported) {
+                return false;
+            }
+            track = active.track;
+            track.terminal = true;
+            next = active.loopMode.nextIndex(track.index, active.program.tracks().size(), true);
+        }
+        this.advanceServiceTrack(active, track, next);
+        return true;
+    }
+
+    @Override
     public void shutdown() {
         List<ActiveAttempt> active;
         synchronized (this.lock) {
@@ -459,9 +496,18 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         if (!this.isCurrentTrack(active, track)) {
             return;
         }
-        int next = track.index + 1;
+        int next;
+        synchronized (this.lock) {
+            next = active.program.kind() == RadioSourceProgram.Kind.SERVICE_TRACKS && this.mode == Mode.FINITE
+                    ? active.loopMode.nextIndex(track.index, active.program.tracks().size(), false)
+                    : track.index + 1;
+        }
+        this.advanceServiceTrack(active, track, next);
+    }
+
+    private void advanceServiceTrack(ActiveAttempt active, TrackPlayback track, int next) {
         this.closeTrack(active, track);
-        if (next < active.program.tracks().size()) {
+        if (next >= 0 && next < active.program.tracks().size()) {
             active.events.sequenceAdvance(() -> this.openTrack(active, next));
         } else {
             synchronized (this.lock) {
@@ -692,6 +738,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private TrackPlayback track;
         private boolean closed;
         private boolean soundOutputAvailable = true;
+        private FiniteLoopMode loopMode = FiniteLoopMode.OFF;
 
         private ActiveAttempt(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                               PlaybackSession.Attempt attempt,

@@ -39,6 +39,18 @@ final class FiniteRemotePlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public boolean setFiniteLoop(PlaybackOwnerKey key, PlaybackSession session,
+                                 PlaybackSession.Attempt attempt, FiniteLoopMode mode) {
+        return this.remote.setFiniteLoop(key, session, attempt, mode);
+    }
+
+    @Override
+    public boolean skipFiniteTrack(PlaybackOwnerKey key, PlaybackSession session,
+                                   PlaybackSession.Attempt attempt) {
+        return this.remote.skipFiniteTrack(key, session, attempt);
+    }
+
+    @Override
     public void shutdown() {
         this.remote.shutdown();
     }

@@ -262,6 +262,59 @@ class LiveStreamPlaybackBackendTest {
     }
 
     @Test
+    void finiteRemoteSkipAndRepeatAllOpenIndependentStreams() throws Exception {
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FiniteRemotePlaybackBackend finite = new FiniteRemotePlaybackBackend(
+                this.driver(LiveStreamPlaybackBackend.Mode.FINITE,
+                        fixed(this.program(RadioSourceProgram.Kind.STATION, List.of(this.track("one")))), sounds));
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new RoutingPlaybackBackend(List.of(finite)));
+        PlaybackState state = this.finiteState("one", "two");
+        manager.update(KEY, state);
+        long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.ALL));
+        await(() -> sounds.audio.size() == 1);
+        assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        await(() -> sounds.audio.size() == 2);
+        sounds.played.get(0).onStop();
+        drain(sounds.audio.get(1));
+        sounds.played.get(1).onStop();
+        await(() -> sounds.audio.size() == 3);
+
+        assertEquals(List.of("one", "two", "one"), this.requests);
+        assertEquals(RadioPlaybackState.PLAYING, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.OFF));
+        manager.remove(KEY);
+        sounds.played.get(1).onStop();
+        assertEquals(3, this.requests.size());
+        manager.shutdown();
+    }
+
+    @Test
+    void finiteRemoteRepeatOneIsBypassedByExplicitSkip() throws Exception {
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FiniteRemotePlaybackBackend finite = new FiniteRemotePlaybackBackend(
+                this.driver(LiveStreamPlaybackBackend.Mode.FINITE,
+                        fixed(this.program(RadioSourceProgram.Kind.STATION, List.of(this.track("one")))), sounds));
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP, finite);
+        PlaybackState state = this.finiteState("one", "two");
+        manager.update(KEY, state);
+        await(() -> sounds.audio.size() == 1);
+        long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.ONE));
+
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> sounds.audio.size() == 2);
+        assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        await(() -> sounds.audio.size() == 3);
+
+        assertEquals(List.of("one", "one", "two"), this.requests);
+        assertEquals(RadioPlaybackState.PLAYING, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        manager.shutdown();
+    }
+
+    @Test
     void stoppingFiniteRemotePlaybackNeverOpensTheNextTrack() throws Exception {
         RadioSourceProgram unrelated = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
