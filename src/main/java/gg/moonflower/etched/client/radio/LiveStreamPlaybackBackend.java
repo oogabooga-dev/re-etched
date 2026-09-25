@@ -1,6 +1,9 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.sound.MinecraftSoundEngineSink;
+import gg.moonflower.etched.client.cache.BoundedMediaCache;
+import gg.moonflower.etched.client.cache.ClientMediaCache;
+import gg.moonflower.etched.client.cache.MediaValidators;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
@@ -39,6 +42,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+import org.jetbrains.annotations.Nullable;
 
 /** Remote stream lifecycle shared by live stations and independently opened finite tracks. */
 public final class LiveStreamPlaybackBackend implements PlaybackBackend {
@@ -58,6 +63,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     private final Executor ownerExecutor;
     private final SoundEngineSink sounds;
     private final BooleanSupplier forceStereo;
+    private final @Nullable Supplier<BoundedMediaCache> cache;
     private boolean closed;
 
     public LiveStreamPlaybackBackend() {
@@ -82,7 +88,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                 boundedExecutor("Etched finite decoder", 2),
                 command -> Minecraft.getInstance().execute(command),
                 new MinecraftSoundEngineSink(),
-                () -> Etched.CLIENT_CONFIG.forceStereo.get());
+                () -> Etched.CLIENT_CONFIG.forceStereo.get(), ClientMediaCache::get);
     }
 
     LiveStreamPlaybackBackend(AudioSourceResolver resolver, ContextFactory contexts,
@@ -97,6 +103,24 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                               ExecutorService resolverExecutor, ExecutorService producerExecutor,
                               ExecutorService decoderExecutor, Executor ownerExecutor,
                               SoundEngineSink sounds, BooleanSupplier forceStereo) {
+        this(mode, resolver, contexts, resolverExecutor, producerExecutor,
+                decoderExecutor, ownerExecutor, sounds, forceStereo, (Supplier<BoundedMediaCache>) null);
+    }
+
+    LiveStreamPlaybackBackend(Mode mode, AudioSourceResolver resolver, ContextFactory contexts,
+                              ExecutorService resolverExecutor, ExecutorService producerExecutor,
+                              ExecutorService decoderExecutor, Executor ownerExecutor,
+                              SoundEngineSink sounds, BooleanSupplier forceStereo,
+                              BoundedMediaCache cache) {
+        this(mode, resolver, contexts, resolverExecutor, producerExecutor,
+                decoderExecutor, ownerExecutor, sounds, forceStereo, () -> cache);
+    }
+
+    private LiveStreamPlaybackBackend(Mode mode, AudioSourceResolver resolver, ContextFactory contexts,
+                                      ExecutorService resolverExecutor, ExecutorService producerExecutor,
+                                      ExecutorService decoderExecutor, Executor ownerExecutor,
+                                      SoundEngineSink sounds, BooleanSupplier forceStereo,
+                                      @Nullable Supplier<BoundedMediaCache> cache) {
         this.mode = Objects.requireNonNull(mode, "mode");
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.contexts = Objects.requireNonNull(contexts, "contexts");
@@ -110,6 +134,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         this.ownerExecutor = Objects.requireNonNull(ownerExecutor, "ownerExecutor");
         this.sounds = Objects.requireNonNull(sounds, "sounds");
         this.forceStereo = Objects.requireNonNull(forceStereo, "forceStereo");
+        this.cache = cache;
     }
 
     @Override
@@ -324,7 +349,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             active.attempt.cancellation().throwIfCancelled();
             track.cancellation.throwIfCancelled();
             AudioResolveContext trackContext = this.contexts.create(track.cancellation);
-            source = active.program.openTrack(track.index, trackContext);
+            source = this.openSource(active, track, trackContext);
             if (!this.isCurrentTrack(active, track)) {
                 source.close();
                 return;
@@ -355,6 +380,27 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             }
             this.reportFailure(active, track, failure);
         }
+    }
+
+    private RadioResolvedSource openSource(ActiveAttempt active, TrackPlayback track,
+                                           AudioResolveContext context) throws IOException, RadioSourceException {
+        if (this.mode != Mode.FINITE || this.cache == null) {
+            return active.program.openTrack(track.index, context);
+        }
+        URI uri = active.program.tracks().get(track.index).source();
+        context.networkPolicy().check(uri, track.cancellation);
+        BoundedMediaCache.Lease lease = this.cache.get().acquire(BoundedMediaCache.Namespace.AUDIO,
+                uri.toString(), track.cancellation, token -> {
+                    AudioResolveContext fetchContext = this.contexts.create(token);
+                    RadioResolvedSource source = this.direct.resolve(uri, fetchContext);
+                    if (source.headers().containsKey("icy-metaint")) {
+                        source.close();
+                        throw new IOException("ICY live audio cannot be cached as a finite track");
+                    }
+                    return new BoundedMediaCache.Content(source.body(),
+                            source.contentLength().orElse(-1L));
+                }, MediaValidators::audio);
+        return RadioResolvedSource.cached(uri, lease, track.cancellation);
     }
 
     private void prepared(ActiveAttempt active, TrackPlayback track,
