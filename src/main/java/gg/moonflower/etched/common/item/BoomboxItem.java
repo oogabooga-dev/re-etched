@@ -7,7 +7,6 @@ import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -46,25 +45,18 @@ public class BoomboxItem extends Item implements ContainerItem {
     }
 
     public static void onLivingEntityUpdateClient(LivingEntity entity) {
-        ItemStack newPlayingRecord = ItemStack.EMPTY;
-        ItemStack mainStack = entity.getMainHandItem();
-        ItemStack offStack = entity.getOffhandItem();
+        updatePlaying(entity, selectPlayingRecord(entity.getMainHandItem(), entity.getOffhandItem()));
+    }
+
+    /** Ordinary inventory slots are not playback sources. */
+    public static ItemStack selectPlayingRecord(ItemStack mainStack, ItemStack offStack) {
         if (mainStack.getItem() instanceof BoomboxItem && hasRecord(mainStack) && !isPaused(mainStack)) {
-            newPlayingRecord = getRecord(mainStack);
-        } else if (offStack.getItem() instanceof BoomboxItem && hasRecord(offStack) && !isPaused(offStack)) {
-            newPlayingRecord = getRecord(offStack);
+            return getRecord(mainStack);
         }
-
-        if (entity instanceof Player && newPlayingRecord.isEmpty() && Minecraft.getInstance().cameraEntity == entity) {
-            Inventory inventory = ((Player) entity).getInventory();
-            for (ItemStack stack : inventory.items) {
-                if (stack.getItem() instanceof BoomboxItem && hasRecord(stack) && !isPaused(stack)) {
-                    newPlayingRecord = getRecord(stack);
-                }
-            }
+        if (offStack.getItem() instanceof BoomboxItem && hasRecord(offStack) && !isPaused(offStack)) {
+            return getRecord(offStack);
         }
-
-        updatePlaying(entity, newPlayingRecord);
+        return ItemStack.EMPTY;
     }
 
     private static void updatePlaying(Entity entity, ItemStack record) {

@@ -313,6 +313,30 @@ public final class EtchedGameTests {
         helper.succeed();
     }
 
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void boomboxPlaysOnlyFromHands(GameTestHelper helper) {
+        ItemStack main = new ItemStack(EtchedItems.BOOMBOX.get());
+        ItemStack off = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(main, new ItemStack(Items.MUSIC_DISC_CAT));
+        BoomboxItem.setRecord(off, new ItemStack(Items.MUSIC_DISC_BLOCKS));
+
+        helper.assertTrue(BoomboxItem.selectPlayingRecord(main, off).is(Items.MUSIC_DISC_CAT),
+                "The main-hand boombox did not take priority");
+        BoomboxItem.setPaused(main, true);
+        helper.assertTrue(BoomboxItem.selectPlayingRecord(main, off).is(Items.MUSIC_DISC_BLOCKS),
+                "The offhand boombox did not play after the main hand paused");
+        BoomboxItem.setPaused(off, true);
+        helper.assertTrue(BoomboxItem.selectPlayingRecord(main, off).isEmpty(),
+                "Paused boomboxes must not play");
+        helper.assertTrue(BoomboxItem.selectPlayingRecord(ItemStack.EMPTY, ItemStack.EMPTY).isEmpty(),
+                "A boombox in ordinary inventory must not become a playback source");
+        BoomboxItem.setPaused(main, false);
+        BoomboxItem.setRecord(main, ItemStack.EMPTY);
+        helper.assertTrue(BoomboxItem.selectPlayingRecord(main, ItemStack.EMPTY).isEmpty(),
+                "Removing the record must stop hand playback");
+        helper.succeed();
+    }
+
     private static TrackData track(String name) {
         return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
     }
