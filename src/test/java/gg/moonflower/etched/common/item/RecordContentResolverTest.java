@@ -47,6 +47,17 @@ class RecordContentResolverTest {
         assertTrue(RecordContentResolver.fromTracks(new TrackData[]{invalid}).isEmpty());
     }
 
+    @Test
+    void etchedAlbumMetadataDoesNotBecomeAnExtraAudioTrack() {
+        ItemStack disc = new ItemStack(Items.PAPER);
+        EtchedMusicDiscItem.setMusic(disc, track("https://audio.example/album.mp3"),
+                track("https://audio.example/one.mp3"), track("https://audio.example/two.mp3"));
+
+        var content = RecordContentResolver.fromDisc(disc).orElseThrow();
+        assertEquals(2, content.program().tracks().size());
+        assertEquals("https://audio.example/album.mp3", content.album().orElseThrow().source());
+    }
+
     private static TrackData track(String url) {
         return new TrackData(url, "Artist", Component.literal("Title"));
     }

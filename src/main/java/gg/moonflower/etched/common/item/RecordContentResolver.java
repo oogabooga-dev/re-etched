@@ -6,6 +6,7 @@ import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
+import net.minecraft.nbt.Tag;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +32,7 @@ public final class RecordContentResolver {
             }
         }
         if (stack.getItem() instanceof EtchedMusicDiscItem) {
-            return fromTracks(EtchedMusicDiscItem.readMusic(stack).orElseGet(() -> new TrackData[0]));
+            return fromDisc(stack);
         }
         if (stack.getItem() instanceof AlbumCoverItem) {
             List<AudioTrack> tracks = new ArrayList<>();
@@ -52,6 +53,20 @@ public final class RecordContentResolver {
         return Optional.empty();
     }
 
+    static Optional<RecordContent> fromDisc(ItemStack stack) {
+        Optional<RecordContent> content = fromTracks(EtchedMusicDiscItem.readMusic(stack).orElseGet(() -> new TrackData[0]));
+        if (content.isEmpty() || stack.getTag() == null || !stack.getTag().contains("Album", Tag.TAG_COMPOUND)) {
+            return content;
+        }
+        Optional<RecordContent.AlbumMetadata> album = EtchedMusicDiscItem.readAlbum(stack)
+                .flatMap(RecordContentResolver::albumMetadata);
+        try {
+            return Optional.of(new RecordContent(content.orElseThrow().program(), album));
+        } catch (IllegalArgumentException exception) {
+            return content;
+        }
+    }
+
     static Optional<RecordContent> fromTracks(TrackData[] data) {
         List<AudioTrack> tracks = new ArrayList<>();
         for (TrackData track : data) {
@@ -67,6 +82,16 @@ public final class RecordContentResolver {
             }
         }
         return fromAudioTracks(tracks);
+    }
+
+    private static Optional<RecordContent.AlbumMetadata> albumMetadata(TrackData data) {
+        try {
+            return Optional.of(new RecordContent.AlbumMetadata(TrackData.isLocalSound(data.url())
+                    ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
+                    data.url(), data.artist(), data.title().getString()));
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
+        }
     }
 
     private static Optional<RecordContent> fromAudioTracks(List<AudioTrack> tracks) {

@@ -5,6 +5,7 @@ import gg.moonflower.etched.core.mixin.client.GuiAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
@@ -26,12 +27,17 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
     }
 
     private void updateBlock(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
+        ClientLevel level = getLevel(key);
+        if (level != null && level.getBlockState(key.pos()).is(Blocks.JUKEBOX)) {
+            this.updateJukebox(key, level, snapshot);
+            return;
+        }
         Component message = RadioStatusMessages.forSnapshot(snapshot);
         if (message == null) {
             this.stopBlock(key);
             return;
         }
-        ClientLevel level = getLevel(key);
+        level = getLevel(key);
         if (level == null) {
             this.stopBlock(key);
             return;
@@ -58,6 +64,21 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
         }
         if (effect.overlay == null) {
             effect.overlay = this.showOverlay(key, message, playing);
+        }
+        effect.playing = playing;
+        if (playing) {
+            this.setRecordPlayingNearby(level, key, true);
+        }
+    }
+
+    private void updateJukebox(PlaybackOwnerKey.BlockOwner key, ClientLevel level,
+                               PlaybackSession.Snapshot snapshot) {
+        ActiveEffect effect = this.active.computeIfAbsent(key, ignored -> new ActiveEffect());
+        boolean playing = snapshot.state() == RadioPlaybackState.PLAYING;
+        if (effect.playing && !playing) {
+            effect.playing = false;
+            this.setRecordPlayingNearby(level, key, false);
+            this.refreshActiveNearbyState();
         }
         effect.playing = playing;
         if (playing) {

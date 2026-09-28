@@ -6,6 +6,7 @@ import gg.moonflower.etched.api.sound.SoundTracker;
 import gg.moonflower.etched.api.sound.StopListeningSound;
 import gg.moonflower.etched.client.screen.EtchingScreen;
 import gg.moonflower.etched.client.screen.RadioScreen;
+import gg.moonflower.etched.client.radio.JukeboxPlayback;
 import gg.moonflower.etched.common.network.play.*;
 import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
 import net.minecraft.client.Minecraft;
@@ -43,6 +44,14 @@ public class EtchedClientPlayPacketHandler {
                 client.getSoundManager().stop(soundInstance);
                 playingRecords.remove(pos);
             }
+
+            if (JukeboxPlayback.start(pos, pkt.record())) {
+                return;
+            }
+
+            // A replacement unsupported by the finite backends must not leave the old
+            // managed sound playing underneath the legacy fallback.
+            JukeboxPlayback.stop(pos);
 
             TrackData[] tracks = pkt.tracks();
             if (tracks.length == 0) {

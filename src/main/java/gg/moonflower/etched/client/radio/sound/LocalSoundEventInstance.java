@@ -21,13 +21,13 @@ final class LocalSoundEventInstance extends AbstractTickableSoundInstance implem
     private volatile boolean stopRequested;
 
     LocalSoundEventInstance(PlaybackOwnerKey.BlockOwner key, ResourceLocation event,
-                            AudioCancellation cancellation, Runnable soundStopped) {
+                             AudioCancellation cancellation, Runnable soundStopped, boolean muffled) {
         super(SoundEvent.createVariableRangeEvent(Objects.requireNonNull(event, "event")),
                 SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         Objects.requireNonNull(key, "key");
         this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
         this.soundStopped = Objects.requireNonNull(soundStopped, "soundStopped");
-        this.volume = 4.0F;
+        this.volume = muffled ? 2.0F : 4.0F;
         this.x = key.pos().getX() + 0.5;
         this.y = key.pos().getY() + 0.5;
         this.z = key.pos().getZ() + 0.5;
