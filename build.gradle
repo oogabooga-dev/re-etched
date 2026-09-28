@@ -165,16 +165,18 @@ test {
 }
 
 def clientSmokeSuccessMarker = layout.buildDirectory.file("run-client-smoke/etched-client-smoke-success")
+def jukeboxSmokeSuccessMarker = layout.buildDirectory.file("run-client-smoke/etched-jukebox-packet-smoke-success")
 def clientSmokeOptions = layout.buildDirectory.file("run-client-smoke/options.txt")
 
 tasks.named("runClientSmoke", JavaExec) {
     group = "verification"
-    description = "Starts the transformed Forge client and verifies that it reaches the title screen"
+    description = "Verifies transformed Forge client startup (or, with ETCHED_CLIENT_SMOKE_JUKEBOX=1, jukebox packet ordering)"
     dependsOn tasks.named("classes")
     dependsOn tasks.named("clientSmokeClasses")
 
     doFirst {
         delete(clientSmokeSuccessMarker)
+        delete(jukeboxSmokeSuccessMarker)
 
         def options = clientSmokeOptions.get().asFile
         options.parentFile.mkdirs()
@@ -187,9 +189,17 @@ maxFps:30
 '''
     }
     doLast {
-        def marker = clientSmokeSuccessMarker.get().asFile
+        def marker = System.getenv("ETCHED_CLIENT_SMOKE_JUKEBOX") == "1"
+                ? jukeboxSmokeSuccessMarker.get().asFile : clientSmokeSuccessMarker.get().asFile
         if (!marker.isFile()) {
-            throw new GradleException("Forge client exited without completing the startup smoke check")
+            throw new GradleException("Forge client exited without completing the requested smoke check")
+        }
+        if (System.getenv("ETCHED_CLIENT_SMOKE_JUKEBOX") == "1") {
+            def world = marker.text.trim()
+            if (!(world ==~ /etched-jukebox-smoke-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/)) {
+                throw new GradleException("Jukebox smoke returned an invalid test world name")
+            }
+            delete(layout.buildDirectory.dir("run-client-smoke/saves/${world}"))
         }
         delete(marker)
     }
