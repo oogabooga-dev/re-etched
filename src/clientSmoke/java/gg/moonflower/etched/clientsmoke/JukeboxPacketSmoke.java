@@ -173,7 +173,7 @@ final class JukeboxPacketSmoke {
                 server.execute(() -> {
                     ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                     ItemStack boombox = player.getMainHandItem().copy();
-                    BoomboxItem.setPaused(boombox, true);
+                    BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_BLOCKS));
                     player.setItemInHand(InteractionHand.MAIN_HAND, boombox);
                 });
             } else if (++ticks >= 100) {
@@ -182,9 +182,54 @@ final class JukeboxPacketSmoke {
         }
         if (step == 7 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
-            if (BoomboxItem.isPaused(client.player.getMainHandItem())
-                    && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+            var state = AudioPlaybackManager.getInstance().getPlaybackState(entityKey);
+            if (client.player.getMainHandItem().is(EtchedItems.BOOMBOX.get())
+                    && state.isPresent() && state.orElseThrow().revision() == 1L
+                    && "minecraft:music_disc.blocks".equals(state.orElseThrow().program()
+                    .orElseThrow().tracks().get(0).source())
+                    && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                if (++ticks < 20) {
+                    return;
+                }
                 step = 8;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ItemStack boombox = player.getMainHandItem().copy();
+                    player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                    player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Replacing the held disc did not advance the boombox revision");
+            }
+        }
+        if (step == 8 && client.level != null) {
+            var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
+            if (client.player.getMainHandItem().isEmpty()
+                    && client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
+                    && BoomboxItem.getPlayingHand(client.player) == InteractionHand.OFF_HAND
+                    && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                step = 9;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ItemStack boombox = player.getOffhandItem().copy();
+                    BoomboxItem.setPaused(boombox, true);
+                    player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Offhand boombox did not keep entity playback");
+            }
+        }
+        if (step == 9 && client.level != null) {
+            var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
+            if (BoomboxItem.isPaused(client.player.getOffhandItem())
+                    && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+                step = 10;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID playerId = client.player.getUUID();
@@ -200,13 +245,13 @@ final class JukeboxPacketSmoke {
                     level.addFreshEntity(dropped);
                 });
             } else if (++ticks >= 100) {
-                throw new AssertionError("Pausing the held boombox did not stop playback");
+                throw new AssertionError("Pausing the offhand boombox did not stop playback");
             }
         }
-        if (step == 8 && droppedId != null && client.level != null) {
+        if (step == 10 && droppedId != null && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
             if (AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
-                step = 9;
+                step = 11;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID id = droppedId;
@@ -221,7 +266,7 @@ final class JukeboxPacketSmoke {
                 throw new AssertionError("Dropped boombox did not start managed playback");
             }
         }
-        if (step == 9 && client.level != null) {
+        if (step == 11 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
             if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
                 try {
@@ -231,9 +276,9 @@ final class JukeboxPacketSmoke {
                 }
                 System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
                 System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
-                System.out.println("ETCHED HELD BOOMBOX PAUSE SMOKE PASSED");
+                System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
                 System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
-                step = 10;
+                step = 12;
                 client.stop();
             } else if (++ticks >= 100) {
                 throw new AssertionError("Removing a dropped boombox did not stop playback");
