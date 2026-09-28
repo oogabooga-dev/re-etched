@@ -36,12 +36,12 @@ class JukeboxPlaybackTest {
     }
 
     @Test
-    void mixedAlbumDoesNotSupplantAnActiveSupportedProgram() {
+    void mixedAlbumSupersedesThePreviousProgramWithOneOwnerRevision() {
         AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
         assertTrue(JukeboxPlayback.apply(manager, KEY, program(remote("first"))));
-        assertFalse(JukeboxPlayback.apply(manager, KEY, program(remote("second"),
+        assertTrue(JukeboxPlayback.apply(manager, KEY, program(remote("second"),
                 new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.cat", "", ""))));
-        assertEquals(0, manager.getPlaybackState(KEY).orElseThrow().revision());
+        assertEquals(1, manager.getPlaybackState(KEY).orElseThrow().revision());
     }
 
     private static AudioTrack remote(String name) {

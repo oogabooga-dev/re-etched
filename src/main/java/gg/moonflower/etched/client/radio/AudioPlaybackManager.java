@@ -474,7 +474,12 @@ public final class AudioPlaybackManager {
         }
         AudioTrack.SourceType sourceType = admission == PlaybackBackend.Admission.LOCAL
                 ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE;
-        return program.tracks().stream().allMatch(track -> track.sourceType() == sourceType);
+        if (sourceType == AudioTrack.SourceType.SOUND_EVENT) {
+            return program.tracks().stream().allMatch(track -> track.sourceType() == sourceType);
+        }
+        return program.tracks().stream().anyMatch(track -> track.sourceType() == sourceType)
+                && (program.tracks().stream().allMatch(track -> track.sourceType() == sourceType)
+                || this.backend.supportsMixedFinite(key, state));
     }
 
     private static boolean isFinite(ManagedPlayback playback) {

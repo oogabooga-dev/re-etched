@@ -1,6 +1,5 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackRevision;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.audio.RecordContent;
@@ -33,9 +32,6 @@ public final class JukeboxPlayback {
     }
 
     static boolean apply(AudioPlaybackManager manager, PlaybackOwnerKey key, RecordContent content) {
-        if (!supportsProgram(content)) {
-            return false;
-        }
         long revision = manager.getPlaybackState(key).map(PlaybackState::revision)
                 .map(PlaybackRevision::next).orElse(0L);
         return manager.update(key, new PlaybackState(revision, Optional.of(content.program()), true));
@@ -48,10 +44,4 @@ public final class JukeboxPlayback {
         }
     }
 
-    // Mixed local/remote albums still use the legacy path until the finite backends can route
-    // track-by-track. Never accept a program the manager cannot actually play.
-    private static boolean supportsProgram(RecordContent content) {
-        AudioTrack.SourceType first = content.program().tracks().get(0).sourceType();
-        return content.program().tracks().stream().allMatch(track -> track.sourceType() == first);
-    }
 }

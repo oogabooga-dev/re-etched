@@ -40,6 +40,13 @@ final class RoutingPlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public synchronized boolean supportsMixedFinite(PlaybackOwnerKey key, PlaybackState state) {
+        return !this.closed && this.backends.stream()
+                .filter(backend -> backend.enabled() && backend.supports(key, state))
+                .findFirst().map(backend -> backend.supportsMixedFinite(key, state)).orElse(false);
+    }
+
+    @Override
     public void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                       PlaybackSession.Attempt attempt, Events events) {
         PlaybackBackend backend;

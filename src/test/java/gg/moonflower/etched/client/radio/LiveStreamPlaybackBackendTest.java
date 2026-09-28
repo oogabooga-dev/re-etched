@@ -7,6 +7,7 @@ import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import gg.moonflower.etched.client.radio.sound.SoundEngineSink;
+import gg.moonflower.etched.client.radio.sound.LocalSoundEventSink;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.client.radio.source.AudioSourceResolver;
@@ -234,6 +235,84 @@ class LiveStreamPlaybackBackendTest {
         assertTrue(events.failures.isEmpty());
         assertTrue(attempt.cancellation().isCancelled());
         driver.shutdown();
+    }
+
+    @Test
+    void mixedFiniteAlbumAlternatesNativeAndRemoteSoundsWithoutOpeningLocalHttp() throws Exception {
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FakeLocalSounds local = new FakeLocalSounds();
+        LiveStreamPlaybackBackend remote = this.mixedDriver(sounds, local);
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new RoutingPlaybackBackend(List.of(new FiniteRemotePlaybackBackend(remote),
+                        new LocalSoundEventPlaybackBackend(local, Runnable::run))));
+        PlaybackState state = new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(localTrack(), this.remoteTrack("one"), localTrack()))), true);
+
+        assertTrue(manager.update(KEY, state));
+        await(() -> local.handles.size() == 1);
+        assertTrue(this.requests.isEmpty());
+        local.handles.get(0).finish();
+        await(() -> sounds.audio.size() == 1);
+        assertEquals(List.of("one"), this.requests);
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> local.handles.size() == 2);
+        local.handles.get(0).finish(); // A late callback cannot advance the new track.
+        assertEquals(2, local.handles.size());
+        local.handles.get(1).finish();
+        await(() -> manager.getSessionSnapshot(KEY).orElseThrow().state() == RadioPlaybackState.STOPPED);
+        assertEquals(List.of("one"), this.requests);
+        assertEquals(1, sounds.stops.get());
+        manager.shutdown();
+    }
+
+    @Test
+    void ejectingMixedAlbumCancelsLocalTrackAndNeverOpensItsNextRemoteTrack() throws Exception {
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FakeLocalSounds local = new FakeLocalSounds();
+        LiveStreamPlaybackBackend remote = this.mixedDriver(sounds, local);
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new FiniteRemotePlaybackBackend(remote));
+        PlaybackState state = new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(localTrack(), this.remoteTrack("one")))), true);
+
+        assertTrue(manager.update(KEY, state));
+        await(() -> local.handles.size() == 1);
+        assertTrue(manager.remove(KEY));
+        local.handles.get(0).finish();
+        assertTrue(this.requests.isEmpty());
+        assertEquals(1, local.handles.get(0).stops.get());
+        manager.shutdown();
+    }
+
+    @Test
+    void mixedFiniteSkipAndLoopKeepOneGenerationAndIgnoreRetiredCallbacks() throws Exception {
+        FakeSoundOutput sounds = new FakeSoundOutput(false);
+        FakeLocalSounds local = new FakeLocalSounds();
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new FiniteRemotePlaybackBackend(this.mixedDriver(sounds, local)));
+        PlaybackState state = new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(localTrack(), this.remoteTrack("one")))), true);
+
+        manager.update(KEY, state);
+        await(() -> local.handles.size() == 1);
+        long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
+        assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.ALL));
+        assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));
+        await(() -> sounds.audio.size() == 1);
+        local.handles.get(0).finish();
+        assertEquals(1, sounds.audio.size());
+        drain(sounds.audio.get(0));
+        sounds.played.get(0).onStop();
+        await(() -> local.handles.size() == 2);
+
+        assertEquals(generation, manager.getSessionSnapshot(KEY).orElseThrow().generation());
+        assertEquals(List.of("one"), this.requests);
+        assertEquals(1, local.handles.get(0).stops.get());
+        manager.remove(KEY);
+        local.handles.get(1).finish();
+        assertEquals(2, local.handles.size());
+        manager.shutdown();
     }
 
     @Test
@@ -845,6 +924,25 @@ class LiveStreamPlaybackBackendTest {
         return this.driver(mode, resolver, sounds, allowTestServer);
     }
 
+    private LiveStreamPlaybackBackend mixedDriver(FakeSoundOutput sounds, FakeLocalSounds local) {
+        AudioNetworkPolicy policy = ignored -> {
+        };
+        return new LiveStreamPlaybackBackend(LiveStreamPlaybackBackend.Mode.FINITE,
+                fixed(this.program(RadioSourceProgram.Kind.STATION, List.of(this.track("one")))),
+                cancellation -> new AudioResolveContext(new RadioHttpTransportImpl(Proxy.NO_PROXY, policy,
+                        Duration.ofSeconds(2), Duration.ofSeconds(2), 2), policy, cancellation,
+                        AudioResolveLimits.DEFAULT), this.resolvers, this.producers, this.decoders,
+                Runnable::run, sounds, () -> true, null, local);
+    }
+
+    private static AudioTrack localTrack() {
+        return new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.cat", "", "Local");
+    }
+
+    private AudioTrack remoteTrack(String path) {
+        return new AudioTrack(AudioTrack.SourceType.REMOTE, this.baseUri.resolve("/" + path).toString(), "", path);
+    }
+
     private LiveStreamPlaybackBackend driver(LiveStreamPlaybackBackend.Mode mode,
                                              AudioSourceResolver resolver, FakeSoundOutput sounds,
                                              AudioNetworkPolicy policy) {
@@ -1011,6 +1109,50 @@ class LiveStreamPlaybackBackendTest {
 
             private void onStop() {
                 this.soundStopped.run();
+            }
+        }
+    }
+
+    private static final class FakeLocalSounds implements LocalSoundEventSink {
+        private final List<FakeHandle> handles = new CopyOnWriteArrayList<>();
+
+        @Override
+        public boolean supports(PlaybackOwnerKey key) {
+            return key instanceof PlaybackOwnerKey.BlockOwner;
+        }
+
+        @Override
+        public Handle create(PlaybackOwnerKey key, ResourceLocation event,
+                             AudioCancellation cancellation, Runnable soundStopped) {
+            FakeHandle handle = new FakeHandle(soundStopped);
+            this.handles.add(handle);
+            return handle;
+        }
+
+        private static final class FakeHandle implements Handle {
+            private final Runnable callback;
+            private final AtomicInteger stops = new AtomicInteger();
+
+            private FakeHandle(Runnable callback) {
+                this.callback = callback;
+            }
+
+            @Override
+            public boolean play() {
+                return true;
+            }
+
+            @Override
+            public void requestStop() {
+            }
+
+            @Override
+            public void stop() {
+                this.stops.incrementAndGet();
+            }
+
+            private void finish() {
+                this.callback.run();
             }
         }
     }

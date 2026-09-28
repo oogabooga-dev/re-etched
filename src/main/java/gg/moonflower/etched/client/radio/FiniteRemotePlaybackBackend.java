@@ -23,6 +23,11 @@ final class FiniteRemotePlaybackBackend implements PlaybackBackend {
     }
 
     @Override
+    public boolean supportsMixedFinite(PlaybackOwnerKey key, PlaybackState state) {
+        return this.remote.supportsMixedFinite(key, state);
+    }
+
+    @Override
     public void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                       PlaybackSession.Attempt attempt, Events events) {
         this.remote.start(key, state, session, attempt, events);
