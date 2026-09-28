@@ -1,6 +1,7 @@
 package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
@@ -12,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** First-party disc and vanilla record adapter; does not require the public PlayableRecord API. */
+/** First-party disc adapter; defers albums containing third-party playable items to the legacy path. */
 public final class RecordContentResolver {
 
     private RecordContentResolver() {
@@ -22,7 +23,7 @@ public final class RecordContentResolver {
         if (stack.isEmpty()) {
             return Optional.empty();
         }
-        if (stack.getItem() instanceof RecordItem record) {
+        if (stack.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record)) {
             try {
                 AudioTrack track = new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
                         record.getSound().getLocation().toString(), "", record.getDisplayName().getString());
@@ -38,7 +39,8 @@ public final class RecordContentResolver {
             List<AudioTrack> tracks = new ArrayList<>();
             for (ItemStack disc : AlbumCoverItem.readRecords(stack)) {
                 // No recursive albums, and each record has at most one bounded program.
-                if (disc.getItem() instanceof RecordItem || disc.getItem() instanceof EtchedMusicDiscItem) {
+                if ((disc.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record))
+                        || disc.getItem() instanceof EtchedMusicDiscItem) {
                     resolve(disc).ifPresent(content -> {
                         for (AudioTrack track : content.program().tracks()) {
                             if (tracks.size() < AudioProgram.MAX_TRACKS) {
@@ -46,6 +48,9 @@ public final class RecordContentResolver {
                             }
                         }
                     });
+                } else if (disc.getItem() instanceof PlayableRecord) {
+                    // Never silently discard third-party tracks from a legacy Album Cover.
+                    return Optional.empty();
                 }
             }
             return fromAudioTracks(tracks);

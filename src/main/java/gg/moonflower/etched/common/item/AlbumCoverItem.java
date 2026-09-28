@@ -26,6 +26,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickAction;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.item.ItemUtils;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
@@ -125,7 +126,8 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> list, TooltipFlag tooltipFlag) {
         for (ItemStack record : getRecords(stack)) {
-            if (record.getItem() instanceof PlayableRecord) {
+            if (record.getItem() instanceof EtchedMusicDiscItem || record.getItem() instanceof RecordItem
+                    || record.getItem() instanceof PlayableRecord) {
                 record.getItem().appendHoverText(record, level, list, tooltipFlag);
             }
         }
@@ -227,7 +229,7 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
 
     @Override
     public int getTrackCount(ItemStack stack) {
-        return getRecords(stack).stream().filter(record -> record.getItem() instanceof PlayableRecord).mapToInt(record -> ((PlayableRecord) record.getItem()).getTrackCount(record)).sum();
+        return getRecords(stack).stream().mapToInt(AlbumCoverItem::recordTrackCount).sum();
     }
 
     @Override
@@ -331,10 +333,29 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
 
     static TrackData[] flattenMusic(Collection<ItemStack> records) {
         return flattenPrograms(records.stream()
-                .filter(record -> record.getItem() instanceof PlayableRecord)
-                .map(record -> ((PlayableRecord) record.getItem()).getMusic(record)
-                        .orElseGet(() -> new TrackData[0]))
+                .map(AlbumCoverItem::recordMusic)
                 .toList());
+    }
+
+    private static TrackData[] recordMusic(ItemStack stack) {
+        if (stack.getItem() instanceof EtchedMusicDiscItem) {
+            return EtchedMusicDiscItem.readMusic(stack).orElseGet(() -> new TrackData[0]);
+        }
+        if (stack.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record)) {
+            return VanillaRecordAdapter.music(record);
+        }
+        return stack.getItem() instanceof PlayableRecord record
+                ? record.getMusic(stack).orElseGet(() -> new TrackData[0]) : new TrackData[0];
+    }
+
+    private static int recordTrackCount(ItemStack stack) {
+        if (stack.getItem() instanceof EtchedMusicDiscItem) {
+            return EtchedMusicDiscItem.countTracks(stack);
+        }
+        if (stack.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record)) {
+            return 1;
+        }
+        return stack.getItem() instanceof PlayableRecord record ? record.getTrackCount(stack) : 0;
     }
 
     static TrackData[] flattenPrograms(Collection<TrackData[]> programs) {

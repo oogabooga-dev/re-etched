@@ -6,6 +6,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.RecordItem;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -108,6 +109,17 @@ class AlbumCoverItemCharacterizationTest {
         assertEquals(1, EtchedMusicDiscItem.countTracks(singleTrack));
         assertEquals(tracks.length,
                 EtchedMusicDiscItem.countTracks(multiTrack) + EtchedMusicDiscItem.countTracks(singleTrack));
+    }
+
+    @Test
+    void vanillaDiscLegacyMetadataIsAvailableWithoutPlayableRecordMixin() {
+        RecordItem vanilla = (RecordItem) Items.MUSIC_DISC_CAT;
+        TrackData[] expected = VanillaRecordAdapter.music(vanilla);
+
+        assertEquals(1, expected.length);
+        assertEquals(vanilla.getSound().getLocation().toString(), expected[0].url());
+        assertArrayEquals(expected, AlbumCoverItem.flattenMusic(List.of(
+                new ItemStack(Items.PAPER), new ItemStack(vanilla))));
     }
 
     private static TrackData track(String name) {

@@ -29,6 +29,10 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
         return readMusic(stack);
     }
 
+    public static boolean hasLegacyMusic(ItemStack stack) {
+        return readMusic(stack).isPresent();
+    }
+
     static Optional<TrackData[]> readMusic(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
         if (nbt == null || (!nbt.contains("Music", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST))) {

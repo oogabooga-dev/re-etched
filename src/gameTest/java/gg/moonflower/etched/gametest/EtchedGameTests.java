@@ -215,6 +215,26 @@ public final class EtchedGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
+    public static void albumCoverKeepsLegacyVanillaAndEtchedTrackMetadata(GameTestHelper helper) {
+        ItemStack vanilla = new ItemStack(Items.MUSIC_DISC_CAT);
+        ItemStack etchedDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        TrackData custom = track("custom");
+        EtchedMusicDiscItem.setMusic(etchedDisc, custom);
+        ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
+        AlbumCoverItem.setRecords(album, List.of(vanilla, etchedDisc));
+
+        TrackData[] vanillaMusic = PlayableRecord.getStackMusic(vanilla).orElseThrow();
+        TrackData[] albumMusic = ((AlbumCoverItem) album.getItem()).getMusic(album).orElseThrow();
+        helper.assertTrue(albumMusic.length == 2, "The mixed Album Cover changed its legacy track count");
+        helper.assertTrue(albumMusic[0].equals(vanillaMusic[0]),
+                "Vanilla disc legacy metadata changed after adapting it internally");
+        helper.assertTrue(albumMusic[1].equals(custom), "Etched disc legacy metadata changed");
+        helper.assertTrue(((AlbumCoverItem) album.getItem()).getTrackCount(album) == 2,
+                "The mixed Album Cover changed its legacy track count API");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
     public static void boomboxStackPreservesAlbumTrackSequence(GameTestHelper helper) {
         TrackData first = track("first");
         TrackData second = track("second");
