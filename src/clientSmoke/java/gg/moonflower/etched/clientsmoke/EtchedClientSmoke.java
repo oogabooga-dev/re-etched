@@ -22,8 +22,15 @@ public final class EtchedClientSmoke {
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
         Minecraft client = Minecraft.getInstance();
-        if (complete || event.phase != TickEvent.Phase.END || !(client.screen instanceof TitleScreen)) {
+        if ("1".equals(System.getenv("ETCHED_CLIENT_SMOKE_JUKEBOX"))) {
+            JukeboxPacketSmoke.tick(client);
+            return;
+        }
+        if (complete || !(client.screen instanceof TitleScreen)) {
             return;
         }
 

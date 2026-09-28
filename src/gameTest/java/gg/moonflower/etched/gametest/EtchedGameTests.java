@@ -162,6 +162,20 @@ public final class EtchedGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
+    public static void emptyAlbumCoverRetainsLegacyComparatorOutput(GameTestHelper helper) {
+        BlockPos jukeboxPos = BlockPos.ZERO;
+        helper.setBlock(jukeboxPos, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(jukeboxPos);
+        jukebox.setFirstItem(new ItemStack(EtchedItems.ALBUM_COVER.get()));
+
+        helper.assertBlockProperty(jukeboxPos, JukeboxBlock.HAS_RECORD, true);
+        helper.assertTrue(helper.getBlockState(jukeboxPos)
+                        .getAnalogOutputSignal(helper.getLevel(), helper.absolutePos(jukeboxPos)) == 15,
+                "An empty Album Cover lost the legacy custom-record comparator output");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
     public static void vanillaJukeboxPacketPreservesAlbumTrackSequence(GameTestHelper helper) {
         BlockPos jukeboxPos = BlockPos.ZERO;
         BlockPos absoluteJukeboxPos = helper.absolutePos(jukeboxPos);
@@ -197,6 +211,26 @@ public final class EtchedGameTests {
         } finally {
             buffer.release();
         }
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void albumCoverKeepsLegacyVanillaAndEtchedTrackMetadata(GameTestHelper helper) {
+        ItemStack vanilla = new ItemStack(Items.MUSIC_DISC_CAT);
+        ItemStack etchedDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        TrackData custom = track("custom");
+        EtchedMusicDiscItem.setMusic(etchedDisc, custom);
+        ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
+        AlbumCoverItem.setRecords(album, List.of(vanilla, etchedDisc));
+
+        TrackData[] vanillaMusic = PlayableRecord.getStackMusic(vanilla).orElseThrow();
+        TrackData[] albumMusic = ((AlbumCoverItem) album.getItem()).getMusic(album).orElseThrow();
+        helper.assertTrue(albumMusic.length == 2, "The mixed Album Cover changed its legacy track count");
+        helper.assertTrue(albumMusic[0].equals(vanillaMusic[0]),
+                "Vanilla disc legacy metadata changed after adapting it internally");
+        helper.assertTrue(albumMusic[1].equals(custom), "Etched disc legacy metadata changed");
+        helper.assertTrue(((AlbumCoverItem) album.getItem()).getTrackCount(album) == 2,
+                "The mixed Album Cover changed its legacy track count API");
         helper.succeed();
     }
 

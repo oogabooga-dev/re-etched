@@ -1,6 +1,8 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.sound.MinecraftSoundEngineSink;
+import gg.moonflower.etched.client.radio.sound.MinecraftLocalSoundEventSink;
+import gg.moonflower.etched.client.radio.sound.LocalSoundEventSink;
 import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.cache.ClientMediaCache;
 import gg.moonflower.etched.client.cache.MediaValidators;
@@ -22,6 +24,7 @@ import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
 
 import java.io.IOException;
 import java.net.URI;
@@ -62,6 +65,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     private final ExecutorService decoderExecutor;
     private final Executor ownerExecutor;
     private final SoundEngineSink sounds;
+    private final LocalSoundEventSink localSounds;
     private final BooleanSupplier forceStereo;
     private final @Nullable Supplier<BoundedMediaCache> cache;
     private boolean closed;
@@ -121,6 +125,15 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                                       ExecutorService decoderExecutor, Executor ownerExecutor,
                                       SoundEngineSink sounds, BooleanSupplier forceStereo,
                                       @Nullable Supplier<BoundedMediaCache> cache) {
+        this(mode, resolver, contexts, resolverExecutor, producerExecutor, decoderExecutor,
+                ownerExecutor, sounds, forceStereo, cache, new MinecraftLocalSoundEventSink());
+    }
+
+    LiveStreamPlaybackBackend(Mode mode, AudioSourceResolver resolver, ContextFactory contexts,
+                              ExecutorService resolverExecutor, ExecutorService producerExecutor,
+                              ExecutorService decoderExecutor, Executor ownerExecutor,
+                              SoundEngineSink sounds, BooleanSupplier forceStereo,
+                              @Nullable Supplier<BoundedMediaCache> cache, LocalSoundEventSink localSounds) {
         this.mode = Objects.requireNonNull(mode, "mode");
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.contexts = Objects.requireNonNull(contexts, "contexts");
@@ -133,6 +146,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         }
         this.ownerExecutor = Objects.requireNonNull(ownerExecutor, "ownerExecutor");
         this.sounds = Objects.requireNonNull(sounds, "sounds");
+        this.localSounds = Objects.requireNonNull(localSounds, "localSounds");
         this.forceStereo = Objects.requireNonNull(forceStereo, "forceStereo");
         this.cache = cache;
     }
@@ -141,8 +155,15 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
     public boolean supports(PlaybackOwnerKey key, PlaybackState state) {
         return this.sounds.supports(key) && state.program().filter(program ->
                 this.mode == Mode.LIVE ? program.kind() == AudioProgram.Kind.LIVE
-                        : program.kind() == AudioProgram.Kind.FINITE && program.tracks().stream()
-                                .allMatch(track -> track.sourceType() == AudioTrack.SourceType.REMOTE)).isPresent();
+                        : program.kind() == AudioProgram.Kind.FINITE
+                                && program.tracks().stream().anyMatch(track -> track.sourceType() == AudioTrack.SourceType.REMOTE)
+                                && (program.tracks().stream().allMatch(track -> track.sourceType() == AudioTrack.SourceType.REMOTE)
+                                || this.localSounds.supports(key))).isPresent();
+    }
+
+    @Override
+    public boolean supportsMixedFinite(PlaybackOwnerKey key, PlaybackState state) {
+        return this.mode == Mode.FINITE && this.sounds.supports(key) && this.localSounds.supports(key);
     }
 
     @Override
@@ -329,6 +350,11 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
                 this.serviceCursors.put(active.key, index);
             }
         }
+        if (this.mode == Mode.FINITE && active.state.program().orElseThrow().tracks().get(index).sourceType()
+                == AudioTrack.SourceType.SOUND_EVENT) {
+            this.openLocalTrack(active, track);
+            return;
+        }
         try {
             Future<?> worker = this.resolverExecutor.submit(() -> this.prepareTrack(active, track));
             synchronized (this.lock) {
@@ -341,6 +367,63 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         } catch (RuntimeException failure) {
             this.reportFailure(active, track, failure);
         }
+    }
+
+    private void openLocalTrack(ActiveAttempt active, TrackPlayback track) {
+        try {
+            AudioTrack source = active.state.program().orElseThrow().tracks().get(track.index);
+            ResourceLocation event = ResourceLocation.tryParse(source.source());
+            if (event == null) {
+                throw new IllegalArgumentException("Invalid finite sound event");
+            }
+            LocalSoundEventSink.Handle handle = this.localSounds.create(active.key, event,
+                    track.cancellation, () -> this.dispatch(() -> this.localSoundStopped(active, track), active));
+            boolean accepted;
+            synchronized (this.lock) {
+                accepted = this.isCurrentTrackLocked(active, track);
+                if (accepted) {
+                    track.localSound = handle;
+                }
+            }
+            if (!accepted) {
+                handle.requestStop();
+                handle.stop();
+                return;
+            }
+            active.session.offerStreamTitle(active.attempt, source.title());
+            active.events.progress(RadioPlaybackState.BUFFERING);
+            if (!this.isCurrentTrack(active, track)) {
+                return;
+            }
+            if (!handle.play()) {
+                throw new IllegalStateException("SoundManager did not accept finite sound event");
+            }
+            active.events.progress(RadioPlaybackState.PLAYING);
+            boolean stopped;
+            synchronized (this.lock) {
+                track.localStarting = false;
+                stopped = track.localStopPending;
+            }
+            if (stopped) {
+                this.localSoundStopped(active, track);
+            }
+        } catch (RuntimeException failure) {
+            this.reportFailure(active, track, failure);
+        }
+    }
+
+    private void localSoundStopped(ActiveAttempt active, TrackPlayback track) {
+        synchronized (this.lock) {
+            if (!this.isCurrentTrackLocked(active, track) || track.terminal) {
+                return;
+            }
+            if (track.localStarting) {
+                track.localStopPending = true;
+                return;
+            }
+            track.terminal = true;
+        }
+        this.finishServiceTrack(active, track);
     }
 
     private void prepareTrack(ActiveAttempt active, TrackPlayback track) {
@@ -652,6 +735,7 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             return;
         }
         SoundEngineSink.Handle sound;
+        LocalSoundEventSink.Handle localSound;
         AudioStreamPipeline.Preparation preparation;
         PlaybackAudioStream audio;
         Future<?> worker;
@@ -663,6 +747,8 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             }
             sound = track.sound;
             track.sound = null;
+            localSound = track.localSound;
+            track.localSound = null;
             preparation = track.preparation;
             track.preparation = null;
             audio = track.audio;
@@ -675,6 +761,16 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
             cancel(this.resolverExecutor, worker);
         }
         track.cancellation.cancel();
+        if (localSound != null) {
+            localSound.requestStop();
+            if (stopSound) {
+                synchronized (active) {
+                    if (active.soundOutputAvailable) {
+                        localSound.stop();
+                    }
+                }
+            }
+        }
         boolean soundOutputOwnsAudio = false;
         if (sound != null) {
             sound.requestStop();
@@ -805,6 +901,9 @@ public final class LiveStreamPlaybackBackend implements PlaybackBackend {
         private AudioStreamPipeline.Preparation preparation;
         private PlaybackAudioStream audio;
         private SoundEngineSink.Handle sound;
+        private LocalSoundEventSink.Handle localSound;
+        private boolean localStarting = true;
+        private boolean localStopPending;
         private boolean transferred;
         private boolean terminal;
         private boolean soundStopReported;

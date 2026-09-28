@@ -5,6 +5,7 @@ import gg.moonflower.etched.core.mixin.client.GuiAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
@@ -26,12 +27,17 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
     }
 
     private void updateBlock(PlaybackOwnerKey.BlockOwner key, PlaybackSession.Snapshot snapshot) {
+        ClientLevel level = getLevel(key);
+        if (level != null && level.getBlockState(key.pos()).is(Blocks.JUKEBOX)) {
+            this.updateJukebox(key, level, snapshot);
+            return;
+        }
         Component message = RadioStatusMessages.forSnapshot(snapshot);
         if (message == null) {
             this.stopBlock(key);
             return;
         }
-        ClientLevel level = getLevel(key);
+        level = getLevel(key);
         if (level == null) {
             this.stopBlock(key);
             return;
@@ -65,6 +71,37 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
         }
     }
 
+    private void updateJukebox(PlaybackOwnerKey.BlockOwner key, ClientLevel level,
+                               PlaybackSession.Snapshot snapshot) {
+        ActiveEffect effect = this.active.computeIfAbsent(key, ignored -> new ActiveEffect());
+        boolean playing = snapshot.state() == RadioPlaybackState.PLAYING;
+        if (effect.playing && !playing) {
+            effect.playing = false;
+            this.setRecordPlayingNearby(level, key, false);
+            this.refreshActiveNearbyState();
+        }
+        boolean changed = effect.state != snapshot.state()
+                || !Objects.equals(effect.streamTitle, snapshot.streamTitle());
+        if (changed) {
+            this.clearOverlay(effect);
+            effect.state = snapshot.state();
+            effect.streamTitle = snapshot.streamTitle();
+        }
+        if (playing && effect.overlay == null) {
+            Component message = AudioPlaybackManager.getInstance().getPlaybackState(key)
+                    .flatMap(state -> state.program())
+                    .map(program -> JukeboxStatusMessages.forSnapshot(program, snapshot))
+                    .orElse(null);
+            if (message != null) {
+                effect.overlay = this.showRecordOverlay(key, message);
+            }
+        }
+        effect.playing = playing;
+        if (playing) {
+            this.setRecordPlayingNearby(level, key, true);
+        }
+    }
+
     @Override
     public void stop(PlaybackOwnerKey key) {
         if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
@@ -88,16 +125,31 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
 
     @Nullable
     private Component showOverlay(PlaybackOwnerKey.BlockOwner key, Component message, boolean playing) {
+        if (!this.canShowOverlay(key, playing)) {
+            return null;
+        }
+        Minecraft.getInstance().gui.setOverlayMessage(message, true);
+        return message;
+    }
+
+    @Nullable
+    private Component showRecordOverlay(PlaybackOwnerKey.BlockOwner key, Component message) {
+        if (!this.canShowOverlay(key, true)) {
+            return null;
+        }
         Minecraft minecraft = Minecraft.getInstance();
+        minecraft.gui.setNowPlaying(message);
+        return ((GuiAccessor) minecraft.gui).getOverlayMessageString();
+    }
+
+    private boolean canShowOverlay(PlaybackOwnerKey.BlockOwner key, boolean playing) {
         ClientLevel level = getLevel(key);
         if (level == null || playing && !level.getBlockState(key.pos().above()).isAir()
                 || !PlayableRecord.canShowMessage(
                 key.pos().getX() + 0.5, key.pos().getY() + 0.5, key.pos().getZ() + 0.5)) {
-            return null;
+            return false;
         }
-
-        minecraft.gui.setOverlayMessage(message, true);
-        return message;
+        return true;
     }
 
     private void refreshActiveNearbyState() {

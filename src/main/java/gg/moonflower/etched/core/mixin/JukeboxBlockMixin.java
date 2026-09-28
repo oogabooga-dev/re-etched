@@ -1,9 +1,8 @@
 package gg.moonflower.etched.core.mixin;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.common.item.JukeboxRecordSupport;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.JukeboxBlock;
@@ -25,7 +24,7 @@ public abstract class JukeboxBlockMixin extends BaseEntityBlock {
     public void getAnalogOutputSignal(BlockState state, Level level, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         if (level.getBlockEntity(pos) instanceof JukeboxBlockEntity be) {
             ItemStack record = be.getFirstItem();
-            if (!(record.getItem() instanceof RecordItem) && record.getItem() instanceof PlayableRecord) {
+            if (JukeboxRecordSupport.isCustomRecord(record)) {
                 cir.setReturnValue(15);
             }
         }

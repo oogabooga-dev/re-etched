@@ -455,6 +455,11 @@ public final class AudioPlaybackManager {
 
     private void updateEffects(PlaybackOwnerKey key, ManagedPlayback playback) {
         if (this.playbacks.get(key) == playback) {
+            // Finite jukebox owners do not have the radio's per-tick metadata drain.
+            // Promote their current track title on the owner thread before reporting progress.
+            if (isFinite(playback)) {
+                playback.session().applyPendingStreamTitle();
+            }
             this.effects.update(key, playback.session().snapshot());
         }
     }
@@ -474,7 +479,12 @@ public final class AudioPlaybackManager {
         }
         AudioTrack.SourceType sourceType = admission == PlaybackBackend.Admission.LOCAL
                 ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE;
-        return program.tracks().stream().allMatch(track -> track.sourceType() == sourceType);
+        if (sourceType == AudioTrack.SourceType.SOUND_EVENT) {
+            return program.tracks().stream().allMatch(track -> track.sourceType() == sourceType);
+        }
+        return program.tracks().stream().anyMatch(track -> track.sourceType() == sourceType)
+                && (program.tracks().stream().allMatch(track -> track.sourceType() == sourceType)
+                || this.backend.supportsMixedFinite(key, state));
     }
 
     private static boolean isFinite(ManagedPlayback playback) {

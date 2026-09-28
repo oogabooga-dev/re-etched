@@ -184,6 +184,7 @@ final class LocalSoundEventPlaybackBackend implements PlaybackBackend {
                 return;
             }
             active.attempt.cancellation().throwIfCancelled();
+            active.session.offerStreamTitle(active.attempt, active.tracks.get(index).title());
             active.events.progress(RadioPlaybackState.BUFFERING);
             if (!handle.play()) {
                 throw new IllegalStateException("SoundManager did not accept local playback");

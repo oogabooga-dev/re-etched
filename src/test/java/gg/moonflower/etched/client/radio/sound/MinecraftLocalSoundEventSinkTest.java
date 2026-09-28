@@ -47,7 +47,7 @@ class MinecraftLocalSoundEventSinkTest {
         ResourceLocation event = ResourceLocation.parse("minecraft:music_disc.13");
         AtomicInteger stopped = new AtomicInteger();
         LocalSoundEventInstance sound = new LocalSoundEventInstance(owner, event,
-                new PlaybackSession().start(event.toString()).cancellation(), stopped::incrementAndGet);
+                new PlaybackSession().start(event.toString()).cancellation(), stopped::incrementAndGet, false);
 
         sound.onStop();
         sound.onStop();

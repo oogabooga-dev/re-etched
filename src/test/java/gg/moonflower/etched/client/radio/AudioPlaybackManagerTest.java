@@ -762,6 +762,33 @@ class AudioPlaybackManagerTest {
     }
 
     @Test
+    void finiteTrackTitlesReachEffectsOnProgressWithoutRadioTicks() {
+        RecordingSessionDriver sessions = new RecordingSessionDriver();
+        sessions.supportsFinite = true;
+        RecordingEffects effects = new RecordingEffects();
+        AudioPlaybackManager manager = new AudioPlaybackManager(new RecordingDriver(), sessions, effects);
+        PlaybackOwnerKey key = PlaybackOwnerKey.block(FIRST_DIMENSION, BlockPos.ZERO);
+        manager.update(key, finiteRemoteState(1L, "https://audio.example/one", "https://audio.example/two"));
+        StartedSession started = sessions.started.get(0);
+        started.events().progress(RadioPlaybackState.CONNECTING);
+        started.session().offerStreamTitle(started.attempt(), "First");
+        started.events().progress(RadioPlaybackState.BUFFERING);
+        started.events().progress(RadioPlaybackState.PLAYING);
+        assertEquals("First", effects.updated.get(effects.updated.size() - 1).snapshot().streamTitle());
+
+        started.events().sequenceAdvance(() -> {
+        });
+        assertNull(effects.updated.get(effects.updated.size() - 1).snapshot().streamTitle());
+        started.session().offerStreamTitle(started.attempt(), "Second");
+        started.events().progress(RadioPlaybackState.BUFFERING);
+        started.events().progress(RadioPlaybackState.PLAYING);
+        assertEquals("Second", effects.updated.get(effects.updated.size() - 1).snapshot().streamTitle());
+        started.events().completion();
+        assertNull(effects.updated.get(effects.updated.size() - 1).snapshot().streamTitle());
+        manager.remove(key);
+    }
+
+    @Test
     void initialStartFailureUsesReconnectClassificationAndCanBeRetried() {
         RecordingSessionDriver sessions = new RecordingSessionDriver();
         sessions.throwOnStart = true;

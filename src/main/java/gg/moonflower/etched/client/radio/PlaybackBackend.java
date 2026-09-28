@@ -38,6 +38,11 @@ interface PlaybackBackend {
         return Admission.CONNECTION;
     }
 
+    /** Opt in only when one finite attempt can switch between native and remote tracks. */
+    default boolean supportsMixedFinite(PlaybackOwnerKey key, PlaybackState state) {
+        return false;
+    }
+
     void start(PlaybackOwnerKey key, PlaybackState state, PlaybackSession session,
                PlaybackSession.Attempt attempt, Events events);
 
