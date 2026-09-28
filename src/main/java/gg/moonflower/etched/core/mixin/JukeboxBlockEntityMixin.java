@@ -1,13 +1,12 @@
 package gg.moonflower.etched.core.mixin;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.common.item.JukeboxRecordSupport;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.level.Level;
@@ -84,8 +83,7 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
     @Inject(method = "tick", at = @At("HEAD"))
     public void tick(Level level, BlockPos pos, BlockState state, CallbackInfo ci) {
         if (this.isRecordPlaying()) {
-            Item item = this.getFirstItem().getItem();
-            if (!(item instanceof RecordItem) && item instanceof PlayableRecord) {
+            if (JukeboxRecordSupport.isCustomRecord(this.getFirstItem())) {
                 ++this.ticksSinceLastEvent;
 
                 // Allow music particles and events to play for custom records

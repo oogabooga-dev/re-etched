@@ -162,6 +162,20 @@ public final class EtchedGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
+    public static void emptyAlbumCoverRetainsLegacyComparatorOutput(GameTestHelper helper) {
+        BlockPos jukeboxPos = BlockPos.ZERO;
+        helper.setBlock(jukeboxPos, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(jukeboxPos);
+        jukebox.setFirstItem(new ItemStack(EtchedItems.ALBUM_COVER.get()));
+
+        helper.assertBlockProperty(jukeboxPos, JukeboxBlock.HAS_RECORD, true);
+        helper.assertTrue(helper.getBlockState(jukeboxPos)
+                        .getAnalogOutputSignal(helper.getLevel(), helper.absolutePos(jukeboxPos)) == 15,
+                "An empty Album Cover lost the legacy custom-record comparator output");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
     public static void vanillaJukeboxPacketPreservesAlbumTrackSequence(GameTestHelper helper) {
         BlockPos jukeboxPos = BlockPos.ZERO;
         BlockPos absoluteJukeboxPos = helper.absolutePos(jukeboxPos);
