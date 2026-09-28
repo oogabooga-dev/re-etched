@@ -17,23 +17,26 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.valueproviders.ConstantFloat;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
-/** Positional streaming sound backed exclusively by one radio audio stream. */
+/** Positional streaming sound backed exclusively by one owned audio stream. */
 public final class RadioSoundInstance extends AbstractTickableSoundInstance implements SoundStopListener {
 
     private static final ResourceLocation LOCATION = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "radio_stream");
     private static final SoundEvent EVENT = SoundEvent.createVariableRangeEvent(LOCATION);
 
-    private final PlaybackOwnerKey.BlockOwner key;
+    private final PlaybackOwnerKey key;
     private final long generation;
     private final PlaybackAudioStream stream;
     private final AudioCancellation cancellation;
     private final int attenuationDistance;
     private final Runnable streamHandedOff;
     private final Runnable soundStopped;
+    private final Supplier<Vec3> entityPosition;
     private volatile boolean transferred;
     private boolean untransferredClosed;
     private boolean stopReported;
@@ -47,8 +50,24 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
     }
 
     public RadioSoundInstance(PlaybackOwnerKey.BlockOwner key, long generation, PlaybackAudioStream stream,
-                              AudioCancellation cancellation, float volume,
-                              int attenuationDistance, Runnable streamHandedOff, Runnable soundStopped) {
+                               AudioCancellation cancellation, float volume,
+                               int attenuationDistance, Runnable streamHandedOff, Runnable soundStopped) {
+        this(key, generation, stream, cancellation, volume, attenuationDistance, streamHandedOff,
+                soundStopped, new Vec3(key.pos().getX() + 0.5, key.pos().getY() + 0.5,
+                key.pos().getZ() + 0.5), null);
+    }
+
+    RadioSoundInstance(PlaybackOwnerKey.EntityOwner key, long generation, PlaybackAudioStream stream,
+                       AudioCancellation cancellation, float volume, int attenuationDistance,
+                       Runnable streamHandedOff, Runnable soundStopped, Supplier<Vec3> position) {
+        this(key, generation, stream, cancellation, volume, attenuationDistance, streamHandedOff,
+                soundStopped, Objects.requireNonNull(position, "position").get(), position);
+    }
+
+    private RadioSoundInstance(PlaybackOwnerKey key, long generation, PlaybackAudioStream stream,
+                               AudioCancellation cancellation, float volume, int attenuationDistance,
+                               Runnable streamHandedOff, Runnable soundStopped, Vec3 initialPosition,
+                               Supplier<Vec3> entityPosition) {
         super(EVENT, SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         this.key = Objects.requireNonNull(key, "key");
         this.generation = generation;
@@ -63,17 +82,19 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
         this.attenuationDistance = attenuationDistance;
         this.streamHandedOff = Objects.requireNonNull(streamHandedOff, "streamHandedOff");
         this.soundStopped = Objects.requireNonNull(soundStopped, "soundStopped");
+        this.entityPosition = entityPosition;
         this.volume = volume;
-        this.x = key.pos().getX() + 0.5;
-        this.y = key.pos().getY() + 0.5;
-        this.z = key.pos().getZ() + 0.5;
+        Vec3 position = Objects.requireNonNull(initialPosition, "Playback owner is unavailable");
+        this.x = position.x;
+        this.y = position.y;
+        this.z = position.z;
         this.looping = false;
         this.relative = false;
         this.attenuation = Attenuation.LINEAR;
         cancellation.onCancel(this::requestStop);
     }
 
-    public PlaybackOwnerKey.BlockOwner key() {
+    public PlaybackOwnerKey key() {
         return this.key;
     }
 
@@ -156,6 +177,16 @@ public final class RadioSoundInstance extends AbstractTickableSoundInstance impl
         if (this.stopRequested || this.cancellation.isCancelled()) {
             this.requestStop();
             this.stop();
+        } else if (this.entityPosition != null) {
+            Vec3 position = this.entityPosition.get();
+            if (position == null) {
+                this.requestStop();
+                this.stop();
+            } else {
+                this.x = position.x;
+                this.y = position.y;
+                this.z = position.z;
+            }
         }
     }
 

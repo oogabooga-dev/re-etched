@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MinecraftSoundEngineSinkTest {
@@ -21,13 +20,13 @@ class MinecraftSoundEngineSinkTest {
     }
 
     @Test
-    void supportsOnlyBlockOwners() {
+    void supportsBlockAndEntityOwners() {
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("etched_test", "sink"));
         MinecraftSoundEngineSink sink = new MinecraftSoundEngineSink();
 
         assertTrue(sink.supports(PlaybackOwnerKey.block(dimension, BlockPos.ZERO)));
-        assertFalse(sink.supports(PlaybackOwnerKey.entity(dimension,
+        assertTrue(sink.supports(PlaybackOwnerKey.entity(dimension,
                 UUID.fromString("e0053355-4076-4b5b-9b93-6425a501d538"))));
     }
 }

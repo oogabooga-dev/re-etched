@@ -12,6 +12,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import javax.sound.sampled.AudioFormat;
@@ -24,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -133,6 +135,52 @@ class RadioSoundInstanceTest {
         sound.onStop();
 
         assertEquals(1, stopped.get());
+    }
+
+    @Test
+    void entityStreamFollowsPositionAndClosesBeforeHandoffWhenOwnerDisappears() throws Exception {
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://audio.example/boombox.mp3");
+        FakeAudioStream stream = new FakeAudioStream();
+        AtomicReference<Vec3> position = new AtomicReference<>(new Vec3(1, 2, 3));
+        ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
+        RadioSoundInstance sound = new RadioSoundInstance(
+                PlaybackOwnerKey.entity(dimension, new java.util.UUID(0L, 1L)), attempt.generation(),
+                stream, attempt.cancellation(), 4.0F, 8, () -> {
+                }, () -> {
+                }, position::get);
+
+        position.set(new Vec3(4, 5, 6));
+        sound.tick();
+        assertEquals(4, sound.getX());
+        assertEquals(5, sound.getY());
+        assertEquals(6, sound.getZ());
+
+        position.set(null);
+        sound.tick();
+        assertTrue(sound.isStopped());
+        assertTrue(sound.getStream(null, null, false).isCompletedExceptionally());
+        await(() -> stream.closeCount.get() == 1);
+    }
+
+    @Test
+    void disappearingEntityDoesNotCloseStreamAlreadyOwnedBySoundEngine() throws Exception {
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://audio.example/boombox.mp3");
+        FakeAudioStream stream = new FakeAudioStream();
+        AtomicReference<Vec3> position = new AtomicReference<>(Vec3.ZERO);
+        ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
+        RadioSoundInstance sound = new RadioSoundInstance(
+                PlaybackOwnerKey.entity(dimension, new java.util.UUID(0L, 2L)), attempt.generation(),
+                stream, attempt.cancellation(), 4.0F, 8, () -> {
+                }, () -> {
+                }, position::get);
+
+        assertSame(stream, sound.getStream(null, null, false).get());
+        position.set(null);
+        sound.tick();
+        assertTrue(sound.isStopped());
+        assertEquals(0, stream.closeCount.get());
     }
 
     private static RadioSoundInstance sound(PlaybackSession.Attempt attempt, PlaybackAudioStream stream,

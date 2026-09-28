@@ -6,26 +6,31 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
 
-/** Block-positioned vanilla SoundManager output for local sound events. */
+/** Block- or entity-positioned vanilla SoundManager output for local sound events. */
 public final class MinecraftLocalSoundEventSink implements LocalSoundEventSink {
 
     @Override
     public boolean supports(PlaybackOwnerKey key) {
-        return key instanceof PlaybackOwnerKey.BlockOwner;
+        return key instanceof PlaybackOwnerKey.BlockOwner || key instanceof PlaybackOwnerKey.EntityOwner;
     }
 
     @Override
     public Handle create(PlaybackOwnerKey key, ResourceLocation event, AudioCancellation cancellation,
                          Runnable soundStopped) {
-        if (!(key instanceof PlaybackOwnerKey.BlockOwner blockOwner)) {
-            throw new IllegalArgumentException("The Minecraft sound event sink requires a block playback owner");
-        }
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null || !minecraft.level.dimension().equals(blockOwner.dimension())) {
-            throw new IllegalStateException("Sound event playback owner is unavailable");
+        LocalSoundEventInstance sound;
+        if (key instanceof PlaybackOwnerKey.BlockOwner blockOwner) {
+            if (minecraft.level == null || !minecraft.level.dimension().equals(blockOwner.dimension())) {
+                throw new IllegalStateException("Sound event playback owner is unavailable");
+            }
+            boolean muffled = minecraft.level.getBlockState(blockOwner.pos().above()).is(BlockTags.WOOL);
+            sound = new LocalSoundEventInstance(blockOwner, event, cancellation, soundStopped, muffled);
+        } else if (key instanceof PlaybackOwnerKey.EntityOwner entityOwner) {
+            sound = new LocalSoundEventInstance(entityOwner, event, cancellation, soundStopped,
+                    EntitySoundPosition.find(entityOwner));
+        } else {
+            throw new IllegalArgumentException("Unsupported sound event playback owner");
         }
-        boolean muffled = minecraft.level.getBlockState(blockOwner.pos().above()).is(BlockTags.WOOL);
-        LocalSoundEventInstance sound = new LocalSoundEventInstance(blockOwner, event, cancellation, soundStopped, muffled);
         return new Handle() {
             @Override
             public boolean play() {
