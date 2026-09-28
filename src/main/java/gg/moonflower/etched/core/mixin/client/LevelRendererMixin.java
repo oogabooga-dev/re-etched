@@ -59,6 +59,13 @@ public abstract class LevelRendererMixin {
         this.etched$pos = pos;
     }
 
+    @Inject(method = "levelEvent", at = @At("HEAD"), cancellable = true)
+    private void etched$ignoreEjectedRecordStart(int event, BlockPos pos, int data, CallbackInfo ci) {
+        if (event == 1010 && !JukeboxPlayback.hasRecord(this.level.getBlockState(pos))) {
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At("HEAD"), cancellable = true, remap = false)
     private void etched$playManagedRecord(SoundEvent sound, BlockPos pos, RecordItem disc, CallbackInfo ci) {
         if (sound == null) {

@@ -5,6 +5,8 @@ import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.JukeboxBlock;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,6 +22,14 @@ class JukeboxPlaybackTest {
     }
 
     private static final PlaybackOwnerKey KEY = PlaybackOwnerKey.block(Level.OVERWORLD, BlockPos.ZERO);
+
+    @Test
+    void delayedStartsRequireAnInsertedRecordInTheCurrentJukebox() {
+        assertFalse(JukeboxPlayback.hasRecord(Blocks.AIR.defaultBlockState()));
+        assertFalse(JukeboxPlayback.hasRecord(Blocks.JUKEBOX.defaultBlockState()));
+        assertTrue(JukeboxPlayback.hasRecord(Blocks.JUKEBOX.defaultBlockState()
+                .setValue(JukeboxBlock.HAS_RECORD, true)));
+    }
 
     @Test
     void replacingAndRemovingDiscSupersedesOldOwnerState() {

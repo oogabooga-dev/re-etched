@@ -36,6 +36,9 @@ public class EtchedClientPlayPacketHandler {
         }
 
         ctx.enqueueWork(() -> {
+            if (client.level != level || !JukeboxPlayback.hasRecord(level.getBlockState(pkt.pos()))) {
+                return;
+            }
             BlockPos pos = pkt.pos();
             Map<BlockPos, SoundInstance> playingRecords = ((LevelRendererAccessor) client.levelRenderer).getPlayingRecords();
             SoundInstance soundInstance = playingRecords.get(pos);

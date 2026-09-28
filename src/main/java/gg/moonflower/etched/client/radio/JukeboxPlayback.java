@@ -8,6 +8,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.JukeboxBlock;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.Optional;
 
@@ -19,7 +21,7 @@ public final class JukeboxPlayback {
 
     public static boolean start(BlockPos pos, ItemStack record) {
         var level = Minecraft.getInstance().level;
-        if (level == null || !level.getBlockState(pos).is(Blocks.JUKEBOX)) {
+        if (level == null || !hasRecord(level.getBlockState(pos))) {
             return false;
         }
         Optional<RecordContent> content = RecordContentResolver.resolve(record);
@@ -29,6 +31,11 @@ public final class JukeboxPlayback {
         AudioPlaybackManager manager = AudioPlaybackManager.getInstance();
         PlaybackOwnerKey key = PlaybackOwnerKey.block(level.dimension(), pos);
         return apply(manager, key, content.orElseThrow());
+    }
+
+    /** A delayed start must not resurrect a sound after the server cleared HAS_RECORD. */
+    public static boolean hasRecord(BlockState state) {
+        return state.is(Blocks.JUKEBOX) && state.getValue(JukeboxBlock.HAS_RECORD);
     }
 
     static boolean apply(AudioPlaybackManager manager, PlaybackOwnerKey key, RecordContent content) {
