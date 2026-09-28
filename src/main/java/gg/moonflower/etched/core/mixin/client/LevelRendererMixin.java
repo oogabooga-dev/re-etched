@@ -61,7 +61,12 @@ public abstract class LevelRendererMixin {
 
     @Inject(method = "levelEvent", at = @At("HEAD"), cancellable = true)
     private void etched$ignoreEjectedRecordStart(int event, BlockPos pos, int data, CallbackInfo ci) {
-        if (event == 1010 && !JukeboxPlayback.hasRecord(this.level.getBlockState(pos))) {
+        if (event != 1010 && event != 1011) {
+            return;
+        }
+        boolean hasRecord = JukeboxPlayback.hasRecord(this.level.getBlockState(pos));
+        JukeboxPlayback.levelEvent(this.level.dimension(), event, pos, data, hasRecord);
+        if (event == 1010 && !hasRecord) {
             ci.cancel();
         }
     }

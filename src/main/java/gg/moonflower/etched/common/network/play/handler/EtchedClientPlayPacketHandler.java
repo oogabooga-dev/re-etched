@@ -36,7 +36,11 @@ public class EtchedClientPlayPacketHandler {
         }
 
         ctx.enqueueWork(() -> {
-            if (client.level != level || !JukeboxPlayback.hasRecord(level.getBlockState(pkt.pos()))) {
+            if (client.level != level) {
+                return;
+            }
+            boolean expected = JukeboxPlayback.acceptPacket(level.dimension(), pkt.pos(), pkt.record());
+            if (!expected || !JukeboxPlayback.hasRecord(level.getBlockState(pkt.pos()))) {
                 return;
             }
             BlockPos pos = pkt.pos();

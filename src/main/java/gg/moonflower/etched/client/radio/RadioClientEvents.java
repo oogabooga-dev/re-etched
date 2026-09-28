@@ -16,18 +16,21 @@ public final class RadioClientEvents {
 
     @SubscribeEvent
     public static void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        JukeboxPlayback.clearPendingStarts();
         RadioClientRuntime.getInstance().logout();
     }
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
+            JukeboxPlayback.clearPendingStarts();
             RadioClientRuntime.getInstance().clearAll();
         }
     }
 
     @SubscribeEvent
     public static void onGameShuttingDown(GameShuttingDownEvent event) {
+        JukeboxPlayback.clearPendingStarts();
         RadioClientRuntime.getInstance().shutdown();
     }
 }
