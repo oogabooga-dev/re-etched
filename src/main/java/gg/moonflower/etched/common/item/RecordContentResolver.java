@@ -25,7 +25,7 @@ public final class RecordContentResolver {
         if (stack.getItem() instanceof RecordItem record) {
             try {
                 AudioTrack track = new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
-                        record.getSound().getLocation().toString(), "Minecraft", record.getDisplayName().getString());
+                        record.getSound().getLocation().toString(), "", record.getDisplayName().getString());
                 return Optional.of(new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(track))));
             } catch (IllegalArgumentException exception) {
                 return Optional.empty();

@@ -80,6 +80,22 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
             this.setRecordPlayingNearby(level, key, false);
             this.refreshActiveNearbyState();
         }
+        boolean changed = effect.state != snapshot.state()
+                || !Objects.equals(effect.streamTitle, snapshot.streamTitle());
+        if (changed) {
+            this.clearOverlay(effect);
+            effect.state = snapshot.state();
+            effect.streamTitle = snapshot.streamTitle();
+        }
+        if (playing && effect.overlay == null) {
+            Component message = AudioPlaybackManager.getInstance().getPlaybackState(key)
+                    .flatMap(state -> state.program())
+                    .map(program -> JukeboxStatusMessages.forSnapshot(program, snapshot))
+                    .orElse(null);
+            if (message != null) {
+                effect.overlay = this.showRecordOverlay(key, message);
+            }
+        }
         effect.playing = playing;
         if (playing) {
             this.setRecordPlayingNearby(level, key, true);
@@ -109,16 +125,31 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
 
     @Nullable
     private Component showOverlay(PlaybackOwnerKey.BlockOwner key, Component message, boolean playing) {
+        if (!this.canShowOverlay(key, playing)) {
+            return null;
+        }
+        Minecraft.getInstance().gui.setOverlayMessage(message, true);
+        return message;
+    }
+
+    @Nullable
+    private Component showRecordOverlay(PlaybackOwnerKey.BlockOwner key, Component message) {
+        if (!this.canShowOverlay(key, true)) {
+            return null;
+        }
         Minecraft minecraft = Minecraft.getInstance();
+        minecraft.gui.setNowPlaying(message);
+        return ((GuiAccessor) minecraft.gui).getOverlayMessageString();
+    }
+
+    private boolean canShowOverlay(PlaybackOwnerKey.BlockOwner key, boolean playing) {
         ClientLevel level = getLevel(key);
         if (level == null || playing && !level.getBlockState(key.pos().above()).isAir()
                 || !PlayableRecord.canShowMessage(
                 key.pos().getX() + 0.5, key.pos().getY() + 0.5, key.pos().getZ() + 0.5)) {
-            return null;
+            return false;
         }
-
-        minecraft.gui.setOverlayMessage(message, true);
-        return message;
+        return true;
     }
 
     private void refreshActiveNearbyState() {

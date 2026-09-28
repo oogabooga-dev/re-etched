@@ -296,6 +296,7 @@ class LiveStreamPlaybackBackendTest {
 
         manager.update(KEY, state);
         await(() -> local.handles.size() == 1);
+        await(() -> manager.getSessionSnapshot(KEY).orElseThrow().state() == RadioPlaybackState.PLAYING);
         long generation = manager.getSessionSnapshot(KEY).orElseThrow().generation();
         assertTrue(manager.setFiniteLoop(KEY, state.revision(), generation, FiniteLoopMode.ALL));
         assertTrue(manager.skipFiniteTrack(KEY, state.revision(), generation));

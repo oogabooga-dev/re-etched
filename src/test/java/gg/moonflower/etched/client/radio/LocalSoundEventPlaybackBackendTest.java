@@ -20,6 +20,7 @@ import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -77,6 +78,25 @@ class LocalSoundEventPlaybackBackendTest {
         assertEquals(2, sounds.events.size());
         assertEquals(RadioPlaybackState.STOPPED, manager.getSessionSnapshot(KEY).orElseThrow().state());
         assertFalse(manager.isPlaying(KEY));
+        manager.shutdown();
+    }
+
+    @Test
+    void localRecordTitlesFollowActualSoundCompletionWithoutTick() {
+        FakeSink sounds = new FakeSink();
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new LocalSoundEventPlaybackBackend(sounds, Runnable::run));
+        PlaybackState state = new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.13", "", "First"),
+                        new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.cat", "", "Second")))), true);
+
+        manager.update(KEY, state);
+        assertEquals("First", manager.getSessionSnapshot(KEY).orElseThrow().streamTitle());
+        sounds.handles.get(0).complete();
+        assertEquals("Second", manager.getSessionSnapshot(KEY).orElseThrow().streamTitle());
+        sounds.handles.get(1).complete();
+        assertEquals(RadioPlaybackState.STOPPED, manager.getSessionSnapshot(KEY).orElseThrow().state());
+        assertNull(manager.getSessionSnapshot(KEY).orElseThrow().streamTitle());
         manager.shutdown();
     }
 
