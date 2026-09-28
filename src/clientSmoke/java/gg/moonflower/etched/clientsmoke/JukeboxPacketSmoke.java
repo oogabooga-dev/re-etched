@@ -2,6 +2,7 @@ package gg.moonflower.etched.clientsmoke;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
+import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
@@ -251,7 +252,21 @@ final class JukeboxPacketSmoke {
         if (step == 10 && droppedId != null && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
             if (AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                BoomboxPlayback.getInstance().clearAll();
+                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
+                    throw new AssertionError("Clearing boombox owners left the dropped entity playing");
+                }
                 step = 11;
+                ticks = 0;
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Dropped boombox did not start managed playback");
+            }
+        }
+        if (step == 11 && droppedId != null && client.level != null) {
+            var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
+            // A still-present owner may start again after clearing the local runtime.
+            if (AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                step = 12;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID id = droppedId;
@@ -263,10 +278,10 @@ final class JukeboxPacketSmoke {
                     }
                 });
             } else if (++ticks >= 100) {
-                throw new AssertionError("Dropped boombox did not start managed playback");
+                throw new AssertionError("Boombox did not recover after clearing active owners");
             }
         }
-        if (step == 11 && client.level != null) {
+        if (step == 12 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
             if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
                 try {
@@ -278,7 +293,8 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
                 System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
-                step = 12;
+                System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
+                step = 13;
                 client.stop();
             } else if (++ticks >= 100) {
                 throw new AssertionError("Removing a dropped boombox did not stop playback");

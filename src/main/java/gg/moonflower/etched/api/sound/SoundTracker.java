@@ -35,6 +35,7 @@ import net.minecraftforge.common.MinecraftForge;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.DoubleSupplier;
 
 /**
@@ -242,10 +243,21 @@ public class SoundTracker {
             Minecraft.getInstance().getSoundManager().stop(entitySound);
         }
 
-        entitySound = StopListeningSound.create(sound.get(), () -> Minecraft.getInstance().tell(() -> {
+        // A stop notification can already be queued when a boombox replaces or ejects this
+        // record. Only the sound that is still current may advance the legacy track sequence.
+        AtomicReference<StopListeningSound> current = new AtomicReference<>();
+        Entity owner = entity;
+        StopListeningSound wrapped = StopListeningSound.create(sound.get(), () -> Minecraft.getInstance().tell(() -> {
+            ClientLevel clientLevel = Minecraft.getInstance().level;
+            if (clientLevel == null || clientLevel.getEntity(entityId) != owner
+                    || ENTITY_PLAYING_SOUNDS.get(entityId) != current.get()) {
+                return;
+            }
             ENTITY_PLAYING_SOUNDS.remove(entityId);
             playEntityRecord(record, entityId, track + 1, attenuationDistance, loop);
         }));
+        current.set(wrapped);
+        entitySound = wrapped;
 
         ENTITY_PLAYING_SOUNDS.put(entityId, entitySound);
         Minecraft.getInstance().getSoundManager().play(entitySound);
