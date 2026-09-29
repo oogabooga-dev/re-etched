@@ -56,6 +56,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.ITeleporter;
+import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 
@@ -578,6 +579,13 @@ final class JukeboxPacketSmoke {
                         || BoomboxPlayback.getInstance().isPlaying(client.player)) {
                     throw new AssertionError("Forge logout event left active boombox playback behind");
                 }
+                // Vanilla unloads the client level after LoggingOut. Both hooks must tolerate
+                // cleanup of the same owner without resurrecting its session.
+                MinecraftForge.EVENT_BUS.post(new LevelEvent.Unload(client.level));
+                if (AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
+                        || BoomboxPlayback.getInstance().isPlaying(client.player)) {
+                    throw new AssertionError("Level unload revived or retained boombox playback");
+                }
                 assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
                 try {
                     Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
@@ -595,6 +603,7 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX LOGOUT EVENT CLEANUP SMOKE PASSED");
+                System.out.println("ETCHED BOOMBOX REPEATED UNLOAD CLEANUP SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
                 step = 21;
                 client.stop();
