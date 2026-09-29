@@ -28,7 +28,7 @@ class DirectRadioSourceProgramTest {
             server.handle("/live", exchange -> {
                 int request = requests.incrementAndGet();
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, bytes("ID3-open-" + request));
+                respond(exchange, TestMp3Audio.frame("open-" + request));
             });
             AudioResolveContext context = context(4);
 
@@ -44,9 +44,9 @@ class DirectRadioSourceProgramTest {
                  RadioResolvedSource second = program.openTrack(0, context)) {
                 assertNotSame(first, second);
                 assertNotSame(first.body(), second.body());
-                assertArrayEquals(bytes("ID3-open-1"), first.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("open-1"), first.body().readAllBytes());
                 first.close();
-                assertArrayEquals(bytes("ID3-open-2"), second.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("open-2"), second.body().readAllBytes());
             }
             assertEquals(2, requests.get());
         }

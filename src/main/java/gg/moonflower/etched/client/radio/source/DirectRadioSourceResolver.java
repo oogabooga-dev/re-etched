@@ -176,7 +176,13 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         InputStream body = response.body();
         try {
             readUntil(prefix, body, buffer, MINIMUM_SNIFF_BYTES, context);
-            if (startsWith(prefix.toByteArray(), "OggS")) {
+            if (startsWith(prefix.toByteArray(), "ID3")) {
+                readUntil(prefix, body, buffer, 10, context);
+                int frame = id3FrameOffset(prefix.toByteArray(), limit);
+                if (frame >= 0) {
+                    readUntil(prefix, body, buffer, frame + MINIMUM_SNIFF_BYTES, context);
+                }
+            } else if (startsWith(prefix.toByteArray(), "OggS")) {
                 readUntil(prefix, body, buffer, OGG_PAGE_HEADER_BYTES, context);
                 if (prefix.size() >= OGG_PAGE_HEADER_BYTES) {
                     int segments = prefix.toByteArray()[26] & 0xFF;
@@ -277,8 +283,9 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
             return SourceKind.MP3;
         }
         if (startsWith(prefix, "ID3")) {
-            return isAacHint(contentType, suffix, requestedSuffix)
-                    ? SourceKind.AAC : SourceKind.MP3;
+            int frame = id3FrameOffset(prefix, prefix.length);
+            return frame >= 0 && hasMpegAudioSignature(prefix, frame)
+                    ? SourceKind.MP3 : SourceKind.UNKNOWN;
         }
         if (containsHlsDirective(upper)) {
             return SourceKind.HLS;
@@ -413,14 +420,42 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     }
 
     private static boolean hasMpegAudioSignature(byte[] bytes) {
-        if (bytes.length < 4 || (bytes[0] & 0xFF) != 0xFF || (bytes[1] & 0xE0) != 0xE0) {
+        return hasMpegAudioSignature(bytes, 0);
+    }
+
+    private static boolean hasMpegAudioSignature(byte[] bytes, int offset) {
+        if (bytes.length - offset < 4 || (bytes[offset] & 0xFF) != 0xFF
+                || (bytes[offset + 1] & 0xE0) != 0xE0) {
             return false;
         }
-        int version = (bytes[1] >>> 3) & 0x03;
-        int layer = (bytes[1] >>> 1) & 0x03;
-        int bitrate = (bytes[2] >>> 4) & 0x0F;
-        int sampleRate = (bytes[2] >>> 2) & 0x03;
+        int version = (bytes[offset + 1] >>> 3) & 0x03;
+        int layer = (bytes[offset + 1] >>> 1) & 0x03;
+        int bitrate = (bytes[offset + 2] >>> 4) & 0x0F;
+        int sampleRate = (bytes[offset + 2] >>> 2) & 0x03;
         return version != 1 && layer != 0 && bitrate != 0 && bitrate != 15 && sampleRate != 3;
+    }
+
+    /** Returns the first MPEG byte only when the complete tag and frame header fit the sniff budget. */
+    private static int id3FrameOffset(byte[] bytes, int limit) {
+        if (bytes.length < 10 || !startsWith(bytes, "ID3")) {
+            return -1;
+        }
+        int version = bytes[3] & 0xFF;
+        int flags = bytes[5] & 0xFF;
+        if (version < 2 || version > 4 || (bytes[4] & 0xFF) == 0xFF
+                || (flags & (version == 2 ? 0x3F : version == 3 ? 0x1F : 0x0F)) != 0) {
+            return -1;
+        }
+        int size = 0;
+        for (int i = 6; i < 10; i++) {
+            int part = bytes[i] & 0xFF;
+            if (part > 0x7F) {
+                return -1;
+            }
+            size = (size << 7) | part;
+        }
+        long frame = 10L + size + (version == 4 && (flags & 0x10) != 0 ? 10 : 0);
+        return frame + MINIMUM_SNIFF_BYTES <= limit ? (int) frame : -1;
     }
 
     private static boolean startsWith(byte[] bytes, String signature) {

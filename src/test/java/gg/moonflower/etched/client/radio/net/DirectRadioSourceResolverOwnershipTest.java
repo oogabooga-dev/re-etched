@@ -6,6 +6,7 @@ import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.client.radio.source.DirectRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
+import gg.moonflower.etched.client.radio.source.TestMp3Audio;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -37,7 +38,7 @@ class DirectRadioSourceResolverOwnershipTest {
         TrackingConnection playlist = connection(200, "audio/x-mpegurl",
                 firstUri + "\n" + secondUri + "\n");
         TrackingConnection first = connection(503, "text/plain", "unavailable");
-        TrackingConnection second = connection(200, "audio/mpeg", "ID3-audio");
+        TrackingConnection second = new TrackingConnection(200, "audio/mpeg", TestMp3Audio.frame("audio"));
         RadioHttpTransportImpl transport = transport((uri, proxy) -> {
             if (uri.equals(playlistUri)) {
                 return playlist;

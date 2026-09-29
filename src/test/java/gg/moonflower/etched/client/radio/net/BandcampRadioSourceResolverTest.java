@@ -8,6 +8,7 @@ import gg.moonflower.etched.client.radio.source.BandcampRadioSourceResolver;
 import gg.moonflower.etched.client.radio.source.RadioResolvedSource;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
+import gg.moonflower.etched.client.radio.source.TestMp3Audio;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -59,9 +60,9 @@ class BandcampRadioSourceResolverTest {
     @Test
     void parsesEscapedAlbumTracksInOrderAndOpensIndependentAudioResponses() throws Exception {
         TrackingConnection page = response(ALBUM, 200, albumHtml(FIRST_MEDIA, SECOND_MEDIA));
-        TrackingConnection firstOpen = response(FIRST_MEDIA, 200, "ID3-first-open");
-        TrackingConnection firstAgain = response(FIRST_MEDIA, 200, "ID3-first-again");
-        TrackingConnection secondOpen = response(SECOND_MEDIA, 200, "ID3-second-open");
+        TrackingConnection firstOpen = response(FIRST_MEDIA, 200, TestMp3Audio.frame("first-open"));
+        TrackingConnection firstAgain = response(FIRST_MEDIA, 200, TestMp3Audio.frame("first-again"));
+        TrackingConnection secondOpen = response(SECOND_MEDIA, 200, TestMp3Audio.frame("second-open"));
         RequestRouter router = new RequestRouter()
                 .add(ALBUM, page)
                 .add(FIRST_MEDIA, firstOpen, firstAgain)
@@ -82,12 +83,12 @@ class BandcampRadioSourceResolverTest {
         assertNull(page.getRequestProperty("Icy-MetaData"));
 
         try (RadioResolvedSource first = program.openTrack(0, context)) {
-            assertArrayEquals(bytes("ID3-first-open"), first.body().readAllBytes());
+            assertArrayEquals(TestMp3Audio.frame("first-open"), first.body().readAllBytes());
         }
         try (RadioResolvedSource first = program.openTrack(0, context);
              RadioResolvedSource second = program.openTrack(1, context)) {
-            assertArrayEquals(bytes("ID3-first-again"), first.body().readAllBytes());
-            assertArrayEquals(bytes("ID3-second-open"), second.body().readAllBytes());
+            assertArrayEquals(TestMp3Audio.frame("first-again"), first.body().readAllBytes());
+            assertArrayEquals(TestMp3Audio.frame("second-open"), second.body().readAllBytes());
         }
 
         assertEquals("1", firstOpen.getRequestProperty("Icy-MetaData"));
@@ -207,7 +208,7 @@ class BandcampRadioSourceResolverTest {
         TrackingConnection initialPage = response(TRACK, 200, trackHtml(FIRST_MEDIA));
         TrackingConnection expired = response(FIRST_MEDIA, 401, "expired");
         TrackingConnection refreshedPage = response(TRACK, 200, trackHtml(refreshedMedia));
-        TrackingConnection fresh = response(refreshedMedia, 200, "ID3-fresh-audio");
+        TrackingConnection fresh = response(refreshedMedia, 200, TestMp3Audio.frame("fresh-audio"));
         RequestRouter router = new RequestRouter()
                 .add(TRACK, initialPage, refreshedPage)
                 .add(FIRST_MEDIA, expired)
@@ -217,7 +218,7 @@ class BandcampRadioSourceResolverTest {
 
         try (RadioResolvedSource source = program.openTrack(0, context)) {
             assertEquals(refreshedMedia, source.uri());
-            assertArrayEquals(bytes("ID3-fresh-audio"), source.body().readAllBytes());
+            assertArrayEquals(TestMp3Audio.frame("fresh-audio"), source.body().readAllBytes());
         }
 
         assertEquals(2, router.requests(TRACK));
@@ -238,7 +239,7 @@ class BandcampRadioSourceResolverTest {
                   {"track_id":1,"title":"First","title_link":"/track/first","file":{"mp3-128":"%s"}}
                 ]}
                 """.formatted(SECOND_MEDIA, freshFirst)));
-        TrackingConnection fresh = response(freshFirst, 200, "ID3-right-track");
+        TrackingConnection fresh = response(freshFirst, 200, TestMp3Audio.frame("right-track"));
         RequestRouter router = new RequestRouter()
                 .add(ALBUM, initialPage, refreshedPage)
                 .add(FIRST_MEDIA, expired)
@@ -248,7 +249,7 @@ class BandcampRadioSourceResolverTest {
 
         try (RadioResolvedSource source = program.openTrack(0, context)) {
             assertEquals(freshFirst, source.uri());
-            assertArrayEquals(bytes("ID3-right-track"), source.body().readAllBytes());
+            assertArrayEquals(TestMp3Audio.frame("right-track"), source.body().readAllBytes());
         }
 
         router.assertExhausted();
@@ -318,6 +319,10 @@ class BandcampRadioSourceResolverTest {
 
     private static TrackingConnection response(URI uri, int status, String body) throws IOException {
         return new TrackingConnection(uri, status, body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static TrackingConnection response(URI uri, int status, byte[] body) throws IOException {
+        return new TrackingConnection(uri, status, body);
     }
 
     private static final class RequestRouter {

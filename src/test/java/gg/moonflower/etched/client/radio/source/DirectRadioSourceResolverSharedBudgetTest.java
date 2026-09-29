@@ -28,7 +28,7 @@ class DirectRadioSourceResolverSharedBudgetTest {
             server.handle("/live", exchange -> {
                 requests.incrementAndGet();
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
             AudioResolveContext context = context(new AudioResolveLimits(4, 128, 4, 64, 1, 2));
             DirectRadioSourceResolver resolver = new DirectRadioSourceResolver();
@@ -60,7 +60,7 @@ class DirectRadioSourceResolverSharedBudgetTest {
             server.handle("/station", exchange -> {
                 stationRequests.incrementAndGet();
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
             AudioResolveContext context = context(new AudioResolveLimits(4, 128, 1, 64, 1, 4));
             DirectRadioSourceResolver resolver = new DirectRadioSourceResolver();
