@@ -17,10 +17,13 @@ import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -30,12 +33,14 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.Parrot;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
@@ -188,6 +193,9 @@ final class JukeboxPacketSmoke {
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
                 assertPlayingModel(client, client.player, client.player.getMainHandItem(), 1.0F);
                 if (ticks == 0) {
+                    assertPlayingArm(client, InteractionHand.MAIN_HAND, true);
+                    assertPlayingArm(client, InteractionHand.OFF_HAND, false);
+                    assertBoomboxTooltip(client, client.player.getMainHandItem(), false);
                     assertParrotDances(client, true);
                 }
                 var state = AudioPlaybackManager.getInstance().getPlaybackState(entityKey).orElseThrow();
@@ -247,6 +255,8 @@ final class JukeboxPacketSmoke {
                     && BoomboxItem.getPlayingHand(client.player) == InteractionHand.OFF_HAND
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
                 assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
+                assertPlayingArm(client, InteractionHand.OFF_HAND, true);
+                assertPlayingArm(client, InteractionHand.MAIN_HAND, false);
                 step = 9;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -266,6 +276,8 @@ final class JukeboxPacketSmoke {
             if (BoomboxItem.isPaused(client.player.getOffhandItem())
                     && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
                 assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
+                assertPlayingArm(client, InteractionHand.OFF_HAND, false);
+                assertBoomboxTooltip(client, client.player.getOffhandItem(), true);
                 assertParrotDances(client, false);
                 step = 10;
                 ticks = 0;
@@ -583,6 +595,7 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX LOGOUT EVENT CLEANUP SMOKE PASSED");
+                System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
                 step = 21;
                 client.stop();
             } else if (++ticks >= 100) {
@@ -609,6 +622,29 @@ final class JukeboxPacketSmoke {
                 ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "playing"));
         if (property == null || property.call(stack, client.level, entity, 0) != expected) {
             throw new AssertionError("Boombox model did not match the playing hand of " + entity.getUUID());
+        }
+    }
+
+    private static void assertPlayingArm(Minecraft client, InteractionHand hand, boolean playing) {
+        var model = new HumanoidModel<>(client.getEntityModels().bakeLayer(ModelLayers.PLAYER));
+        model.rightArmPose = HumanoidModel.ArmPose.ITEM;
+        model.leftArmPose = HumanoidModel.ArmPose.ITEM;
+        model.setupAnim(client.player, 0, 0, 0, 0, 0);
+        boolean rightArm = (client.player.getMainArm() == HumanoidArm.RIGHT) == (hand == InteractionHand.MAIN_HAND);
+        float rotation = rightArm ? model.rightArm.xRot : model.leftArm.xRot;
+        if ((rotation > 2.5F) != playing) {
+            throw new AssertionError("Boombox arm pose did not match " + hand + " playback: " + rotation);
+        }
+    }
+
+    private static void assertBoomboxTooltip(Minecraft client, ItemStack stack, boolean paused) {
+        List<Component> lines = stack.getTooltipLines(client.player, TooltipFlag.NORMAL);
+        boolean pauseHint = lines.stream().anyMatch(line -> line.getContents() instanceof TranslatableContents text
+                && text.getKey().equals("item.etched.boombox.pause"));
+        boolean pausedStatus = lines.stream().anyMatch(line -> line.getContents() instanceof TranslatableContents text
+                && text.getKey().equals("item.etched.boombox.paused"));
+        if (!pauseHint || pausedStatus != paused) {
+            throw new AssertionError("Boombox tooltip did not match the stored pause state");
         }
     }
 
