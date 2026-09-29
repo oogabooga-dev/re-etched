@@ -14,12 +14,15 @@ import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
+import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,6 +30,7 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -178,6 +182,7 @@ final class JukeboxPacketSmoke {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (client.player.getMainHandItem().is(EtchedItems.BOOMBOX.get())
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                assertPlayingModel(client, client.player, client.player.getMainHandItem(), 1.0F);
                 var state = AudioPlaybackManager.getInstance().getPlaybackState(entityKey).orElseThrow();
                 var program = state.program().orElseThrow();
                 if (!"minecraft:music_disc.cat".equals(program.tracks().get(0).source())) {
@@ -234,6 +239,7 @@ final class JukeboxPacketSmoke {
                     && client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
                     && BoomboxItem.getPlayingHand(client.player) == InteractionHand.OFF_HAND
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
                 step = 9;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -252,6 +258,7 @@ final class JukeboxPacketSmoke {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (BoomboxItem.isPaused(client.player.getOffhandItem())
                     && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
                 step = 10;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -331,6 +338,7 @@ final class JukeboxPacketSmoke {
             if (client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
                     && SoundTracker.getEntitySound(client.player.getId()) != null
                     && BoomboxPlayback.getInstance().isPlaying(client.player)) {
+                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
                 if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
                     throw new AssertionError("Third-party record incorrectly entered managed playback");
                 }
@@ -390,6 +398,16 @@ final class JukeboxPacketSmoke {
         if (step == 15 && standId != null && client.level != null) {
             var key = PlaybackOwnerKey.entity(client.level.dimension(), standId);
             if (AudioPlaybackManager.getInstance().isPlaying(key)) {
+                boolean foundStand = false;
+                for (var entity : client.level.entitiesForRendering()) {
+                    if (entity.getUUID().equals(standId) && entity instanceof LivingEntity living) {
+                        assertPlayingModel(client, living, living.getMainHandItem(), 1.0F);
+                        foundStand = true;
+                    }
+                }
+                if (!foundStand) {
+                    throw new AssertionError("Playing armor stand was not in the client world");
+                }
                 step = 16;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -523,6 +541,7 @@ final class JukeboxPacketSmoke {
                     return;
                 }
                 var state = AudioPlaybackManager.getInstance().getPlaybackState(newKey).orElseThrow();
+                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
                 if (state.revision() != 0L || !"minecraft:music_disc.cat".equals(
                         state.program().orElseThrow().tracks().get(0).source())) {
                     throw new AssertionError("Nether boombox restarted or selected the wrong record");
@@ -563,6 +582,14 @@ final class JukeboxPacketSmoke {
         stand.setItemSlot(EquipmentSlot.MAINHAND, boombox);
         level.addFreshEntity(stand);
         return stand.getUUID();
+    }
+
+    private static void assertPlayingModel(Minecraft client, LivingEntity entity, ItemStack stack, float expected) {
+        var property = ItemProperties.getProperty(EtchedItems.BOOMBOX.get(),
+                ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "playing"));
+        if (property == null || property.call(stack, client.level, entity, 0) != expected) {
+            throw new AssertionError("Boombox model did not match the playing hand of " + entity.getUUID());
+        }
     }
 
     private static ItemStack disc(String sound, String title) {
