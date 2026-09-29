@@ -2,6 +2,7 @@ package gg.moonflower.etched.clientsmoke;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.SoundTracker;
+import gg.moonflower.etched.api.sound.SoundStopListener;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
@@ -315,6 +316,22 @@ final class JukeboxPacketSmoke {
                 if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
                     throw new AssertionError("Third-party record incorrectly entered managed playback");
                 }
+                // Queue a completion from off-thread, then retire its sound before the client
+                // thread handles it. The old callback must not start another legacy track.
+                SoundStopListener sound = (SoundStopListener) SoundTracker.getEntitySound(client.player.getId());
+                Thread completion = new Thread(sound::onStop, "etched-smoke-legacy-completion");
+                completion.start();
+                try {
+                    completion.join(2000L);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while queuing legacy completion", exception);
+                }
+                if (completion.isAlive()) {
+                    throw new AssertionError("Legacy completion was not queued");
+                }
+                BoomboxItem.setPaused(client.player.getOffhandItem(), true);
+                BoomboxPlayback.getInstance().update(client.player, ItemStack.EMPTY);
                 step = 14;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -335,6 +352,9 @@ final class JukeboxPacketSmoke {
                     && SoundTracker.getEntitySound(client.player.getId()) == null
                     && !BoomboxPlayback.getInstance().isPlaying(client.player)
                     && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+                if (++ticks < 20) {
+                    return;
+                }
                 try {
                     Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
                 } catch (IOException exception) {
@@ -345,7 +365,7 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
                 System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
-                System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK SMOKE PASSED");
+                System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
                 step = 15;
                 client.stop();
             } else if (++ticks >= 100) {
