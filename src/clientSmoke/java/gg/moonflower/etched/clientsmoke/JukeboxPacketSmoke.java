@@ -53,10 +53,7 @@ import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.level.portal.PortalInfo;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.ITeleporter;
-import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 
@@ -101,6 +98,8 @@ final class JukeboxPacketSmoke {
         }
         if (step == 0 && client.screen instanceof TitleScreen) {
             step = 1;
+            // Limit chunks to save when the opt-in test leaves its integrated world.
+            client.options.renderDistance().set(2);
             client.createWorldOpenFlows().createFreshLevel(WORLD,
                     new LevelSettings(WORLD, GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
                             new GameRules(), WorldDataConfiguration.DEFAULT),
@@ -571,42 +570,39 @@ final class JukeboxPacketSmoke {
                 if (++stableTicks < 20) {
                     return;
                 }
-                // Exercise Forge's logout subscribers without the integrated server's slow
-                // world-save shutdown. This does not replace a real disconnect check.
-                MinecraftForge.EVENT_BUS.post(new ClientPlayerNetworkEvent.LoggingOut(
-                        client.gameMode, client.player, client.getConnection().getConnection()));
-                if (AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
-                        || BoomboxPlayback.getInstance().isPlaying(client.player)) {
-                    throw new AssertionError("Forge logout event left active boombox playback behind");
-                }
-                // Vanilla unloads the client level after LoggingOut. Both hooks must tolerate
-                // cleanup of the same owner without resurrecting its session.
-                MinecraftForge.EVENT_BUS.post(new LevelEvent.Unload(client.level));
-                if (AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
-                        || BoomboxPlayback.getInstance().isPlaying(client.player)) {
-                    throw new AssertionError("Level unload revived or retained boombox playback");
-                }
-                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
-                try {
-                    Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
-                } catch (IOException exception) {
-                    throw new IllegalStateException("Could not record jukebox smoke result", exception);
-                }
-                System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
-                System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
-                System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
-                System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
-                System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
-                System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX LOGOUT EVENT CLEANUP SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX REPEATED UNLOAD CLEANUP SMOKE PASSED");
-                System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
                 step = 21;
-                client.stop();
+                var oldPlayer = client.player;
+                var server = client.getSingleplayerServer();
+                client.tell(() -> {
+                    client.level.disconnect();
+                    client.clearLevel(new TitleScreen());
+                    if (client.level != null || !server.isShutdown()
+                            || AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
+                            || AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isPresent()
+                            || BoomboxPlayback.getInstance().isPlaying(oldPlayer)) {
+                        throw new AssertionError("Disconnect left boombox or jukebox playback behind");
+                    }
+                    assertPlayingModel(client, oldPlayer, oldPlayer.getOffhandItem(), 0.0F);
+                    try {
+                        Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
+                    } catch (IOException exception) {
+                        throw new IllegalStateException("Could not record jukebox smoke result", exception);
+                    }
+                    System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
+                    System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
+                    System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
+                    System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
+                    System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
+                    System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
+                    System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
+                    System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
+                    System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
+                    System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
+                    System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
+                    System.out.println("ETCHED INTEGRATED DISCONNECT CLEANUP SMOKE PASSED");
+                    step = 22;
+                    client.stop();
+                });
             } else if (++ticks >= 100) {
                 throw new AssertionError("Client did not enter the Nether after the player transfer");
             }
