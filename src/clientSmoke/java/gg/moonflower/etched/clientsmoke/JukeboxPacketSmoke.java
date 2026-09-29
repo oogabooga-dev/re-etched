@@ -24,6 +24,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -59,6 +61,7 @@ final class JukeboxPacketSmoke {
     private static int ticks;
     private static BlockPos pos;
     private static volatile UUID droppedId;
+    private static volatile UUID standId;
 
     private JukeboxPacketSmoke() {
     }
@@ -355,6 +358,60 @@ final class JukeboxPacketSmoke {
                 if (++ticks < 20) {
                     return;
                 }
+                step = 15;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                var dimension = client.level.dimension();
+                server.execute(() -> {
+                    ServerLevel level = server.getLevel(dimension);
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    var stand = EntityType.ARMOR_STAND.create(level);
+                    if (stand == null) {
+                        throw new AssertionError("Could not spawn an armor stand for boombox smoke");
+                    }
+                    stand.moveTo(player.getX() + 4, player.getY(), player.getZ());
+                    ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+                    BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+                    stand.setItemSlot(EquipmentSlot.MAINHAND, boombox);
+                    standId = stand.getUUID();
+                    level.addFreshEntity(stand);
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Pausing a third-party record did not stop legacy playback");
+            }
+        }
+        if (step == 15 && standId != null && client.level != null) {
+            var key = PlaybackOwnerKey.entity(client.level.dimension(), standId);
+            if (AudioPlaybackManager.getInstance().isPlaying(key)) {
+                step = 16;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID id = standId;
+                var dimension = client.level.dimension();
+                server.execute(() -> {
+                    var stand = server.getLevel(dimension).getEntity(id);
+                    if (stand == null) {
+                        throw new AssertionError("Armor stand disappeared before the death check");
+                    }
+                    stand.kill();
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Living boombox owner did not start managed playback");
+            }
+        }
+        if (step == 16 && client.level != null) {
+            var key = PlaybackOwnerKey.entity(client.level.dimension(), standId);
+            // The old owner must leave the client world as well as the manager.
+            for (var entity : client.level.entitiesForRendering()) {
+                if (entity.getUUID().equals(standId)) {
+                    if (++ticks >= 100) {
+                        throw new AssertionError("Killed boombox owner stayed in the client world");
+                    }
+                    return;
+                }
+            }
+            if (AudioPlaybackManager.getInstance().getPlaybackState(key).isEmpty()) {
                 try {
                     Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
                 } catch (IOException exception) {
@@ -366,10 +423,11 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
                 System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
-                step = 15;
+                System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
+                step = 17;
                 client.stop();
             } else if (++ticks >= 100) {
-                throw new AssertionError("Pausing a third-party record did not stop legacy playback");
+                throw new AssertionError("Killed living boombox owner left a managed session");
             }
         }
     }
