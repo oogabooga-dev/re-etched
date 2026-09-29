@@ -19,6 +19,8 @@ import java.util.Set;
 public final class DirectRadioSourceResolver implements AudioSourceResolver {
 
     private static final int MINIMUM_SNIFF_BYTES = 4;
+    private static final int OGG_PAGE_HEADER_BYTES = 27;
+    private static final int VORBIS_IDENTIFICATION_BYTES = 30;
 
     @Override
     public boolean supports(URI input) {
@@ -75,7 +77,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         try {
             context.budget().consumeSteps(response.redirectCount());
             RadioHttpStatus.requireSuccess(response, "Radio host");
-            byte[] prefix = readPrefix(response, input, context);
+            byte[] prefix = readPrefix(response, context);
             SourceKind kind = classify(response, input, prefix);
             switch (kind) {
                 case HLS -> throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false,
@@ -166,28 +168,25 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private static byte[] readPrefix(AudioHttpResponse response, URI requestedUri,
-                                     AudioResolveContext context)
+    private static byte[] readPrefix(AudioHttpResponse response, AudioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().sniffBytes();
         ByteArrayOutputStream prefix = new ByteArrayOutputStream(limit);
         byte[] buffer = new byte[limit];
         InputStream body = response.body();
         try {
-            while (prefix.size() < Math.min(limit, MINIMUM_SNIFF_BYTES)) {
-                context.cancellation().throwIfCancelled();
-                int read = body.read(buffer, 0,
-                        Math.min(buffer.length, Math.min(limit, MINIMUM_SNIFF_BYTES) - prefix.size()));
-                if (read < 0) {
-                    return prefix.toByteArray();
+            readUntil(prefix, body, buffer, MINIMUM_SNIFF_BYTES, context);
+            if (startsWith(prefix.toByteArray(), "OggS")) {
+                readUntil(prefix, body, buffer, OGG_PAGE_HEADER_BYTES, context);
+                if (prefix.size() >= OGG_PAGE_HEADER_BYTES) {
+                    int segments = prefix.toByteArray()[26] & 0xFF;
+                    if (segments > 0) {
+                        readUntil(prefix, body, buffer,
+                                OGG_PAGE_HEADER_BYTES + segments + VORBIS_IDENTIFICATION_BYTES, context);
+                    }
                 }
-                if (read == 0) {
-                    continue;
-                }
-                prefix.write(buffer, 0, read);
             }
-            boolean readTextPrefix = isPlaylistHint(response, requestedUri)
-                    || looksLikeTextPrefix(prefix.toByteArray());
+            boolean readTextPrefix = looksLikeTextPrefix(prefix.toByteArray());
             while (prefix.size() < limit) {
                 context.cancellation().throwIfCancelled();
                 int available = body.available();
@@ -207,6 +206,21 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         } catch (IOException exception) {
             throw failure(RadioFailure.Code.UNKNOWN, true,
                     "Could not inspect the radio response", exception);
+        }
+    }
+
+    private static void readUntil(ByteArrayOutputStream prefix, InputStream body, byte[] buffer,
+                                  int target, AudioResolveContext context) throws IOException {
+        int end = Math.min(buffer.length, target);
+        while (prefix.size() < end) {
+            context.cancellation().throwIfCancelled();
+            int read = body.read(buffer, 0, end - prefix.size());
+            if (read < 0) {
+                return;
+            }
+            if (read > 0) {
+                prefix.write(buffer, 0, read);
+            }
         }
     }
 
@@ -254,7 +268,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         String upper = text.toUpperCase(Locale.ROOT);
 
         if (startsWith(prefix, "OggS")) {
-            return SourceKind.OGG;
+            return hasVorbisIdentification(prefix) ? SourceKind.OGG : SourceKind.UNKNOWN;
         }
         if (hasAdtsSignature(prefix)) {
             return SourceKind.AAC;
@@ -313,21 +327,6 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || contentType.equals("audio/aac") || contentType.equals("audio/aacp");
     }
 
-    private static boolean isPlaylistHint(AudioHttpResponse response, URI requestedUri) {
-        String contentType = response.firstHeader("Content-Type")
-                .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
-                .orElse("");
-        String suffix = suffix(response.uri());
-        String requestedSuffix = suffix(requestedUri);
-        return suffix.equals("m3u") || suffix.equals("pls") || suffix.equals("m3u8")
-                || requestedSuffix.equals("m3u") || requestedSuffix.equals("pls")
-                || requestedSuffix.equals("m3u8") || contentType.equals("audio/x-scpls")
-                || contentType.equals("audio/x-mpegurl") || contentType.equals("audio/mpegurl")
-                || contentType.equals("application/x-mpegurl")
-                || contentType.equals("application/vnd.apple.mpegurl")
-                || contentType.equals("text/plain");
-    }
-
     private static boolean looksLikeTextPrefix(byte[] prefix) {
         if (prefix.length == 0) {
             return false;
@@ -378,6 +377,39 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
 
     private static boolean hasAdtsSignature(byte[] bytes) {
         return bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xF6) == 0xF0;
+    }
+
+    private static boolean hasVorbisIdentification(byte[] bytes) {
+        if (bytes.length < OGG_PAGE_HEADER_BYTES + 1 + VORBIS_IDENTIFICATION_BYTES
+                || bytes[4] != 0 || bytes[5] != 2) { // First page, begin of stream.
+            return false;
+        }
+        int segments = bytes[26] & 0xFF;
+        int packet = OGG_PAGE_HEADER_BYTES + segments;
+        if (segments == 0 || bytes.length < packet + VORBIS_IDENTIFICATION_BYTES
+                || (bytes[OGG_PAGE_HEADER_BYTES] & 0xFF) != VORBIS_IDENTIFICATION_BYTES
+                || bytes[packet] != 1) {
+            return false;
+        }
+        for (int i = 0; i < 6; i++) {
+            if (bytes[packet + 1 + i] != "vorbis".charAt(i)) {
+                return false;
+            }
+        }
+        // Identification packet: version, channels, sample rate, block sizes, framing bit.
+        for (int i = 7; i <= 10; i++) {
+            if (bytes[packet + i] != 0) {
+                return false;
+            }
+        }
+        int blocks = bytes[packet + 28] & 0xFF;
+        int small = blocks & 0x0F;
+        int large = blocks >>> 4;
+        return bytes[packet + 11] != 0
+                && (bytes[packet + 12] != 0 || bytes[packet + 13] != 0
+                || bytes[packet + 14] != 0 || bytes[packet + 15] != 0)
+                && small >= 6 && large <= 13 && small <= large
+                && bytes[packet + 29] == 1;
     }
 
     private static boolean hasMpegAudioSignature(byte[] bytes) {

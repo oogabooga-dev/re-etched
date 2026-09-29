@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -65,7 +66,7 @@ class DirectRadioSourceResolverTest {
 
     @Test
     void detectsOggFromSignatureWhenContentTypeIsGeneric() throws Exception {
-        byte[] audio = "OggS-independent-stream".getBytes(StandardCharsets.US_ASCII);
+        byte[] audio = vorbisFixture();
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/unknown", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
@@ -75,6 +76,40 @@ class DirectRadioSourceResolverTest {
             try (RadioResolvedSource source = resolver().resolve(server.uri("/unknown"), context())) {
                 assertEquals(RadioResolvedSource.Format.OGG, source.format());
                 assertArrayEquals(audio, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void rejectsTruncatedOrNonVorbisOggBeforeOpeningTheDecoder() throws Exception {
+        byte[] truncated = Arrays.copyOf(vorbisFixture(), 30);
+        byte[] wrongCodec = Arrays.copyOf(vorbisFixture(), 58);
+        wrongCodec[29] = 'X';
+        byte[] wrongPage = Arrays.copyOf(vorbisFixture(), 58);
+        wrongPage[5] = 0;
+        byte[] wrongVersion = Arrays.copyOf(vorbisFixture(), 58);
+        wrongVersion[35] = 1;
+        byte[] noChannels = Arrays.copyOf(vorbisFixture(), 58);
+        noChannels[39] = 0;
+        byte[] wrongBlockSizes = Arrays.copyOf(vorbisFixture(), 58);
+        wrongBlockSizes[56] = 0x55;
+        byte[] noFraming = Arrays.copyOf(vorbisFixture(), 58);
+        noFraming[57] = 0;
+        try (TestHttpServer server = new TestHttpServer()) {
+            byte[][] invalid = {bytes("OggS"), truncated, wrongCodec, wrongPage,
+                    wrongVersion, noChannels, wrongBlockSizes, noFraming};
+            for (int i = 0; i < invalid.length; i++) {
+                byte[] body = invalid[i];
+                server.handle("/bad-" + i + ".ogg", exchange -> {
+                    exchange.getResponseHeaders().add("Content-Type", "audio/ogg");
+                    respond(exchange, 200, body);
+                });
+            }
+            for (int i = 0; i < invalid.length; i++) {
+                URI uri = server.uri("/bad-" + i + ".ogg");
+                RadioSourceException failure = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(uri, context()));
+                assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, failure.code(), uri.toString());
             }
         }
     }
@@ -235,6 +270,39 @@ class DirectRadioSourceResolverTest {
     }
 
     @Test
+    void vorbisIdentificationDoesNotWaitForTheStreamToEnd() throws Exception {
+        byte[] identification = Arrays.copyOf(vorbisFixture(), 58);
+        CountDownLatch headerSent = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/live.m3u8", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().write(identification);
+                exchange.getResponseBody().flush();
+                headerSent.countDown();
+                await(release);
+                exchange.close();
+            });
+            CompletableFuture<RadioResolvedSource> result = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return resolver().resolve(server.uri("/live.m3u8"), context());
+                } catch (RadioSourceException exception) {
+                    throw new java.util.concurrent.CompletionException(exception);
+                }
+            });
+            try {
+                assertTrue(headerSent.await(1, TimeUnit.SECONDS));
+                try (RadioResolvedSource source = result.get(1, TimeUnit.SECONDS)) {
+                    assertEquals(RadioResolvedSource.Format.OGG, source.format());
+                }
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
     void resolvesRelativeM3uEntriesAndUsesRecoverableFallback() throws Exception {
         AtomicInteger primaryRequests = new AtomicInteger();
         AtomicInteger backupRequests = new AtomicInteger();
@@ -309,7 +377,7 @@ class DirectRadioSourceResolverTest {
             server.handle("/second", exchange -> {
                 secondRequests.incrementAndGet();
                 exchange.getResponseHeaders().add("Content-Type", "audio/ogg");
-                respond(exchange, 200, bytes("OggS-backup"));
+                respond(exchange, 200, vorbisFixture());
             });
 
             try (RadioResolvedSource source = resolver().resolve(server.uri("/stations.pls"), context())) {
@@ -376,7 +444,7 @@ class DirectRadioSourceResolverTest {
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/wrong.aac", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/aacp");
-                respond(exchange, 200, bytes("OggS-audio"));
+                respond(exchange, 200, vorbisFixture());
             });
             server.handle("/wrong.m3u8", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
@@ -680,6 +748,16 @@ class DirectRadioSourceResolverTest {
 
     private static byte[] bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] vorbisFixture() throws IOException {
+        try (var input = DirectRadioSourceResolverTest.class.getResourceAsStream(
+                "/gg/moonflower/etched/client/radio/audio/stereo.ogg")) {
+            if (input == null) {
+                throw new IOException("Missing Ogg/Vorbis test fixture");
+            }
+            return input.readAllBytes();
+        }
     }
 
     private static void respond(com.sun.net.httpserver.HttpExchange exchange, int status, byte[] body)
