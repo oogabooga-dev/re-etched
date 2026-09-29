@@ -24,8 +24,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -40,6 +41,9 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.JukeboxBlock;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
+import net.minecraft.world.level.portal.PortalInfo;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.util.ITeleporter;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 
@@ -49,6 +53,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 /** Opt-in end-to-end check of jukebox packet ordering and entity-owned boombox playback. */
 final class JukeboxPacketSmoke {
@@ -366,16 +371,7 @@ final class JukeboxPacketSmoke {
                 server.execute(() -> {
                     ServerLevel level = server.getLevel(dimension);
                     ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-                    var stand = EntityType.ARMOR_STAND.create(level);
-                    if (stand == null) {
-                        throw new AssertionError("Could not spawn an armor stand for boombox smoke");
-                    }
-                    stand.moveTo(player.getX() + 4, player.getY(), player.getZ());
-                    ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
-                    BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
-                    stand.setItemSlot(EquipmentSlot.MAINHAND, boombox);
-                    standId = stand.getUUID();
-                    level.addFreshEntity(stand);
+                    standId = spawnStand(level, player);
                 });
             } else if (++ticks >= 100) {
                 throw new AssertionError("Pausing a third-party record did not stop legacy playback");
@@ -412,6 +408,61 @@ final class JukeboxPacketSmoke {
                 }
             }
             if (AudioPlaybackManager.getInstance().getPlaybackState(key).isEmpty()) {
+                step = 17;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                var dimension = client.level.dimension();
+                server.execute(() -> standId = spawnStand(server.getLevel(dimension),
+                        server.getPlayerList().getPlayer(playerId)));
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Killed living boombox owner left a managed session");
+            }
+        }
+        if (step == 17 && client.level != null && standId != null) {
+            var key = PlaybackOwnerKey.entity(client.level.dimension(), standId);
+            if (AudioPlaybackManager.getInstance().isPlaying(key)) {
+                step = 18;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID id = standId;
+                var dimension = client.level.dimension();
+                server.execute(() -> {
+                    var stand = server.getLevel(dimension).getEntity(id);
+                    ServerLevel nether = server.getLevel(Level.NETHER);
+                    if (stand == null || nether == null) {
+                        throw new AssertionError("Could not find the stand or target dimension");
+                    }
+                    Entity moved = stand.changeDimension(nether, new ITeleporter() {
+                        @Override
+                        public PortalInfo getPortalInfo(Entity owner, ServerLevel target,
+                                                        Function<ServerLevel, PortalInfo> fallback) {
+                            return new PortalInfo(new Vec3(0.5, 80, 0.5), Vec3.ZERO,
+                                    owner.getYRot(), owner.getXRot());
+                        }
+                    });
+                    if (moved == null || moved.level() != nether || !moved.getUUID().equals(id)) {
+                        throw new AssertionError("Stand did not move into the target dimension");
+                    }
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Stand did not begin playback before changing dimensions");
+            }
+        }
+        if (step == 18 && client.level != null) {
+            var key = PlaybackOwnerKey.entity(client.level.dimension(), standId);
+            if (!client.level.dimension().equals(Level.OVERWORLD)) {
+                throw new AssertionError("Client unexpectedly followed the stand into the Nether");
+            }
+            for (var entity : client.level.entitiesForRendering()) {
+                if (entity.getUUID().equals(standId)) {
+                    if (++ticks >= 100) {
+                        throw new AssertionError("Transferred stand stayed in the old client world");
+                    }
+                    return;
+                }
+            }
+            if (AudioPlaybackManager.getInstance().getPlaybackState(key).isEmpty()) {
                 try {
                     Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
                 } catch (IOException exception) {
@@ -424,12 +475,26 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
                 System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
                 System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
-                step = 17;
+                System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
+                step = 19;
                 client.stop();
             } else if (++ticks >= 100) {
-                throw new AssertionError("Killed living boombox owner left a managed session");
+                throw new AssertionError("Transferred stand left playback in the old dimension");
             }
         }
+    }
+
+    private static UUID spawnStand(ServerLevel level, ServerPlayer player) {
+        var stand = EntityType.ARMOR_STAND.create(level);
+        if (stand == null) {
+            throw new AssertionError("Could not spawn an armor stand for boombox smoke");
+        }
+        stand.moveTo(player.getX() + 4, player.getY(), player.getZ());
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+        stand.setItemSlot(EquipmentSlot.MAINHAND, boombox);
+        level.addFreshEntity(stand);
+        return stand.getUUID();
     }
 
     private static ItemStack disc(String sound, String title) {
