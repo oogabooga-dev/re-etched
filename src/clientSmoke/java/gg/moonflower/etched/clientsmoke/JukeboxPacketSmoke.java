@@ -62,11 +62,21 @@ final class JukeboxPacketSmoke {
     private static final long DEADLINE = System.nanoTime() + 180_000_000_000L;
     private static final ItemStack A = disc("minecraft:music_disc.blocks", "A");
     private static final ItemStack B = disc("minecraft:music_disc.cat", "B");
+    private static final ITeleporter SMOKE_TELEPORTER = new ITeleporter() {
+        @Override
+        public PortalInfo getPortalInfo(Entity owner, ServerLevel target,
+                                        Function<ServerLevel, PortalInfo> fallback) {
+            return new PortalInfo(new Vec3(0.5, 80, 0.5), Vec3.ZERO,
+                    owner.getYRot(), owner.getXRot());
+        }
+    };
     private static int step;
     private static int ticks;
+    private static int stableTicks;
     private static BlockPos pos;
     private static volatile UUID droppedId;
     private static volatile UUID standId;
+    private static UUID travellingPlayerId;
 
     private JukeboxPacketSmoke() {
     }
@@ -433,14 +443,7 @@ final class JukeboxPacketSmoke {
                     if (stand == null || nether == null) {
                         throw new AssertionError("Could not find the stand or target dimension");
                     }
-                    Entity moved = stand.changeDimension(nether, new ITeleporter() {
-                        @Override
-                        public PortalInfo getPortalInfo(Entity owner, ServerLevel target,
-                                                        Function<ServerLevel, PortalInfo> fallback) {
-                            return new PortalInfo(new Vec3(0.5, 80, 0.5), Vec3.ZERO,
-                                    owner.getYRot(), owner.getXRot());
-                        }
-                    });
+                    Entity moved = stand.changeDimension(nether, SMOKE_TELEPORTER);
                     if (moved == null || moved.level() != nether || !moved.getUUID().equals(id)) {
                         throw new AssertionError("Stand did not move into the target dimension");
                     }
@@ -463,6 +466,70 @@ final class JukeboxPacketSmoke {
                 }
             }
             if (AudioPlaybackManager.getInstance().getPlaybackState(key).isEmpty()) {
+                step = 19;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ItemStack boombox = player.getOffhandItem().copy();
+                    BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+                    BoomboxItem.setPaused(boombox, false);
+                    player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Transferred stand left playback in the old dimension");
+            }
+        }
+        if (step == 19 && client.player != null && client.level != null) {
+            var key = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
+            if (client.level.dimension().equals(Level.OVERWORLD)
+                    && client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
+                    && AudioPlaybackManager.getInstance().isPlaying(key)) {
+                travellingPlayerId = client.player.getUUID();
+                step = 20;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID id = travellingPlayerId;
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(id);
+                    ServerLevel nether = server.getLevel(Level.NETHER);
+                    if (player == null || nether == null) {
+                        throw new AssertionError("Player or Nether was unavailable for dimension smoke");
+                    }
+                    Entity moved = player.changeDimension(nether, SMOKE_TELEPORTER);
+                    if (moved == null || moved.level() != nether || !moved.getUUID().equals(id)) {
+                        throw new AssertionError("Player did not enter the target dimension");
+                    }
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Player boombox did not resume before changing dimensions");
+            }
+        }
+        if (step == 20 && client.player != null && client.level != null) {
+            if (client.level.dimension().equals(Level.NETHER)) {
+                var oldKey = PlaybackOwnerKey.entity(Level.OVERWORLD, travellingPlayerId);
+                var newKey = PlaybackOwnerKey.entity(Level.NETHER, travellingPlayerId);
+                var jukeboxKey = PlaybackOwnerKey.block(Level.OVERWORLD, pos);
+                if (AudioPlaybackManager.getInstance().getPlaybackState(oldKey).isPresent()
+                        || AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isPresent()) {
+                    throw new AssertionError("Old-world playback survived the player dimension change");
+                }
+                if (!AudioPlaybackManager.getInstance().isPlaying(newKey)) {
+                    stableTicks = 0;
+                    if (++ticks >= 100) {
+                        throw new AssertionError("Boombox did not start a fresh session in the Nether");
+                    }
+                    return;
+                }
+                var state = AudioPlaybackManager.getInstance().getPlaybackState(newKey).orElseThrow();
+                if (state.revision() != 0L || !"minecraft:music_disc.cat".equals(
+                        state.program().orElseThrow().tracks().get(0).source())) {
+                    throw new AssertionError("Nether boombox restarted or selected the wrong record");
+                }
+                if (++stableTicks < 20) {
+                    return;
+                }
                 try {
                     Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
                 } catch (IOException exception) {
@@ -476,10 +543,11 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
                 System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
-                step = 19;
+                System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
+                step = 21;
                 client.stop();
             } else if (++ticks >= 100) {
-                throw new AssertionError("Transferred stand left playback in the old dimension");
+                throw new AssertionError("Client did not enter the Nether after the player transfer");
             }
         }
     }
