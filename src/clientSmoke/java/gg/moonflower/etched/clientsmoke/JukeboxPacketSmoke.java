@@ -31,6 +31,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.Parrot;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -81,6 +82,7 @@ final class JukeboxPacketSmoke {
     private static volatile UUID droppedId;
     private static volatile UUID standId;
     private static UUID travellingPlayerId;
+    private static Parrot parrot;
 
     private JukeboxPacketSmoke() {
     }
@@ -183,6 +185,9 @@ final class JukeboxPacketSmoke {
             if (client.player.getMainHandItem().is(EtchedItems.BOOMBOX.get())
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
                 assertPlayingModel(client, client.player, client.player.getMainHandItem(), 1.0F);
+                if (ticks == 0) {
+                    assertParrotDances(client, true);
+                }
                 var state = AudioPlaybackManager.getInstance().getPlaybackState(entityKey).orElseThrow();
                 var program = state.program().orElseThrow();
                 if (!"minecraft:music_disc.cat".equals(program.tracks().get(0).source())) {
@@ -259,6 +264,7 @@ final class JukeboxPacketSmoke {
             if (BoomboxItem.isPaused(client.player.getOffhandItem())
                     && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
                 assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
+                assertParrotDances(client, false);
                 step = 10;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -339,6 +345,7 @@ final class JukeboxPacketSmoke {
                     && SoundTracker.getEntitySound(client.player.getId()) != null
                     && BoomboxPlayback.getInstance().isPlaying(client.player)) {
                 assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
+                assertParrotDances(client, true);
                 if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
                     throw new AssertionError("Third-party record incorrectly entered managed playback");
                 }
@@ -563,6 +570,7 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
                 System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
+                System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
                 step = 21;
                 client.stop();
             } else if (++ticks >= 100) {
@@ -589,6 +597,21 @@ final class JukeboxPacketSmoke {
                 ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "playing"));
         if (property == null || property.call(stack, client.level, entity, 0) != expected) {
             throw new AssertionError("Boombox model did not match the playing hand of " + entity.getUUID());
+        }
+    }
+
+    private static void assertParrotDances(Minecraft client, boolean expected) {
+        if (parrot == null) {
+            parrot = EntityType.PARROT.create(client.level);
+            if (parrot == null) {
+                throw new AssertionError("Could not create a parrot for boombox smoke");
+            }
+        }
+        // Keep it near the player and beyond vanilla jukebox range so only the boombox counts.
+        parrot.moveTo(client.player.getX() - 1.5, client.player.getY(), client.player.getZ() - 1.5);
+        parrot.aiStep();
+        if (parrot.isPartyParrot() != expected) {
+            throw new AssertionError("Parrot dancing did not match boombox playback");
         }
     }
 
