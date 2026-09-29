@@ -48,6 +48,8 @@ import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.level.portal.PortalInfo;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.ITeleporter;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -556,6 +558,15 @@ final class JukeboxPacketSmoke {
                 if (++stableTicks < 20) {
                     return;
                 }
+                // Exercise Forge's logout subscribers without the integrated server's slow
+                // world-save shutdown. This does not replace a real disconnect check.
+                MinecraftForge.EVENT_BUS.post(new ClientPlayerNetworkEvent.LoggingOut(
+                        client.gameMode, client.player, client.getConnection().getConnection()));
+                if (AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
+                        || BoomboxPlayback.getInstance().isPlaying(client.player)) {
+                    throw new AssertionError("Forge logout event left active boombox playback behind");
+                }
+                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
                 try {
                     Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
                 } catch (IOException exception) {
@@ -571,6 +582,7 @@ final class JukeboxPacketSmoke {
                 System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
                 System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
                 System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
+                System.out.println("ETCHED BOOMBOX LOGOUT EVENT CLEANUP SMOKE PASSED");
                 step = 21;
                 client.stop();
             } else if (++ticks >= 100) {
