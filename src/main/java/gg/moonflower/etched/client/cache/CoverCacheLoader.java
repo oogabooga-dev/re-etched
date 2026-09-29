@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.cache;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
 import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;

@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.sound;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import net.minecraft.resources.ResourceLocation;
 

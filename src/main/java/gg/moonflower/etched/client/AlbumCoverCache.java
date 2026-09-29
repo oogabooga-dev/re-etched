@@ -5,7 +5,7 @@ import gg.moonflower.etched.api.record.AlbumCover;
 import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.cache.ClientMediaCache;
 import gg.moonflower.etched.client.cache.CoverCacheLoader;
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.render.item.AlbumCoverItemRenderer;
 import gg.moonflower.etched.client.render.item.AlbumImageProcessor;

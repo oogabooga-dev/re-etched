@@ -1,5 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;

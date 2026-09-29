@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.net;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
 
 import java.io.IOException;

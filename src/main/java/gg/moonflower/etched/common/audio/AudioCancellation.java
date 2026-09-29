@@ -1,4 +1,4 @@
-package gg.moonflower.etched.client.radio;
+package gg.moonflower.etched.common.audio;
 
 import java.util.Objects;
 import java.util.concurrent.CancellationException;

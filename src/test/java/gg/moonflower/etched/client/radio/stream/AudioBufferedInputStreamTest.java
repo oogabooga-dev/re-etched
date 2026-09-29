@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.stream;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.PlaybackSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

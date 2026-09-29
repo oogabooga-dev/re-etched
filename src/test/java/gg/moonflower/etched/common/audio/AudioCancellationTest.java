@@ -1,4 +1,4 @@
-package gg.moonflower.etched.client.radio;
+package gg.moonflower.etched.common.audio;
 
 import org.junit.jupiter.api.Test;
 

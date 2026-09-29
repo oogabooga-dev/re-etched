@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.cache;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 
 import java.io.IOException;
 import java.io.InputStream;
