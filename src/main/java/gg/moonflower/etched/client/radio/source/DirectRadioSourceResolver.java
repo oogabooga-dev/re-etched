@@ -299,14 +299,8 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || requestedSuffix.equals("m3u")) {
             return SourceKind.M3U;
         }
-        if (contentType.equals("audio/ogg") || contentType.equals("application/ogg")
-                || suffix.equals("ogg") || suffix.equals("oga")) {
-            return SourceKind.OGG;
-        }
-        if (contentType.equals("audio/mpeg") || contentType.equals("audio/mp3")
-                || suffix.equals("mp3")) {
-            return SourceKind.MP3;
-        }
+        // Audio needs a recognizable body. A MIME type or extension alone cannot
+        // turn an arbitrary response into something safe to hand to a decoder.
         if (contentType.equals("text/plain")) {
             return SourceKind.M3U;
         }

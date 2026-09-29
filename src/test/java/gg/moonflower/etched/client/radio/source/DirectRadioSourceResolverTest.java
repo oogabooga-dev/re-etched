@@ -80,6 +80,28 @@ class DirectRadioSourceResolverTest {
     }
 
     @Test
+    void doesNotTreatAudioHeadersOrExtensionsAsProofOfAudio() throws Exception {
+        byte[] garbage = new byte[]{0, 1, 2, 3, 4, 5};
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/claimed-mp3", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
+                respond(exchange, 200, garbage);
+            });
+            server.handle("/claimed-ogg.ogg", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "audio/ogg");
+                respond(exchange, 200, garbage);
+            });
+            server.handle("/claimed-mp3.mp3", exchange -> respond(exchange, 200, garbage));
+
+            for (String path : List.of("/claimed-mp3", "/claimed-ogg.ogg", "/claimed-mp3.mp3")) {
+                RadioSourceException exception = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(server.uri(path), context()));
+                assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, exception.code());
+            }
+        }
+    }
+
+    @Test
     void detectsSuffixlessPlaylistsWithWhitespaceAndBareRelativeEntries() throws Exception {
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/m3u", exchange -> {
