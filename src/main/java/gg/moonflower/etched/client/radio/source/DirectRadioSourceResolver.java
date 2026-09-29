@@ -78,7 +78,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
             context.budget().consumeSteps(response.redirectCount());
             RadioHttpStatus.requireSuccess(response, "Radio host");
             byte[] prefix = readPrefix(response, context);
-            SourceKind kind = classify(response, input, prefix);
+            SourceKind kind = classify(response, input, prefix, context.limits().maxId3PrefixBytes());
             switch (kind) {
                 case HLS -> throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false,
                         "HLS radio playlists are not supported", null);
@@ -171,24 +171,27 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     private static byte[] readPrefix(AudioHttpResponse response, AudioResolveContext context)
             throws RadioSourceException {
         int limit = context.limits().sniffBytes();
+        int id3Limit = context.limits().maxId3PrefixBytes();
         ByteArrayOutputStream prefix = new ByteArrayOutputStream(limit);
-        byte[] buffer = new byte[limit];
+        byte[] buffer = new byte[Math.min(8192, Math.max(limit, id3Limit))];
         InputStream body = response.body();
         try {
-            readUntil(prefix, body, buffer, MINIMUM_SNIFF_BYTES, context);
+            readUntil(prefix, body, buffer, MINIMUM_SNIFF_BYTES, limit, context);
             if (startsWith(prefix.toByteArray(), "ID3")) {
-                readUntil(prefix, body, buffer, 10, context);
-                int frame = id3FrameOffset(prefix.toByteArray(), limit);
-                if (frame >= 0) {
-                    readUntil(prefix, body, buffer, frame + MINIMUM_SNIFF_BYTES, context);
+                readUntil(prefix, body, buffer, 10, id3Limit, context);
+                int frame = id3FrameOffset(prefix.toByteArray(), id3Limit);
+                if (frame < 0) {
+                    return prefix.toByteArray();
                 }
+                readUntil(prefix, body, buffer, frame + MINIMUM_SNIFF_BYTES, id3Limit, context);
             } else if (startsWith(prefix.toByteArray(), "OggS")) {
-                readUntil(prefix, body, buffer, OGG_PAGE_HEADER_BYTES, context);
+                readUntil(prefix, body, buffer, OGG_PAGE_HEADER_BYTES, limit, context);
                 if (prefix.size() >= OGG_PAGE_HEADER_BYTES) {
                     int segments = prefix.toByteArray()[26] & 0xFF;
                     if (segments > 0) {
                         readUntil(prefix, body, buffer,
-                                OGG_PAGE_HEADER_BYTES + segments + VORBIS_IDENTIFICATION_BYTES, context);
+                                OGG_PAGE_HEADER_BYTES + segments + VORBIS_IDENTIFICATION_BYTES,
+                                limit, context);
                     }
                 }
             }
@@ -216,11 +219,11 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     }
 
     private static void readUntil(ByteArrayOutputStream prefix, InputStream body, byte[] buffer,
-                                  int target, AudioResolveContext context) throws IOException {
-        int end = Math.min(buffer.length, target);
+                                  int target, int limit, AudioResolveContext context) throws IOException {
+        int end = Math.min(limit, target);
         while (prefix.size() < end) {
             context.cancellation().throwIfCancelled();
-            int read = body.read(buffer, 0, end - prefix.size());
+            int read = body.read(buffer, 0, Math.min(buffer.length, end - prefix.size()));
             if (read < 0) {
                 return;
             }
@@ -261,7 +264,8 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 "Radio playlist exceeds the configured size limit", null);
     }
 
-    private static SourceKind classify(AudioHttpResponse response, URI requestedUri, byte[] prefix) {
+    private static SourceKind classify(AudioHttpResponse response, URI requestedUri, byte[] prefix,
+                                       int maxId3PrefixBytes) {
         String contentType = response.firstHeader("Content-Type")
                 .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
                 .orElse("");
@@ -283,7 +287,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
             return SourceKind.MP3;
         }
         if (startsWith(prefix, "ID3")) {
-            int frame = id3FrameOffset(prefix, prefix.length);
+            int frame = id3FrameOffset(prefix, maxId3PrefixBytes);
             return frame >= 0 && hasMpegAudioSignature(prefix, frame)
                     ? SourceKind.MP3 : SourceKind.UNKNOWN;
         }

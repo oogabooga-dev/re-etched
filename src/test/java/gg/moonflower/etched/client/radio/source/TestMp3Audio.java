@@ -33,4 +33,20 @@ public final class TestMp3Audio {
         System.arraycopy(FRAME, 0, result, 10 + text.length, FRAME.length);
         return result;
     }
+
+    static byte[] taggedWithPadding(int size) {
+        if (size < 0 || size > 1 << 20) {
+            throw new IllegalArgumentException("Invalid test tag size");
+        }
+        byte[] result = new byte[10 + size + FRAME.length];
+        result[0] = 'I';
+        result[1] = 'D';
+        result[2] = '3';
+        result[3] = 4;
+        for (int i = 9, remaining = size; i >= 6; i--, remaining >>>= 7) {
+            result[i] = (byte) (remaining & 0x7F);
+        }
+        System.arraycopy(FRAME, 0, result, 10 + size, FRAME.length);
+        return result;
+    }
 }

@@ -92,6 +92,35 @@ class DirectRadioSourceResolverTest {
     }
 
     @Test
+    void allowsBoundedEmbeddedId3ArtWithoutIncreasingTheOrdinarySniffBudget() throws Exception {
+        byte[] audio = TestMp3Audio.taggedWithPadding(16 * 1024);
+        AudioResolveLimits limits = AudioResolveLimits.DEFAULT;
+        assertTrue(audio.length > limits.sniffBytes());
+        assertTrue(audio.length < limits.maxId3PrefixBytes());
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/art.mp3", exchange -> respond(exchange, 200, audio));
+            try (RadioResolvedSource source = resolver().resolve(
+                    server.uri("/art.mp3"), context(ALLOW_TEST_SERVER, limits))) {
+                assertEquals(RadioResolvedSource.Format.MP3, source.format());
+                assertArrayEquals(audio, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void rejectsTagsLargerThanTheSeparateId3LimitEvenWithAHighOrdinarySniffLimit() throws Exception {
+        byte[] audio = TestMp3Audio.taggedWithPadding(200);
+        AudioResolveLimits limits = new AudioResolveLimits(512, 4096, 10, 512, 3, 20, 128);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/too-large.mp3", exchange -> respond(exchange, 200, audio));
+            RadioSourceException error = assertThrows(RadioSourceException.class,
+                    () -> resolver().resolve(server.uri("/too-large.mp3"),
+                            context(ALLOW_TEST_SERVER, limits)));
+            assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, error.code());
+        }
+    }
+
+    @Test
     void rejectsId3WithoutAValidMpegFrameWithinTheSniffBudget() throws Exception {
         byte[] valid = TestMp3Audio.tagged("marker");
         byte[] invalidVersion = valid.clone();
@@ -417,7 +446,8 @@ class DirectRadioSourceResolverTest {
     @Test
     void oversizedId3TagFailsWithoutWaitingForItsClaimedBody() throws Exception {
         byte[] header = Arrays.copyOf(TestMp3Audio.tagged(""), 10);
-        header[8] = 1; // Claims 128 tag bytes: more than this context's 64-byte sniff budget.
+        header[8] = 1; // Claims 128 tag bytes plus header: beyond the separate 128-byte ID3 cap.
+        AudioResolveLimits limits = new AudioResolveLimits(512, 4096, 10, 512, 3, 20, 128);
         CountDownLatch headerSent = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try (TestHttpServer server = new TestHttpServer()) {
@@ -431,7 +461,8 @@ class DirectRadioSourceResolverTest {
             });
             CompletableFuture<RadioResolvedSource> result = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return resolver().resolve(server.uri("/oversized.mp3"), context());
+                    return resolver().resolve(server.uri("/oversized.mp3"),
+                            context(ALLOW_TEST_SERVER, limits));
                 } catch (RadioSourceException exception) {
                     throw new java.util.concurrent.CompletionException(exception);
                 }
