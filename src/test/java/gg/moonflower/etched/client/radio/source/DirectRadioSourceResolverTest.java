@@ -102,6 +102,35 @@ class DirectRadioSourceResolverTest {
     }
 
     @Test
+    void rejectsReservedOrIncompleteMpegFrameHeaders() throws Exception {
+        byte[][] invalid = {
+                {(byte) 0xFF, (byte) 0xFB},                 // Sync alone is not a frame.
+                {(byte) 0xFF, (byte) 0xFB, 0, 0},           // Free-format bitrate is unsupported.
+                {(byte) 0xFF, (byte) 0xEB, (byte) 0x90, 0}, // Reserved MPEG version.
+                {(byte) 0xFF, (byte) 0xF9, (byte) 0x90, 0}, // Reserved layer.
+                {(byte) 0xFF, (byte) 0xFB, (byte) 0xF0, 0}, // Reserved bitrate.
+                {(byte) 0xFF, (byte) 0xFB, (byte) 0x9C, 0}  // Reserved sample rate.
+        };
+        try (TestHttpServer server = new TestHttpServer()) {
+            for (int i = 0; i < invalid.length; i++) {
+                byte[] body = invalid[i];
+                server.handle("/bad-" + i + ".mp3", exchange -> {
+                    exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
+                    respond(exchange, 200, body);
+                });
+            }
+            for (int i = 0; i < invalid.length; i++) {
+                URI uri = server.uri("/bad-" + i + ".mp3");
+                RadioSourceException failure = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(uri, context()));
+                // The reserved MPEG layer also resembles unsupported ADTS/AAC.
+                assertEquals(i == 3 ? RadioFailure.Code.UNSUPPORTED_AAC
+                        : RadioFailure.Code.UNSUPPORTED_AUDIO, failure.code(), uri.toString());
+            }
+        }
+    }
+
+    @Test
     void detectsSuffixlessPlaylistsWithWhitespaceAndBareRelativeEntries() throws Exception {
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/m3u", exchange -> {
@@ -180,7 +209,7 @@ class DirectRadioSourceResolverTest {
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/live", exchange -> {
                 exchange.sendResponseHeaders(200, 0);
-                exchange.getResponseBody().write(new byte[]{(byte) 0xFF, (byte) 0xFB, 0, 0});
+                exchange.getResponseBody().write(new byte[]{(byte) 0xFF, (byte) 0xFB, (byte) 0x90, 0x64});
                 exchange.getResponseBody().flush();
                 signatureSent.countDown();
                 await(release);
@@ -351,7 +380,7 @@ class DirectRadioSourceResolverTest {
             });
             server.handle("/wrong.m3u8", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
-                respond(exchange, 200, new byte[]{(byte) 0xFF, (byte) 0xFB, 0, 0});
+                respond(exchange, 200, new byte[]{(byte) 0xFF, (byte) 0xFB, (byte) 0x90, 0x64});
             });
             server.handle("/tagged.aac", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/aac");

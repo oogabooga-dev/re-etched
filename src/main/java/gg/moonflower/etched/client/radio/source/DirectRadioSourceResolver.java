@@ -277,7 +277,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || contentType.equals("application/vnd.apple.mpegurl"))) {
             return SourceKind.HLS;
         }
-        if (upper.startsWith("#EXTM3U") || looksLikePlainM3u(text)) {
+        if (upper.startsWith("#EXTM3U") || looksLikeTextPrefix(prefix) && looksLikePlainM3u(text)) {
             return SourceKind.M3U;
         }
         if (text.startsWith("<")) {
@@ -336,7 +336,8 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || hasAdtsSignature(prefix) || hasMpegAudioSignature(prefix)) {
             return false;
         }
-        for (int i = 0; i < prefix.length; i++) {
+        // Only inspect the first bytes: later UTF-8 text in a playlist is fine.
+        for (int i = 0; i < Math.min(prefix.length, MINIMUM_SNIFF_BYTES); i++) {
             int current = prefix[i] & 0xFF;
             if (current != '\t' && current != '\r' && current != '\n'
                     && (current < 0x20 || current > 0x7E)) {
@@ -380,7 +381,14 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
     }
 
     private static boolean hasMpegAudioSignature(byte[] bytes) {
-        return bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xE0) == 0xE0;
+        if (bytes.length < 4 || (bytes[0] & 0xFF) != 0xFF || (bytes[1] & 0xE0) != 0xE0) {
+            return false;
+        }
+        int version = (bytes[1] >>> 3) & 0x03;
+        int layer = (bytes[1] >>> 1) & 0x03;
+        int bitrate = (bytes[2] >>> 4) & 0x0F;
+        int sampleRate = (bytes[2] >>> 2) & 0x03;
+        return version != 1 && layer != 0 && bitrate != 0 && bitrate != 15 && sampleRate != 3;
     }
 
     private static boolean startsWith(byte[] bytes, String signature) {
