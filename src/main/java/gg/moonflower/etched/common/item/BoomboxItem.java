@@ -1,13 +1,10 @@
 package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.sound.SoundTracker;
 import gg.moonflower.etched.common.menu.BoomboxMenu;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
-import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -31,12 +28,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 public class BoomboxItem extends Item implements ContainerItem {
 
-    private static final Map<Integer, ItemStack> PLAYING_RECORDS = new Int2ObjectArrayMap<>();
     private static final Component PAUSE = Component.translatable("item." + Etched.MOD_ID + ".boombox.pause", Component.keybind("key.sneak"), Component.keybind("key.use")).withStyle(ChatFormatting.GRAY);
     private static final Component RECORDS = Component.translatable("item." + Etched.MOD_ID + ".boombox.records");
     public static final Component PAUSED = Component.translatable("item." + Etched.MOD_ID + ".boombox.paused").withStyle(ChatFormatting.YELLOW);
@@ -46,36 +41,19 @@ public class BoomboxItem extends Item implements ContainerItem {
     }
 
     public static void onLivingEntityUpdateClient(LivingEntity entity) {
-        ItemStack newPlayingRecord = ItemStack.EMPTY;
-        ItemStack mainStack = entity.getMainHandItem();
-        ItemStack offStack = entity.getOffhandItem();
-        if (mainStack.getItem() instanceof BoomboxItem && hasRecord(mainStack) && !isPaused(mainStack)) {
-            newPlayingRecord = getRecord(mainStack);
-        } else if (offStack.getItem() instanceof BoomboxItem && hasRecord(offStack) && !isPaused(offStack)) {
-            newPlayingRecord = getRecord(offStack);
-        }
-
-        if (entity instanceof Player && newPlayingRecord.isEmpty() && Minecraft.getInstance().cameraEntity == entity) {
-            Inventory inventory = ((Player) entity).getInventory();
-            for (ItemStack stack : inventory.items) {
-                if (stack.getItem() instanceof BoomboxItem && hasRecord(stack) && !isPaused(stack)) {
-                    newPlayingRecord = getRecord(stack);
-                }
-            }
-        }
-
-        updatePlaying(entity, newPlayingRecord);
+        BoomboxClientBridge.update(entity,
+                selectPlayingRecord(entity.getMainHandItem(), entity.getOffhandItem()));
     }
 
-    private static void updatePlaying(Entity entity, ItemStack record) {
-        if (!ItemStack.matches(PLAYING_RECORDS.getOrDefault(entity.getId(), ItemStack.EMPTY), record)) {
-            SoundTracker.playBoombox(entity.getId(), record);
-            if (record.isEmpty()) {
-                PLAYING_RECORDS.remove(entity.getId());
-            } else {
-                PLAYING_RECORDS.put(entity.getId(), record);
-            }
+    /** Ordinary inventory slots are not playback sources. */
+    public static ItemStack selectPlayingRecord(ItemStack mainStack, ItemStack offStack) {
+        if (mainStack.getItem() instanceof BoomboxItem && hasRecord(mainStack) && !isPaused(mainStack)) {
+            return getRecord(mainStack);
         }
+        if (offStack.getItem() instanceof BoomboxItem && hasRecord(offStack) && !isPaused(offStack)) {
+            return getRecord(offStack);
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
@@ -83,7 +61,8 @@ public class BoomboxItem extends Item implements ContainerItem {
         if (!entity.level().isClientSide()) {
             return false;
         }
-        updatePlaying(entity, hasRecord(stack) && !isPaused(stack) ? getRecord(stack) : ItemStack.EMPTY);
+        BoomboxClientBridge.update(entity,
+                hasRecord(stack) && !isPaused(stack) ? getRecord(stack) : ItemStack.EMPTY);
         return false;
     }
 
@@ -184,15 +163,15 @@ public class BoomboxItem extends Item implements ContainerItem {
      */
     @Nullable
     public static InteractionHand getPlayingHand(LivingEntity entity) {
-        if (!PLAYING_RECORDS.containsKey(entity.getId())) {
+        if (!BoomboxClientBridge.isPlaying(entity)) {
             return null;
         }
         ItemStack stack = entity.getMainHandItem();
-        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack)) {
+        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack) && !isPaused(stack)) {
             return InteractionHand.MAIN_HAND;
         }
         stack = entity.getOffhandItem();
-        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack)) {
+        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack) && !isPaused(stack)) {
             return InteractionHand.OFF_HAND;
         }
         return null;

@@ -2,6 +2,8 @@ package gg.moonflower.etched.core;
 
 import gg.moonflower.etched.client.render.item.AlbumCoverItemRenderer;
 import gg.moonflower.etched.client.radio.RadioClientRuntime;
+import gg.moonflower.etched.client.radio.BoomboxPlayback;
+import gg.moonflower.etched.common.item.BoomboxClientBridge;
 import gg.moonflower.etched.common.item.BlankMusicDiscItem;
 import gg.moonflower.etched.common.item.ComplexMusicLabelItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
@@ -34,6 +36,7 @@ public class EtchedClient {
             RadioClientRuntime runtime = RadioClientRuntime.getInstance();
             runtime.initialize();
             RadioClientBridge.install(runtime);
+            BoomboxClientBridge.install(BoomboxPlayback.getInstance());
         });
     }
 

@@ -286,6 +286,33 @@ class LiveStreamPlaybackBackendTest {
     }
 
     @Test
+    void replacingEntityOwnedMixedProgramStopsRemoteAndIgnoresRetiredCallbacks() throws Exception {
+        PlaybackOwnerKey.EntityOwner entity = PlaybackOwnerKey.entity(DIMENSION, new UUID(0L, 42L));
+        FakeSoundOutput sounds = new FakeSoundOutput(false, true, true);
+        FakeLocalSounds local = new FakeLocalSounds(true);
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP,
+                new RoutingPlaybackBackend(List.of(
+                        new FiniteRemotePlaybackBackend(this.mixedDriver(sounds, local)),
+                        new LocalSoundEventPlaybackBackend(local, Runnable::run))));
+        PlaybackState first = new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(this.remoteTrack("one"), localTrack(), this.remoteTrack("two")))), true);
+        PlaybackState replacement = new PlaybackState(1L, Optional.of(new AudioProgram(
+                AudioProgram.Kind.FINITE, List.of(localTrack()))), true);
+
+        assertTrue(manager.update(entity, first));
+        await(() -> sounds.audio.size() == 1);
+        assertEquals(List.of("one"), this.requests);
+        assertTrue(manager.update(entity, replacement));
+        await(() -> local.handles.size() == 1);
+        sounds.played.get(0).onStop(); // The retired remote track cannot advance to the old local/next URL.
+        assertEquals(List.of("one"), this.requests);
+        assertEquals(1, local.handles.size());
+        assertEquals(1L, manager.getPlaybackState(entity).orElseThrow().revision());
+        assertEquals(1, sounds.stops.get());
+        manager.shutdown();
+    }
+
+    @Test
     void mixedFiniteSkipAndLoopKeepOneGenerationAndIgnoreRetiredCallbacks() throws Exception {
         FakeSoundOutput sounds = new FakeSoundOutput(false);
         FakeLocalSounds local = new FakeLocalSounds();
@@ -1116,10 +1143,19 @@ class LiveStreamPlaybackBackendTest {
 
     private static final class FakeLocalSounds implements LocalSoundEventSink {
         private final List<FakeHandle> handles = new CopyOnWriteArrayList<>();
+        private final boolean supportEntity;
+
+        private FakeLocalSounds() {
+            this(false);
+        }
+
+        private FakeLocalSounds(boolean supportEntity) {
+            this.supportEntity = supportEntity;
+        }
 
         @Override
         public boolean supports(PlaybackOwnerKey key) {
-            return key instanceof PlaybackOwnerKey.BlockOwner;
+            return this.supportEntity || key instanceof PlaybackOwnerKey.BlockOwner;
         }
 
         @Override
