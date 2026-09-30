@@ -1,4 +1,4 @@
-package gg.moonflower.etched.client.radio.net;
+package gg.moonflower.etched.common.audio.net;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;

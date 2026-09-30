@@ -1,4 +1,4 @@
-package gg.moonflower.etched.client.radio.net;
+package gg.moonflower.etched.common.audio.net;
 
 import com.sun.net.httpserver.Headers;
 import gg.moonflower.etched.common.audio.RadioFailure;

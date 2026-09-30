@@ -1,9 +1,9 @@
 package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.common.audio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
-import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
-import gg.moonflower.etched.client.radio.net.RadioTransportException;
+import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
+import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
+import gg.moonflower.etched.common.audio.net.RadioTransportException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

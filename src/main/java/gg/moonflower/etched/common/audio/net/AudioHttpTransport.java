@@ -1,4 +1,4 @@
-package gg.moonflower.etched.client.radio.net;
+package gg.moonflower.etched.common.audio.net;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
 

@@ -34,7 +34,7 @@ class RadioReconnectControllerTest {
         AtomicInteger stateChanges = new AtomicInteger();
 
         controller.failure(session, attempt,
-                new gg.moonflower.etched.client.radio.net.RadioTransportException(
+                new gg.moonflower.etched.common.audio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
                 retries::add, stateChanges::incrementAndGet);
 
@@ -61,7 +61,7 @@ class RadioReconnectControllerTest {
         List<PlaybackSession.Attempt> retries = new ArrayList<>();
 
         controller.failure(session, attempt,
-                new gg.moonflower.etched.client.radio.net.RadioTransportException(
+                new gg.moonflower.etched.common.audio.net.RadioTransportException(
                         RadioFailure.Code.READ_TIMEOUT, true, "Timed out", null),
                 retries::add, () -> {
                 });
@@ -118,7 +118,7 @@ class RadioReconnectControllerTest {
         PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
 
         controller.failure(session, attempt,
-                new gg.moonflower.etched.client.radio.net.RadioTransportException(
+                new gg.moonflower.etched.common.audio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
                 ignored -> {
                 }, () -> {
@@ -139,7 +139,7 @@ class RadioReconnectControllerTest {
         PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         List<PlaybackSession.Attempt> retries = new ArrayList<>();
         controller.failure(session, attempt,
-                new gg.moonflower.etched.client.radio.net.RadioTransportException(
+                new gg.moonflower.etched.common.audio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
                 retries::add, () -> {
                 });
@@ -163,7 +163,7 @@ class RadioReconnectControllerTest {
         PlaybackSession.Attempt first = session.start("https://radio.example/live");
         List<PlaybackSession.Attempt> automatic = new ArrayList<>();
         controller.failure(session, first,
-                new gg.moonflower.etched.client.radio.net.RadioTransportException(
+                new gg.moonflower.etched.common.audio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
                 automatic::add, () -> {
                 });
@@ -212,7 +212,7 @@ class RadioReconnectControllerTest {
         PlaybackSession.Attempt attempt = session.start("https://radio.example/live");
         List<PlaybackSession.Attempt> retries = new ArrayList<>();
         controller.failure(session, attempt,
-                new gg.moonflower.etched.client.radio.net.RadioTransportException(
+                new gg.moonflower.etched.common.audio.net.RadioTransportException(
                         RadioFailure.Code.CONNECT_TIMEOUT, true, "Timed out", null),
                 retries::add, () -> {
                 });

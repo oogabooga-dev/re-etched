@@ -6,9 +6,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import gg.moonflower.etched.common.audio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
-import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
-import gg.moonflower.etched.client.radio.net.RadioTransportException;
+import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
+import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
+import gg.moonflower.etched.common.audio.net.RadioTransportException;
 import org.apache.commons.lang3.StringEscapeUtils;
 
 import java.io.ByteArrayOutputStream;

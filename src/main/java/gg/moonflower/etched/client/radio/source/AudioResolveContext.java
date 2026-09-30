@@ -1,10 +1,10 @@
 package gg.moonflower.etched.client.radio.source;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
-import gg.moonflower.etched.client.radio.net.AudioHttpTransport;
-import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.DefaultRadioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.common.audio.net.AudioHttpTransport;
+import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.DefaultRadioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
 

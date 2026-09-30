@@ -3,8 +3,8 @@ package gg.moonflower.etched.client.cache;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.api.util.ProgressTrackingInputStream;
 import gg.moonflower.etched.common.audio.AudioCancellation;
-import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
-import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
+import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
+import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 
 import java.io.FilterInputStream;
