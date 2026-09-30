@@ -2,6 +2,7 @@ package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

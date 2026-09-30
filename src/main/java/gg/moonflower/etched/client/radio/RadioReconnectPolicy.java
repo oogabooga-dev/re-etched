@@ -4,6 +4,7 @@ import gg.moonflower.etched.client.radio.net.RadioTransportException;
 import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.client.radio.stream.RadioStreamException;
+import gg.moonflower.etched.common.audio.RadioFailure;
 
 import java.io.IOException;
 import java.util.Collections;

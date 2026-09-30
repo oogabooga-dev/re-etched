@@ -5,7 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
 import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;

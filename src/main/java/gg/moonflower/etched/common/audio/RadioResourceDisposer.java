@@ -1,4 +1,4 @@
-package gg.moonflower.etched.client.radio;
+package gg.moonflower.etched.common.audio;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -9,7 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Keeps potentially blocking resource disposal off the Minecraft client thread. */
+/** Keeps potentially blocking audio resource disposal off Minecraft owner threads. */
 public final class RadioResourceDisposer {
 
     private static final Logger LOGGER = LogManager.getLogger();

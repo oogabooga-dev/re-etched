@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.stream;
 
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;

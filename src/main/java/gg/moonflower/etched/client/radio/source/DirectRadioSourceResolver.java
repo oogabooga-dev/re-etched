@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
 import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
 import gg.moonflower.etched.client.radio.net.RadioTransportException;

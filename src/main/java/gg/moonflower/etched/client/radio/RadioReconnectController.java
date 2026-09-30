@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
+import gg.moonflower.etched.common.audio.RadioFailure;
 
 import java.util.Objects;
 import java.util.Optional;

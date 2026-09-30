@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.source;
 
 import com.sun.net.httpserver.HttpExchange;
 import gg.moonflower.etched.common.audio.AudioCancellation;
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
 import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;

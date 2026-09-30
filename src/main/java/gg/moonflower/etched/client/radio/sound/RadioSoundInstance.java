@@ -2,7 +2,7 @@ package gg.moonflower.etched.client.radio.sound;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
-import gg.moonflower.etched.client.radio.RadioResourceDisposer;
+import gg.moonflower.etched.common.audio.RadioResourceDisposer;
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.api.sound.SoundStopListener;
 import gg.moonflower.etched.core.Etched;

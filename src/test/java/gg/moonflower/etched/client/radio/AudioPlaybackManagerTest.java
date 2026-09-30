@@ -5,6 +5,7 @@ import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;

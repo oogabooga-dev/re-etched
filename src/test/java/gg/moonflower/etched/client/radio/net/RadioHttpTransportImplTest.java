@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client.radio.net;
 
 import com.sun.net.httpserver.Headers;
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
 import org.junit.jupiter.api.Test;
 

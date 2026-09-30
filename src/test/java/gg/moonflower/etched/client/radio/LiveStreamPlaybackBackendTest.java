@@ -16,6 +16,8 @@ import gg.moonflower.etched.client.radio.source.RadioSourceException;
 import gg.moonflower.etched.client.radio.source.RadioSourceProgram;
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
 import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioResourceDisposer;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
