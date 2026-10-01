@@ -1,11 +1,17 @@
 package gg.moonflower.etched.common.audio.net;
 
+import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.AudioContentProbe;
 import gg.moonflower.etched.common.audio.RadioFailure;
+import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
+import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.core.Etched;
+import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
@@ -17,6 +23,7 @@ import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.Proxy;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +34,36 @@ import java.util.Map;
 public final class AudioTransportGameTests {
 
     private AudioTransportGameTests() {
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void bandcampMetadataKeepsAlbumAndOrderedDiscTracksOnTheServer(GameTestHelper helper)
+            throws IOException {
+        URI uri = URI.create("https://artist.bandcamp.com/album/example");
+        byte[] html = """
+                <div data-tralbum='{"artist":"Artist", "current":{"type":"album","title":"Album"},
+                "trackinfo":[{"title_link":"/track/one","title":"One"},
+                             {"title_link":"/track/two","title":"Two"}]}'></div>
+                """.getBytes(StandardCharsets.UTF_8);
+        FixtureConnection connection = new FixtureConnection(uri, html);
+        Proxy proxy = helper.getLevel().getServer().getProxy();
+        RadioHttpTransportImpl transport = new RadioHttpTransportImpl(proxy, destination -> {},
+                Duration.ofSeconds(1), Duration.ofSeconds(1), 5, (destination, configuredProxy) -> {
+            helper.assertTrue(destination.equals(uri), "Metadata tried to open another destination");
+            helper.assertTrue(configuredProxy == proxy, "Metadata lost the server proxy");
+            return connection;
+        });
+        var tracks = new BandcampMetadataResolver(transport, destination -> {}, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveTracks(uri, new AudioCancellation());
+        ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(disc, tracks.toArray(TrackData[]::new));
+        helper.assertTrue(PlayableRecord.getStackAlbum(disc).orElseThrow().title().getString().equals("Album"),
+                "Bandcamp metadata lost the album descriptor");
+        TrackData[] music = PlayableRecord.getStackMusic(disc).orElseThrow();
+        helper.assertTrue(music.length == 2 && music[0].title().getString().equals("One")
+                && music[1].title().getString().equals("Two"), "Bandcamp metadata lost disc track order");
+        helper.assertTrue(connection.disconnected, "Bandcamp metadata leaked its page response");
+        helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
@@ -82,10 +119,16 @@ public final class AudioTransportGameTests {
 
     private static final class FixtureConnection extends HttpURLConnection {
 
+        private final byte[] body;
         private boolean disconnected;
 
         private FixtureConnection(URI uri) throws IOException {
+            this(uri, new byte[]{42});
+        }
+
+        private FixtureConnection(URI uri, byte[] body) throws IOException {
             super(uri.toURL());
+            this.body = body;
         }
 
         @Override
@@ -114,12 +157,12 @@ public final class AudioTransportGameTests {
 
         @Override
         public Map<String, List<String>> getHeaderFields() {
-            return Map.of("Content-Length", List.of("1"));
+            return Map.of("Content-Length", List.of(Integer.toString(this.body.length)));
         }
 
         @Override
         public InputStream getInputStream() {
-            return new ByteArrayInputStream(new byte[]{42});
+            return new ByteArrayInputStream(this.body);
         }
     }
 }

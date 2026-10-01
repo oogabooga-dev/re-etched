@@ -8,6 +8,7 @@ import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.download.SoundDownloadSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.api.util.ProgressTrackingInputStream;
+import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
@@ -32,8 +33,6 @@ public class BandcampSource implements SoundDownloadSource {
 
     private static final Pattern DATA_PATTERN = Pattern.compile("data-tralbum=\"([^\"]+)\"");
     private static final Component BRAND = Component.translatable("sound_source." + Etched.MOD_ID + ".bandcamp").withStyle(style -> style.withColor(TextColor.fromRgb(0x477987)));
-
-    private final Map<String, Boolean> validCache = new WeakHashMap<>();
 
     private InputStream get(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException {
         HttpURLConnection httpURLConnection;
@@ -155,14 +154,11 @@ public class BandcampSource implements SoundDownloadSource {
 
     @Override
     public boolean isValidUrl(String url) {
-        return this.validCache.computeIfAbsent(url, key -> {
-            try {
-                String host = new URI(key).getHost();
-                return host != null && host.endsWith("bandcamp.com");
-            } catch (URISyntaxException e) {
-                return false;
-            }
-        });
+        try {
+            return url != null && BandcampPageReader.supports(URI.create(url));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     @Override

@@ -4,29 +4,21 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import gg.moonflower.etched.common.audio.RadioFailure;
+import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
 import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
 import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
 import gg.moonflower.etched.common.audio.net.RadioTransportException;
-import org.apache.commons.lang3.StringEscapeUtils;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /** Resolves Bandcamp track and album pages into finite radio programs. */
 public final class BandcampRadioSourceResolver implements AudioSourceResolver {
-
-    private static final Pattern TRALBUM_DATA = Pattern.compile(
-            "(?is)\\bdata-tralbum\\s*=\\s*([\"'])(.*?)\\1");
 
     private final DirectRadioSourceResolver direct;
 
@@ -40,17 +32,7 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
 
     @Override
     public boolean supports(URI input) {
-        if (input == null || !input.isAbsolute() || input.getRawUserInfo() != null) {
-            return false;
-        }
-        String scheme = input.getScheme();
-        String host = input.getHost();
-        if (scheme == null || host == null
-                || !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
-            return false;
-        }
-        String normalizedHost = host.toLowerCase(Locale.ROOT);
-        return normalizedHost.equals("bandcamp.com") || normalizedHost.endsWith(".bandcamp.com");
+        return BandcampPageReader.supports(input);
     }
 
     @Override
@@ -120,53 +102,21 @@ public final class BandcampRadioSourceResolver implements AudioSourceResolver {
                         "Bandcamp redirected the service page outside bandcamp.com", null);
             }
             RadioHttpStatus.requireSuccess(response, "Bandcamp");
-            String html = readHtml(response, context);
-            return parsePage(response.uri(), html, context);
-        }
-    }
-
-    private static String readHtml(AudioHttpResponse response, AudioResolveContext context)
-            throws RadioSourceException {
-        int limit = context.limits().maxPlaylistBytes();
-        ByteArrayOutputStream body = new ByteArrayOutputStream(Math.min(limit, 8192));
-        byte[] buffer = new byte[(int) Math.min((long) limit + 1, 8192L)];
-        try {
-            while (body.size() <= limit) {
-                context.cancellation().throwIfCancelled();
-                int remaining = (int) Math.min((long) buffer.length, (long) limit + 1 - body.size());
-                int read = response.body().read(buffer, 0, remaining);
-                if (read < 0) {
-                    return body.toString(StandardCharsets.UTF_8);
-                }
-                if (read > 0) {
-                    body.write(buffer, 0, read);
-                    String html = body.toString(StandardCharsets.UTF_8);
-                    if (TRALBUM_DATA.matcher(html).find()) {
-                        return html;
-                    }
-                }
+            JsonObject data;
+            try {
+                data = BandcampPageReader.read(response, context.cancellation(), context.limits().maxPlaylistBytes());
+            } catch (RadioTransportException exception) {
+                throw RadioSourceException.fromTransport(exception);
+            } catch (IOException exception) {
+                throw failure(RadioFailure.Code.UNKNOWN, "Could not read the Bandcamp page", exception);
             }
-        } catch (RadioTransportException exception) {
-            throw RadioSourceException.fromTransport(exception);
-        } catch (IOException exception) {
-            throw failure(RadioFailure.Code.UNKNOWN, "Could not read the Bandcamp page", exception);
+            return parsePage(response.uri(), data, context);
         }
-        throw failure(RadioFailure.Code.PLAYLIST_TOO_LARGE,
-                "Bandcamp page exceeds the configured body limit", null);
     }
 
-    @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
-    private static ParsedPage parsePage(URI pageUri, String html, AudioResolveContext context)
+    private static ParsedPage parsePage(URI pageUri, JsonObject root, AudioResolveContext context)
             throws RadioSourceException {
-        Matcher matcher = TRALBUM_DATA.matcher(html);
-        if (!matcher.find()) {
-            throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO,
-                    "Bandcamp page does not contain track data", null);
-        }
-
         try {
-            String rawJson = StringEscapeUtils.unescapeHtml4(matcher.group(2));
-            JsonObject root = JsonParser.parseString(rawJson).getAsJsonObject();
             JsonObject current = requiredObject(root, "current");
             String type = requiredString(current, "type");
             if (!type.equals("track") && !type.equals("album")) {

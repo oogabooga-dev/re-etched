@@ -7,6 +7,8 @@ import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
+import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
 import gg.moonflower.etched.common.item.*;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundEtchingUrlErrorPacket;
@@ -31,6 +33,7 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.network.PacketDistributor;
 
 import java.net.Proxy;
+import java.net.URI;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -273,7 +276,15 @@ public class EtchingMenu extends AbstractContainerMenu {
                     if (data.length == 1 && !requestLabel.isEmpty()) {
                         data[0] = data[0].withTitle(MusicLabelItem.getTitle(requestLabel)).withArtist(MusicLabelItem.getAuthor(requestLabel));
                     }
-                    if (SoundSourceManager.isValidUrl(requestUrl)) {
+                    if (!TrackData.isLocalSound(requestUrl) && BandcampPageReader.supports(URI.create(requestUrl))) {
+                        try {
+                            data = new BandcampMetadataResolver(proxy).resolveTracks(
+                                    URI.create(requestUrl), cancellation).toArray(TrackData[]::new);
+                        } catch (Exception e) {
+                            this.sendUrlError(currentId, e.getMessage());
+                            throw new CompletionException(e);
+                        }
+                    } else if (SoundSourceManager.isValidUrl(requestUrl)) {
                         try {
                             if (IGNORE_CACHE) {
                                 DATA_CACHE.invalidateAll();
