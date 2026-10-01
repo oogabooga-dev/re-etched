@@ -9,6 +9,8 @@ import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
+import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
+import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
 import gg.moonflower.etched.common.item.*;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundEtchingUrlErrorPacket;
@@ -46,8 +48,8 @@ public class EtchingMenu extends AbstractContainerMenu {
 
     public static final ResourceLocation EMPTY_SLOT_MUSIC_DISC = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "item/empty_etching_table_slot_music_disc");
     public static final ResourceLocation EMPTY_SLOT_MUSIC_LABEL = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "item/empty_etching_table_slot_music_label");
+    // Only third-party legacy providers still use this compatibility path.
     private static final Cache<String, CompletableFuture<TrackData[]>> DATA_CACHE = CacheBuilder.newBuilder().expireAfterWrite(15, TimeUnit.MINUTES).build();
-    private static final boolean IGNORE_CACHE = false;
 
     private final ContainerLevelAccess access;
     private final DataSlot labelIndex;
@@ -284,12 +286,18 @@ public class EtchingMenu extends AbstractContainerMenu {
                             this.sendUrlError(currentId, e.getMessage());
                             throw new CompletionException(e);
                         }
+                    } else if (!TrackData.isLocalSound(requestUrl) && SoundCloudPageReader.supports(URI.create(requestUrl))) {
+                        try {
+                            data = new SoundCloudMetadataResolver(proxy).resolveTracks(
+                                    URI.create(requestUrl), cancellation).toArray(TrackData[]::new);
+                        } catch (Exception e) {
+                            this.sendUrlError(currentId, e.getMessage());
+                            throw new CompletionException(e);
+                        }
                     } else if (SoundSourceManager.isValidUrl(requestUrl)) {
                         try {
-                            if (IGNORE_CACHE) {
-                                DATA_CACHE.invalidateAll();
-                            }
-                            data = DATA_CACHE.get(requestUrl, () -> SoundSourceManager.resolveTracks(requestUrl, null, proxy)).join();
+                            data = DATA_CACHE.get(requestUrl,
+                                    () -> SoundSourceManager.resolveTracks(requestUrl, null, proxy)).join();
                         } catch (Exception e) {
                             if (!level.isClientSide()) {
                                 Throwable cause = e instanceof CompletionException && e.getCause() != null

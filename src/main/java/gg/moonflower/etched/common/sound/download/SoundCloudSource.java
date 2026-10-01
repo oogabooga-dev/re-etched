@@ -9,6 +9,7 @@ import gg.moonflower.etched.api.sound.download.SoundDownloadSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.api.util.M3uParser;
 import gg.moonflower.etched.api.util.ProgressTrackingInputStream;
+import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
@@ -35,8 +36,6 @@ public class SoundCloudSource implements SoundDownloadSource {
     static final Logger LOGGER = LogManager.getLogger();
     private static final Component BRAND = Component.translatable("sound_source." + Etched.MOD_ID + ".sound_cloud").withStyle(style -> style.withColor(TextColor.fromRgb(0xFF5500)));
     private static final Pattern PATTERN = Pattern.compile("(https?://)(.*\\.)*(soundcloud\\.com.*)");
-
-    private final Map<String, Boolean> validCache = new WeakHashMap<>();
 
     private static URL appendUri(String uri, String appendQuery) throws Exception {
         URI oldUri = new URI(uri);
@@ -184,14 +183,11 @@ public class SoundCloudSource implements SoundDownloadSource {
 
     @Override
     public boolean isValidUrl(String url) {
-        return this.validCache.computeIfAbsent(url, key -> {
-            try {
-                String host = new URI(key).getHost();
-                return host != null && host.endsWith("soundcloud.com");
-            } catch (URISyntaxException e) {
-                return false;
-            }
-        });
+        try {
+            return url != null && SoundCloudPageReader.supports(URI.create(url));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     @Override

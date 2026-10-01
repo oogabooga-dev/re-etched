@@ -3,18 +3,14 @@ package gg.moonflower.etched.client.radio.source;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import gg.moonflower.etched.common.audio.RadioFailure;
+import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
 import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
 import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
 import gg.moonflower.etched.common.audio.net.RadioTransportException;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -27,19 +23,12 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /** Resolves SoundCloud tracks and albums without sharing opened media responses. */
 public final class SoundCloudRadioSourceResolver implements AudioSourceResolver {
 
     private static final URI HOMEPAGE = URI.create("https://soundcloud.com/");
     private static final URI RESOLVE_ENDPOINT = URI.create("https://api-v2.soundcloud.com/resolve");
-    private static final int MAX_SCRIPT_CANDIDATES = 10;
-    private static final Pattern SCRIPT_PATTERN = Pattern.compile(
-            "(?i)<script\\b[^>]*\\bsrc\\s*=\\s*([\"'])(.*?)\\1");
-    private static final Pattern CLIENT_ID_PATTERN = Pattern.compile(
-            "[\"']?client_id[\"']?\\s*:\\s*[\"']([A-Za-z0-9_-]+)[\"']");
 
     private final DirectRadioSourceResolver direct;
     private final URI homepage;
@@ -61,18 +50,7 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
 
     @Override
     public boolean supports(URI input) {
-        if (input == null || !input.isAbsolute() || input.getUserInfo() != null) {
-            return false;
-        }
-        String scheme = input.getScheme();
-        String host = input.getHost();
-        if (scheme == null || host == null
-                || !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
-            return false;
-        }
-        String normalizedHost = host.toLowerCase(Locale.ROOT);
-        return normalizedHost.equals("soundcloud.com")
-                || normalizedHost.endsWith(".soundcloud.com");
+        return SoundCloudPageReader.supports(input);
     }
 
     @Override
@@ -296,24 +274,8 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
                     StandardCharsets.UTF_8);
         }
 
-        Deque<URI> scripts = new ArrayDeque<>();
-        Matcher matcher = SCRIPT_PATTERN.matcher(html);
-        int candidateLimit = Math.min(MAX_SCRIPT_CANDIDATES,
-                context.limits().maxPlaylistEntries());
-        while (matcher.find()) {
-            context.cancellation().throwIfCancelled();
-            URI script;
-            try {
-                script = requireHttpUri(pageUri.resolve(matcher.group(2)),
-                        "SoundCloud application script");
-            } catch (IllegalArgumentException exception) {
-                continue;
-            }
-            if (scripts.size() == candidateLimit) {
-                scripts.removeFirst();
-            }
-            scripts.addLast(script);
-        }
+        Deque<URI> scripts = new ArrayDeque<>(SoundCloudPageReader.scriptCandidates(
+                pageUri, html, context.limits().maxPlaylistEntries(), context.cancellation()));
         RadioSourceException limitFailure = null;
         while (!scripts.isEmpty()) {
             URI script = scripts.removeLast();
@@ -446,76 +408,31 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
 
     private static byte[] readBounded(AudioHttpResponse response, AudioResolveContext context,
                                       String description) throws RadioSourceException {
-        int limit = context.limits().maxPlaylistBytes();
-        if (response.contentLength().isPresent() && response.contentLength().getAsLong() > limit) {
-            throw failure(RadioFailure.Code.RESOURCE_LIMIT, false,
-                    description + " exceeds the configured size limit", null);
-        }
-        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(limit, 8192));
-        byte[] buffer = new byte[Math.min(8192, limit + 1)];
         try {
-            while (output.size() <= limit) {
-                context.cancellation().throwIfCancelled();
-                int read = response.body().read(buffer, 0,
-                        Math.min(buffer.length, limit + 1 - output.size()));
-                if (read < 0) {
-                    return output.toByteArray();
-                }
-                if (read > 0) {
-                    output.write(buffer, 0, read);
-                }
-            }
+            return SoundCloudPageReader.readBounded(response, context.cancellation(),
+                    context.limits().maxPlaylistBytes(), description);
         } catch (RadioTransportException exception) {
             throw RadioSourceException.fromTransport(exception);
-        } catch (IOException exception) {
-            throw failure(RadioFailure.Code.UNKNOWN, true,
-                    "Could not read the " + description.toLowerCase(Locale.ROOT), exception);
         }
-        throw failure(RadioFailure.Code.RESOURCE_LIMIT, false,
-                description + " exceeds the configured size limit", null);
     }
 
     private static @Nullable String scanClientId(AudioHttpResponse response,
                                                   AudioResolveContext context)
             throws RadioSourceException {
-        int limit = context.limits().maxPlaylistBytes();
-        ByteArrayOutputStream prefix = new ByteArrayOutputStream(Math.min(limit, 8192));
-        byte[] buffer = new byte[Math.min(8192, limit)];
         try {
-            while (prefix.size() < limit) {
-                context.cancellation().throwIfCancelled();
-                int read = response.body().read(buffer, 0,
-                        Math.min(buffer.length, limit - prefix.size()));
-                if (read < 0) {
-                    return null;
-                }
-                if (read == 0) {
-                    continue;
-                }
-                prefix.write(buffer, 0, read);
-                Matcher matcher = CLIENT_ID_PATTERN.matcher(
-                        prefix.toString(StandardCharsets.UTF_8));
-                if (matcher.find()) {
-                    return matcher.group(1);
-                }
-            }
+            return SoundCloudPageReader.scanClientId(response, context.cancellation(),
+                    context.limits().maxPlaylistBytes());
         } catch (RadioTransportException exception) {
             throw RadioSourceException.fromTransport(exception);
-        } catch (IOException exception) {
-            throw failure(RadioFailure.Code.UNKNOWN, true,
-                    "Could not scan the SoundCloud application script", exception);
         }
-        throw failure(RadioFailure.Code.RESOURCE_LIMIT, false,
-                "SoundCloud application script scan exceeded the configured size limit", null);
     }
 
     private static JsonObject parseObject(byte[] bytes, String description)
             throws RadioSourceException {
         try {
-            return JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).getAsJsonObject();
-        } catch (JsonParseException | IllegalStateException exception) {
-            throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, false,
-                    description + " is not valid JSON", exception);
+            return SoundCloudPageReader.parseObject(bytes, description);
+        } catch (RadioTransportException exception) {
+            throw RadioSourceException.fromTransport(exception);
         }
     }
 
@@ -598,18 +515,10 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
     }
 
     private static URI appendQuery(URI uri, String key, String value) throws RadioSourceException {
-        String separator = uri.getRawQuery() == null ? "?" : "&";
-        String base = uri.toASCIIString();
-        int fragment = base.indexOf('#');
-        if (fragment >= 0) {
-            base = base.substring(0, fragment);
-        }
         try {
-            return URI.create(base + separator + URLEncoder.encode(key, StandardCharsets.UTF_8)
-                    + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8));
-        } catch (IllegalArgumentException exception) {
-            throw failure(RadioFailure.Code.INVALID_URL, false,
-                    "Could not construct a SoundCloud API URL", exception);
+            return SoundCloudPageReader.appendQuery(uri, key, value);
+        } catch (RadioTransportException exception) {
+            throw RadioSourceException.fromTransport(exception);
         }
     }
 
@@ -623,27 +532,11 @@ public final class SoundCloudRadioSourceResolver implements AudioSourceResolver 
     }
 
     private static URI requireHttpUri(URI uri, String description) {
-        Objects.requireNonNull(uri, description);
-        String scheme = uri.getScheme();
-        if (!uri.isAbsolute() || uri.getHost() == null || uri.getUserInfo() != null
-                || scheme == null || !scheme.equalsIgnoreCase("http")
-                && !scheme.equalsIgnoreCase("https")) {
-            throw new IllegalArgumentException(description + " must be an HTTP(S) URL without userinfo");
-        }
-        return uri;
+        return SoundCloudPageReader.requireHttpUri(uri, description);
     }
 
     private static boolean sameOrigin(URI first, URI second) {
-        return first.getScheme().equalsIgnoreCase(second.getScheme())
-                && first.getHost().equalsIgnoreCase(second.getHost())
-                && effectivePort(first) == effectivePort(second);
-    }
-
-    private static int effectivePort(URI uri) {
-        if (uri.getPort() >= 0) {
-            return uri.getPort();
-        }
-        return uri.getScheme().equalsIgnoreCase("https") ? 443 : 80;
+        return SoundCloudPageReader.sameOrigin(first, second);
     }
 
     private static RadioSourceException httpFailure(int status, String description) {

@@ -6,6 +6,7 @@ import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.AudioContentProbe;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
+import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
@@ -26,6 +27,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 
 /** Exercises the common transport in transformed Forge server code without live networking. */
@@ -34,6 +36,50 @@ import java.util.Map;
 public final class AudioTransportGameTests {
 
     private AudioTransportGameTests() {
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void soundCloudDiscoveryAndMetadataWorkOnTheServer(GameTestHelper helper) throws IOException {
+        URI input = URI.create("https://soundcloud.com/artist/album");
+        String json = """
+                {"kind":"playlist","is_album":true,"title":"Album","user":{"username":"Artist"},
+                 "tracks":[{"permalink_url":"https://soundcloud.com/artist/one","title":"One"},
+                           {"permalink_url":"https://soundcloud.com/artist/two","title":"Two"}]}
+                """;
+        List<FixtureConnection> connections = new ArrayList<>();
+        Proxy proxy = helper.getLevel().getServer().getProxy();
+        var transport = new RadioHttpTransportImpl(proxy, destination -> {}, Duration.ofSeconds(1),
+                Duration.ofSeconds(1), 5, (destination, configuredProxy) -> {
+            helper.assertTrue(configuredProxy == proxy, "SoundCloud discovery lost the server proxy");
+            String body;
+            if (destination.getPath().equals("/")) {
+                body = "<script src='/app.js'></script>";
+            } else if (destination.getPath().equals("/app.js")) {
+                body = "client_id:'server-client'";
+            } else {
+                helper.assertTrue(destination.getHost().equals("api-v2.soundcloud.com")
+                        && destination.getPath().equals("/resolve"), "Metadata tried to open audio or another endpoint");
+                helper.assertTrue(destination.getRawQuery().contains("client_id=server-client"),
+                        "SoundCloud API did not receive the discovered client ID");
+                body = json;
+            }
+            var connection = new FixtureConnection(destination, body.getBytes(StandardCharsets.UTF_8));
+            connections.add(connection);
+            return connection;
+        });
+        var tracks = new SoundCloudMetadataResolver(transport, destination -> {},
+                URI.create("https://soundcloud.com/"), URI.create("https://api-v2.soundcloud.com/resolve"),
+                SoundCloudMetadataResolver.Limits.DEFAULT).resolveTracks(input, new AudioCancellation());
+        ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(disc, tracks.toArray(TrackData[]::new));
+        helper.assertTrue(PlayableRecord.getStackAlbum(disc).orElseThrow().url().equals(input.toString()),
+                "SoundCloud metadata lost the album descriptor");
+        TrackData[] music = PlayableRecord.getStackMusic(disc).orElseThrow();
+        helper.assertTrue(music.length == 2 && music[0].title().getString().equals("One")
+                && music[1].title().getString().equals("Two"), "SoundCloud metadata lost disc track order");
+        helper.assertTrue(connections.size() == 3 && connections.stream().allMatch(connection -> connection.disconnected),
+                "SoundCloud discovery or metadata leaked an HTTP response");
+        helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
