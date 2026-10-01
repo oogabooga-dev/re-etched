@@ -1,6 +1,7 @@
 package gg.moonflower.etched.common.audio.net;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioContentProbe;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.gametest.framework.GameTest;
@@ -26,6 +27,20 @@ import java.util.Map;
 public final class AudioTransportGameTests {
 
     private AudioTransportGameTests() {
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void commonContentProbeRecognizesAudioOnTheServer(GameTestHelper helper) throws IOException {
+        byte[] tagged = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0,
+                (byte) 0xFF, (byte) 0xFB, (byte) 0x90, 0x64};
+        byte[] prefix = AudioContentProbe.readPrefix(new ByteArrayInputStream(tagged), new AudioCancellation(),
+                AudioContentProbe.DEFAULT_SNIFF_BYTES, AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES);
+        helper.assertTrue(AudioContentProbe.classify(prefix, AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES)
+                == AudioContentProbe.Format.MP3, "Server probe lost ID3/MPEG recognition");
+        helper.assertTrue(AudioContentProbe.classify(new byte[]{'O', 'g', 'g', 'S'},
+                AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES) == AudioContentProbe.Format.UNKNOWN,
+                "Server probe trusted an Ogg signature without Vorbis identification");
+        helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)

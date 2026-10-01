@@ -1,6 +1,7 @@
 package gg.moonflower.etched.common.menu;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioContentProbe;
 import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
 import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
 import gg.moonflower.etched.common.audio.net.AudioHttpTransport;
@@ -10,16 +11,10 @@ import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.URI;
-import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 
-/** Server-side HTTP boundary for direct etching URLs; media sniffing is a separate migration step. */
+/** Server-side HTTP boundary for direct etching URLs, accepting only recognizable MPEG/Vorbis bodies. */
 final class EtchingUrlValidator {
-
-    private static final Set<String> LEGACY_CONTENT_TYPES = Set.of(
-            "audio/wav", "audio/x-wav", "audio/opus", "application/ogg", "audio/ogg",
-            "audio/mpeg", "audio/mp3", "application/octet-stream", "application/binary");
 
     private final AudioHttpTransport transport;
 
@@ -47,11 +42,13 @@ final class EtchingUrlValidator {
             if (response.statusCode() != 200) {
                 throw new IOException("Etching request returned HTTP " + response.statusCode());
             }
-            String contentType = response.firstHeader("Content-Type")
-                    .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
-                    .orElse("");
-            if (!LEGACY_CONTENT_TYPES.contains(contentType)) {
-                throw new IOException("Unsupported Content-Type: " + contentType);
+            byte[] prefix = AudioContentProbe.readPrefix(response.body(), cancellation,
+                    AudioContentProbe.DEFAULT_SNIFF_BYTES, AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES);
+            cancellation.throwIfCancelled();
+            AudioContentProbe.Format format = AudioContentProbe.classify(prefix,
+                    AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES);
+            if (format != AudioContentProbe.Format.MP3 && format != AudioContentProbe.Format.OGG) {
+                throw new IOException("Etching response is not supported MPEG or Ogg/Vorbis audio");
             }
         }
     }
