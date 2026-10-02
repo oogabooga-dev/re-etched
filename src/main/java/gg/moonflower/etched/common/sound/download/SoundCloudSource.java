@@ -11,8 +11,6 @@ import gg.moonflower.etched.core.Etched;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.packs.resources.ResourceManager;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -28,7 +26,6 @@ import java.util.function.Function;
 /** Compatibility facade; all page and transcoding requests use the common secure transport. */
 public class SoundCloudSource implements SoundDownloadSource {
 
-    static final Logger LOGGER = LogManager.getLogger();
     private static final Component BRAND = Component.translatable("sound_source." + Etched.MOD_ID + ".sound_cloud").withStyle(style -> style.withColor(TextColor.fromRgb(0xFF5500)));
 
     private final Function<Proxy, SoundCloudMetadataResolver> resolvers;
