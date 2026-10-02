@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Server-safe metadata with request-owned client-ID discovery, responses, and resolution budget. */
+/** Server-safe page projections with request-owned client-ID discovery, responses, and resolution budget. */
 public final class SoundCloudMetadataResolver {
 
     private static final URI HOMEPAGE = URI.create("https://soundcloud.com/");
@@ -71,7 +71,7 @@ public final class SoundCloudMetadataResolver {
     }
 
     public List<TrackData> resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
-        JsonObject page = this.fetchPage(input, cancellation);
+        JsonObject page = this.fetchPage(input, new Operation(cancellation));
         List<TrackData> tracks = this.parseTracks(input, page, cancellation);
         for (TrackData track : tracks) {
             cancellation.throwIfCancelled();
@@ -82,7 +82,7 @@ public final class SoundCloudMetadataResolver {
     }
 
     public Optional<URI> resolveAlbumCover(URI input, AudioCancellation cancellation) throws IOException {
-        JsonObject page = this.fetchPage(input, cancellation);
+        JsonObject page = this.fetchPage(input, new Operation(cancellation));
         String kind = field(page, "kind");
         if (kind.equals("track")) {
             if (!requiredBoolean(page, "streamable")) {
@@ -106,13 +106,61 @@ public final class SoundCloudMetadataResolver {
         return Optional.of(cover);
     }
 
-    private JsonObject fetchPage(URI input, AudioCancellation cancellation) throws IOException {
+    /** Resolves one progressive MP3 destination without downloading audio or accepting HLS. */
+    public List<URI> resolveMediaUrls(URI input, AudioCancellation cancellation) throws IOException {
+        Operation operation = new Operation(cancellation);
+        JsonObject page = this.fetchPage(input, operation);
+        if (!field(page, "kind").equals("track") || !requiredBoolean(page, "streamable")) {
+            throw invalid("SoundCloud media URL must resolve to a streamable track");
+        }
+        JsonObject media = object(page.get("media"), "track media");
+        JsonElement value = media.get("transcodings");
+        if (value == null || !value.isJsonArray()) {
+            throw invalid("SoundCloud transcodings is not an array");
+        }
+        JsonArray entries = value.getAsJsonArray();
+        if (entries.size() > this.limits.maxTracks()) {
+            throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud transcodings exceed the entry limit", null);
+        }
+        URI progressive = null;
+        boolean hls = false;
+        boolean other = false;
+        for (JsonElement entry : entries) {
+            cancellation.throwIfCancelled();
+            JsonObject transcoding = object(entry, "transcoding");
+            JsonObject format = object(transcoding.get("format"), "transcoding format");
+            String protocol = field(format, "protocol");
+            String mime = optionalField(format, "mime_type");
+            if (protocol.equals("progressive") && "audio/mpeg".equalsIgnoreCase(mime)) {
+                if (progressive == null) {
+                    progressive = httpUri(field(transcoding, "url"), "SoundCloud transcoding URL");
+                }
+            } else if (protocol.equals("hls")) {
+                hls = true;
+            } else {
+                other = true;
+            }
+        }
+        if (progressive == null) {
+            if (hls && !other) {
+                throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false, "SoundCloud track is only available as HLS", null);
+            }
+            throw invalid("SoundCloud track has no progressive MP3 transcoding");
+        }
+        JsonObject resolved = this.authenticatedJson(progressive, operation, optionalField(page, "track_authorization"));
+        URI destination = httpUri(field(resolved, "url"), "SoundCloud media URL");
+        this.networkPolicy.check(destination, cancellation);
+        cancellation.throwIfCancelled();
+        return List.of(destination);
+    }
+
+    private JsonObject fetchPage(URI input, Operation operation) throws IOException {
+        AudioCancellation cancellation = operation.cancellation;
         cancellation.throwIfCancelled();
         requirePage(input);
         requireLength(input.toString());
         // The API resolves the submitted page indirectly, so validate it before contacting any service.
         this.networkPolicy.check(input, cancellation);
-        Operation operation = new Operation(cancellation);
         JsonObject page = this.resolvePage(input, operation);
         cancellation.throwIfCancelled();
         return page;
@@ -120,10 +168,22 @@ public final class SoundCloudMetadataResolver {
 
     private JsonObject resolvePage(URI input, Operation operation) throws IOException {
         URI endpoint = SoundCloudPageReader.appendQuery(this.resolveEndpoint, "url", input.toASCIIString());
-        String clientId = this.discoverClientId(operation);
-        for (int attempt = 0; attempt < 2; attempt++) {
+        return this.authenticatedJson(endpoint, operation, null);
+    }
+
+    private JsonObject authenticatedJson(URI endpoint, Operation operation, String authorization) throws IOException {
+        if (!SoundCloudPageReader.sameOrigin(endpoint, this.resolveEndpoint)) {
+            throw failure(RadioFailure.Code.BLOCKED_ADDRESS, false, "SoundCloud returned an untrusted API endpoint", null);
+        }
+        if (operation.clientId == null) {
+            operation.clientId = this.discoverClientId(operation);
+        }
+        while (true) {
             int rejectedStatus;
-            URI request = SoundCloudPageReader.appendQuery(endpoint, "client_id", clientId);
+            URI request = SoundCloudPageReader.appendQuery(endpoint, "client_id", operation.clientId);
+            if (authorization != null) {
+                request = SoundCloudPageReader.appendQuery(request, "track_authorization", authorization);
+            }
             try (AudioHttpResponse response = operation.execute(request)) {
                 if (!SoundCloudPageReader.sameOrigin(response.uri(), this.resolveEndpoint)) {
                     throw failure(RadioFailure.Code.BLOCKED_ADDRESS, false,
@@ -136,14 +196,14 @@ public final class SoundCloudMetadataResolver {
                             operation.cancellation, this.limits.maxBodyBytes(), "SoundCloud API response"),
                             "SoundCloud API response");
                 }
-                if (attempt == 1) {
+                if (operation.refreshed) {
                     requireSuccess(response, "SoundCloud API");
                 }
             }
             // The rejected response has been released before discovery is retried, once only.
-            clientId = this.discoverClientId(operation);
+            operation.refreshed = true;
+            operation.clientId = this.discoverClientId(operation);
         }
-        throw new AssertionError("SoundCloud authentication retry did not terminate");
     }
 
     private String discoverClientId(Operation operation) throws IOException {
@@ -242,6 +302,19 @@ public final class SoundCloudMetadataResolver {
         return result;
     }
 
+    private String optionalField(JsonObject object, String key) throws RadioTransportException {
+        JsonElement value = object.get(key);
+        return value == null || value.isJsonNull() ? null : field(object, key);
+    }
+
+    private static URI httpUri(String value, String description) throws RadioTransportException {
+        try {
+            return SoundCloudPageReader.requireHttpUri(URI.create(value), description);
+        } catch (IllegalArgumentException exception) {
+            throw invalid(description + " is invalid");
+        }
+    }
+
     private void requireLength(String value) throws RadioTransportException {
         if (value.length() > this.limits.maxFieldLength()) {
             throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud metadata field exceeds the length limit", null);
@@ -290,6 +363,8 @@ public final class SoundCloudMetadataResolver {
     private final class Operation {
         private final AudioCancellation cancellation;
         private int remainingSteps = limits.maxResolutionSteps();
+        private String clientId;
+        private boolean refreshed;
 
         private Operation(AudioCancellation cancellation) {
             this.cancellation = cancellation;
