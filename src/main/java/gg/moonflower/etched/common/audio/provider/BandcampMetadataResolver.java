@@ -26,7 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 
-/** Request-owned metadata for etching; no opened responses or futures are shared between menus. */
+/** Request-owned Bandcamp page projections; no opened responses or futures are shared between consumers. */
 public final class BandcampMetadataResolver {
 
     public record Limits(int maxBodyBytes, int maxTracks, int maxFieldLength, int maxRedirects) {
@@ -68,6 +68,57 @@ public final class BandcampMetadataResolver {
         }
         cancellation.throwIfCancelled();
         return List.copyOf(tracks);
+    }
+
+    /** Legacy URL projection only: validates destinations without opening media responses. */
+    public List<URI> resolveMediaUrls(URI input, AudioCancellation cancellation) throws IOException {
+        Page page = this.fetchPage(input, cancellation);
+        List<URI> media = new ArrayList<>();
+        try {
+            String type = field(page.data().getAsJsonObject("current"), "type");
+            if (!type.equals("track") && !type.equals("album")) {
+                throw new JsonParseException("current.type is not track or album");
+            }
+            JsonArray entries = page.data().getAsJsonArray("trackinfo");
+            if (entries == null || entries.isEmpty()) {
+                throw new JsonParseException("trackinfo is missing or empty");
+            }
+            if (entries.size() > this.limits.maxTracks()) {
+                throw failure(RadioFailure.Code.RESOURCE_LIMIT, "Bandcamp page exceeds the track limit", null);
+            }
+            for (int i = 0; i < entries.size(); i++) {
+                cancellation.throwIfCancelled();
+                JsonObject entry = entries.get(i).getAsJsonObject();
+                if (!entry.has("file") || entry.get("file").isJsonNull()) {
+                    continue;
+                }
+                JsonObject files = entry.getAsJsonObject("file");
+                if (!files.has("mp3-128") || files.get("mp3-128").isJsonNull()) {
+                    continue;
+                }
+                URI uri = URI.create(field(files, "mp3-128"));
+                String scheme = uri.getScheme();
+                if (!uri.isAbsolute() || uri.getHost() == null || uri.getRawUserInfo() != null
+                        || scheme == null || !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
+                    throw new JsonParseException("mp3-128 is not an absolute HTTP(S) URL without user info");
+                }
+                media.add(uri);
+            }
+            if (media.isEmpty()) {
+                throw new JsonParseException("trackinfo contains no mp3-128 files");
+            }
+        } catch (CancellationException exception) {
+            throw exception;
+        } catch (JsonParseException | IllegalStateException | IllegalArgumentException
+                 | NullPointerException | ClassCastException exception) {
+            throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, "Bandcamp page contains invalid media metadata", exception);
+        }
+        for (URI uri : media) {
+            cancellation.throwIfCancelled();
+            this.networkPolicy.check(uri, cancellation);
+        }
+        cancellation.throwIfCancelled();
+        return List.copyOf(media);
     }
 
     public Optional<URI> resolveAlbumCover(URI input, AudioCancellation cancellation) throws IOException {

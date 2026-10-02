@@ -39,6 +39,39 @@ public final class AudioTransportGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
+    public static void bandcampMediaUrlProjectionIsServerSafeAndDoesNotOpenMedia(GameTestHelper helper) throws IOException {
+        URI input = URI.create("https://artist.bandcamp.com/album/test");
+        byte[] html = """
+                <div data-tralbum='{"current":{"type":"album"},"trackinfo":[
+                {"file":{"mp3-128":"https://media.example/one.mp3"}},
+                {"file":null},
+                {"file":{"mp3-128":"https://media.example/two.mp3"}}]}'></div>
+                """.getBytes(StandardCharsets.UTF_8);
+        FixtureConnection connection = new FixtureConnection(input, html);
+        List<URI> opened = new ArrayList<>();
+        List<URI> checked = new ArrayList<>();
+        Proxy proxy = helper.getLevel().getServer().getProxy();
+        var transport = new RadioHttpTransportImpl(proxy, destination -> {}, Duration.ofSeconds(1),
+                Duration.ofSeconds(1), 5, (destination, configuredProxy) -> {
+            helper.assertTrue(destination.equals(input), "Bandcamp URL projection tried to open audio");
+            helper.assertTrue(configuredProxy == proxy, "Bandcamp URL projection lost the server proxy");
+            opened.add(destination);
+            return connection;
+        });
+        AudioNetworkPolicy policy = destination -> {
+            helper.assertTrue(connection.disconnected, "Bandcamp page remained open during media URL checks");
+            checked.add(destination);
+        };
+        var media = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveMediaUrls(input, new AudioCancellation());
+        helper.assertTrue(media.equals(List.of(URI.create("https://media.example/one.mp3"),
+                URI.create("https://media.example/two.mp3"))), "Bandcamp lost playable media order");
+        helper.assertTrue(checked.equals(media), "Bandcamp did not validate every media destination");
+        helper.assertTrue(opened.equals(List.of(input)), "Bandcamp opened unexpected responses");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
     public static void providerCoverMetadataIsServerSafeAndDoesNotOpenImages(GameTestHelper helper) throws IOException {
         List<FixtureConnection> connections = new ArrayList<>();
         Proxy proxy = helper.getLevel().getServer().getProxy();
