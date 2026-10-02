@@ -1,7 +1,5 @@
 package gg.moonflower.etched.common.menu;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.mojang.datafixers.util.Pair;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
@@ -9,6 +7,7 @@ import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
+import gg.moonflower.etched.common.audio.provider.LegacyTrackMetadataRequests;
 import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
 import gg.moonflower.etched.common.item.*;
@@ -39,7 +38,6 @@ import java.net.URI;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author Ocelot, Jackson
@@ -48,8 +46,6 @@ public class EtchingMenu extends AbstractContainerMenu {
 
     public static final ResourceLocation EMPTY_SLOT_MUSIC_DISC = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "item/empty_etching_table_slot_music_disc");
     public static final ResourceLocation EMPTY_SLOT_MUSIC_LABEL = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "item/empty_etching_table_slot_music_label");
-    // Only third-party legacy providers still use this compatibility path.
-    private static final Cache<String, CompletableFuture<TrackData[]>> DATA_CACHE = CacheBuilder.newBuilder().expireAfterWrite(15, TimeUnit.MINUTES).build();
 
     private final ContainerLevelAccess access;
     private final DataSlot labelIndex;
@@ -296,8 +292,8 @@ public class EtchingMenu extends AbstractContainerMenu {
                         }
                     } else if (SoundSourceManager.isValidUrl(requestUrl)) {
                         try {
-                            data = DATA_CACHE.get(requestUrl,
-                                    () -> SoundSourceManager.resolveTracks(requestUrl, null, proxy)).join();
+                            data = LegacyTrackMetadataRequests.await(
+                                    () -> SoundSourceManager.resolveTracks(requestUrl, null, proxy), cancellation);
                         } catch (Exception e) {
                             if (!level.isClientSide()) {
                                 Throwable cause = e instanceof CompletionException && e.getCause() != null

@@ -7,6 +7,7 @@ import gg.moonflower.etched.api.sound.source.RawAudioSource;
 import gg.moonflower.etched.api.sound.source.StreamingAudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.client.AlbumCoverCache;
+import gg.moonflower.etched.common.audio.provider.LegacyTrackMetadataRequests;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.HttpUtil;
@@ -92,13 +93,7 @@ public final class SoundSourceManager {
      */
     public static CompletableFuture<TrackData[]> resolveTracks(String url, @Nullable DownloadProgressListener listener, Proxy proxy) throws IOException {
         SoundDownloadSource source = SOURCES.stream().filter(s -> s.isValidUrl(url)).findFirst().orElseThrow(() -> new IOException("Unknown source for: " + url));
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return source.resolveTracks(url, listener, proxy).toArray(TrackData[]::new);
-            } catch (Exception e) {
-                throw new CompletionException(e);
-            }
-        }, HttpUtil.DOWNLOAD_EXECUTOR);
+        return LegacyTrackMetadataRequests.submit(() -> source.resolveTracks(url, listener, proxy));
     }
 
     /**
