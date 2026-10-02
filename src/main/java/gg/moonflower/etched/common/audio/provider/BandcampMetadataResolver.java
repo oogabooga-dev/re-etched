@@ -23,6 +23,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
 
 /** Request-owned metadata for etching; no opened responses or futures are shared between menus. */
 public final class BandcampMetadataResolver {
@@ -57,20 +59,8 @@ public final class BandcampMetadataResolver {
     }
 
     public List<TrackData> resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
-        cancellation.throwIfCancelled();
-        requirePage(input);
-        requireLength(input.toString());
-        List<TrackData> tracks;
-        try (AudioHttpResponse response = this.transport.execute(
-                AudioHttpRequest.resource(input).withMaxRedirects(this.limits.maxRedirects()), cancellation)) {
-            requirePage(response.uri());
-            if (response.statusCode() != 200) {
-                throw failure(RadioFailure.Code.HTTP_STATUS,
-                        "Bandcamp returned HTTP " + response.statusCode(), null);
-            }
-            JsonObject page = BandcampPageReader.read(response, cancellation, this.limits.maxBodyBytes());
-            tracks = this.parseTracks(input, response.uri(), page, cancellation);
-        }
+        Page page = this.fetchPage(input, cancellation);
+        List<TrackData> tracks = this.parseTracks(input, page.uri(), page.data(), cancellation);
         // Release the page before potentially slow DNS checks on stored service-page destinations.
         for (TrackData track : tracks) {
             cancellation.throwIfCancelled();
@@ -78,6 +68,57 @@ public final class BandcampMetadataResolver {
         }
         cancellation.throwIfCancelled();
         return List.copyOf(tracks);
+    }
+
+    public Optional<URI> resolveAlbumCover(URI input, AudioCancellation cancellation) throws IOException {
+        Page page = this.fetchPage(input, cancellation);
+        URI cover;
+        try {
+            JsonObject current = page.data().getAsJsonObject("current");
+            String type = field(current, "type");
+            if (!type.equals("track") && !type.equals("album")) {
+                throw new JsonParseException("current.type is not track or album");
+            }
+            if (!current.has("art_id") || current.get("art_id").isJsonNull()) {
+                cancellation.throwIfCancelled();
+                return Optional.empty();
+            }
+            if (!current.get("art_id").isJsonPrimitive()) {
+                throw new JsonParseException("art_id is not an integer");
+            }
+            String id = current.get("art_id").getAsString();
+            if (!id.matches("[1-9][0-9]{0,18}") || Long.parseLong(id) <= 0) {
+                throw new JsonParseException("art_id is not a positive integer");
+            }
+            cover = URI.create("https://f4.bcbits.com/img/a" + id + "_1.jpg");
+            requireLength(cover.toString());
+        } catch (CancellationException exception) {
+            throw exception;
+        } catch (JsonParseException | IllegalStateException | IllegalArgumentException
+                 | NullPointerException | ClassCastException exception) {
+            throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, "Bandcamp page contains invalid cover metadata", exception);
+        }
+        this.networkPolicy.check(cover, cancellation);
+        cancellation.throwIfCancelled();
+        return Optional.of(cover);
+    }
+
+    private Page fetchPage(URI input, AudioCancellation cancellation) throws IOException {
+        cancellation.throwIfCancelled();
+        requirePage(input);
+        requireLength(input.toString());
+        Page page;
+        try (AudioHttpResponse response = this.transport.execute(
+                AudioHttpRequest.resource(input).withMaxRedirects(this.limits.maxRedirects()), cancellation)) {
+            requirePage(response.uri());
+            if (response.statusCode() != 200) {
+                throw failure(RadioFailure.Code.HTTP_STATUS,
+                        "Bandcamp returned HTTP " + response.statusCode(), null);
+            }
+            page = new Page(response.uri(), BandcampPageReader.read(response, cancellation, this.limits.maxBodyBytes()));
+        }
+        cancellation.throwIfCancelled();
+        return page;
     }
 
     private List<TrackData> parseTracks(URI input, URI pageUri, JsonObject page, AudioCancellation cancellation)
@@ -114,6 +155,8 @@ public final class BandcampMetadataResolver {
                 tracks.add(new TrackData(trackUri.toString(), trackArtist, Component.literal(field(entry, "title"))));
             }
             return tracks;
+        } catch (CancellationException exception) {
+            throw exception;
         } catch (JsonParseException | IllegalStateException | IllegalArgumentException
                  | NullPointerException | ClassCastException exception) {
             throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, "Bandcamp page contains invalid metadata", exception);
@@ -145,5 +188,8 @@ public final class BandcampMetadataResolver {
 
     private static RadioTransportException failure(RadioFailure.Code code, String message, Throwable cause) {
         return new RadioTransportException(code, false, message, cause);
+    }
+
+    private record Page(URI uri, JsonObject data) {
     }
 }

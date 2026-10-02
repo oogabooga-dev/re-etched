@@ -24,6 +24,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Server-safe metadata with request-owned client-ID discovery, responses, and resolution budget. */
 public final class SoundCloudMetadataResolver {
@@ -70,13 +71,7 @@ public final class SoundCloudMetadataResolver {
     }
 
     public List<TrackData> resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
-        cancellation.throwIfCancelled();
-        requirePage(input);
-        requireLength(input.toString());
-        // The API resolves the submitted page indirectly, so validate it before contacting any service.
-        this.networkPolicy.check(input, cancellation);
-        Operation operation = new Operation(cancellation);
-        JsonObject page = this.resolvePage(input, operation);
+        JsonObject page = this.fetchPage(input, cancellation);
         List<TrackData> tracks = this.parseTracks(input, page, cancellation);
         for (TrackData track : tracks) {
             cancellation.throwIfCancelled();
@@ -84,6 +79,43 @@ public final class SoundCloudMetadataResolver {
         }
         cancellation.throwIfCancelled();
         return List.copyOf(tracks);
+    }
+
+    public Optional<URI> resolveAlbumCover(URI input, AudioCancellation cancellation) throws IOException {
+        JsonObject page = this.fetchPage(input, cancellation);
+        String kind = field(page, "kind");
+        if (kind.equals("track")) {
+            if (!requiredBoolean(page, "streamable")) {
+                throw invalid("SoundCloud track is not streamable");
+            }
+        } else if (!kind.equals("playlist") || !requiredBoolean(page, "is_album")) {
+            throw invalid("SoundCloud URL is not a track or album");
+        }
+        if (!page.has("artwork_url") || page.get("artwork_url").isJsonNull()) {
+            cancellation.throwIfCancelled();
+            return Optional.empty();
+        }
+        URI cover;
+        try {
+            cover = SoundCloudPageReader.requireHttpUri(URI.create(field(page, "artwork_url")), "SoundCloud cover URL");
+        } catch (IllegalArgumentException exception) {
+            throw invalid("SoundCloud cover URL is invalid");
+        }
+        this.networkPolicy.check(cover, cancellation);
+        cancellation.throwIfCancelled();
+        return Optional.of(cover);
+    }
+
+    private JsonObject fetchPage(URI input, AudioCancellation cancellation) throws IOException {
+        cancellation.throwIfCancelled();
+        requirePage(input);
+        requireLength(input.toString());
+        // The API resolves the submitted page indirectly, so validate it before contacting any service.
+        this.networkPolicy.check(input, cancellation);
+        Operation operation = new Operation(cancellation);
+        JsonObject page = this.resolvePage(input, operation);
+        cancellation.throwIfCancelled();
+        return page;
     }
 
     private JsonObject resolvePage(URI input, Operation operation) throws IOException {

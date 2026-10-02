@@ -39,6 +39,44 @@ public final class AudioTransportGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
+    public static void providerCoverMetadataIsServerSafeAndDoesNotOpenImages(GameTestHelper helper) throws IOException {
+        List<FixtureConnection> connections = new ArrayList<>();
+        Proxy proxy = helper.getLevel().getServer().getProxy();
+        var transport = new RadioHttpTransportImpl(proxy, destination -> {}, Duration.ofSeconds(1),
+                Duration.ofSeconds(1), 5, (destination, configuredProxy) -> {
+            helper.assertTrue(configuredProxy == proxy, "Cover metadata lost the configured proxy");
+            String body;
+            if (destination.getHost().equals("artist.bandcamp.com")) {
+                body = "<div data-tralbum='{\"current\":{\"type\":\"album\",\"art_id\":123}}'></div>";
+            } else if (destination.getHost().equals("soundcloud.com") && destination.getPath().equals("/")) {
+                body = "<script src='/app.js'></script>";
+            } else if (destination.getHost().equals("soundcloud.com") && destination.getPath().equals("/app.js")) {
+                body = "client_id:'cover-client'";
+            } else {
+                helper.assertTrue(destination.getHost().equals("api-v2.soundcloud.com")
+                        && destination.getPath().equals("/resolve"), "Cover metadata tried to download an image");
+                body = "{\"kind\":\"track\",\"streamable\":true,\"artwork_url\":\"https://images.example/cover.jpg\"}";
+            }
+            var connection = new FixtureConnection(destination, body.getBytes(StandardCharsets.UTF_8));
+            connections.add(connection);
+            return connection;
+        });
+        AudioNetworkPolicy policy = destination -> helper.assertTrue(
+                connections.stream().allMatch(connection -> connection.disconnected),
+                "Provider page remained open during cover destination validation");
+        URI bandcamp = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveAlbumCover(URI.create("https://artist.bandcamp.com/album/test"), new AudioCancellation()).orElseThrow();
+        URI soundcloud = new SoundCloudMetadataResolver(transport, policy,
+                URI.create("https://soundcloud.com/"), URI.create("https://api-v2.soundcloud.com/resolve"),
+                SoundCloudMetadataResolver.Limits.DEFAULT)
+                .resolveAlbumCover(URI.create("https://soundcloud.com/artist/track"), new AudioCancellation()).orElseThrow();
+        helper.assertTrue(bandcamp.toString().equals("https://f4.bcbits.com/img/a123_1.jpg"), "Bandcamp lost the cover ID");
+        helper.assertTrue(soundcloud.toString().equals("https://images.example/cover.jpg"), "SoundCloud lost the cover URL");
+        helper.assertTrue(connections.size() == 4, "Cover metadata unexpectedly opened an image or repeated discovery");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
     public static void soundCloudDiscoveryAndMetadataWorkOnTheServer(GameTestHelper helper) throws IOException {
         URI input = URI.create("https://soundcloud.com/artist/album");
         String json = """

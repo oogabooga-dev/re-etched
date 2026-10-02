@@ -1,5 +1,7 @@
 package gg.moonflower.etched.common.audio.net;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.net.Authenticator;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
@@ -71,6 +74,57 @@ class BandcampMetadataResolverTest {
         assertEquals("GET", page.getRequestMethod());
         assertFalse(page.getInstanceFollowRedirects());
         assertNull(page.getRequestProperty("Icy-MetaData"));
+    }
+
+    @Test
+    void resolvesCoverIdWithoutRequiringTrackMetadataAndClosesThePageBeforePolicyChecks() throws Exception {
+        FixtureConnection page = page("{\"current\":{\"type\":\"album\",\"art_id\":123456}}");
+        URI cover = URI.create("https://f4.bcbits.com/img/a123456_1.jpg");
+        AudioNetworkPolicy policy = uri -> {
+            assertEquals(cover, uri);
+            assertTrue(page.disconnected);
+            assertTrue(page.bodyClosed);
+        };
+        assertEquals(cover, resolver(page, policy, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveAlbumCover(ALBUM, new AudioCancellation()).orElseThrow());
+    }
+
+    @Test
+    void missingCoverIsEmptyButMalformedIdsAndBlockedCoverDestinationsFail() throws Exception {
+        for (String value : List.of("", ",\"art_id\":null")) {
+            FixtureConnection page = page("{\"current\":{\"type\":\"track\"" + value + "}}");
+            assertTrue(resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                    .resolveAlbumCover(ALBUM, new AudioCancellation()).isEmpty());
+            assertTrue(page.disconnected);
+        }
+        for (String value : List.of("-1", "0", "1.5", "true", "{}", "\"../secret\"", "9223372036854775808")) {
+            FixtureConnection page = page("{\"current\":{\"type\":\"track\",\"art_id\":" + value + "}}");
+            assertThrows(IOException.class, () -> resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                    .resolveAlbumCover(ALBUM, new AudioCancellation()));
+            assertTrue(page.disconnected);
+            assertTrue(page.bodyClosed);
+        }
+        FixtureConnection blocked = page("{\"current\":{\"type\":\"track\",\"art_id\":123}}");
+        RadioTransportException error = assertThrows(RadioTransportException.class,
+                () -> resolver(blocked, uri -> {
+                    throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false, "blocked", null);
+                }, BandcampMetadataResolver.Limits.DEFAULT).resolveAlbumCover(ALBUM, new AudioCancellation()));
+        assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, error.code());
+        assertTrue(blocked.disconnected);
+    }
+
+    @Test
+    void projectionCancellationIsNotReclassifiedAsMalformedMetadata() throws Exception {
+        var resolver = resolver(page(ALBUM_JSON), ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT);
+        AudioCancellation cancellation = new AudioCancellation();
+        cancellation.cancel();
+        // Target the projection boundary: public entrypoints reject an already-cancelled request before fetching.
+        var projection = BandcampMetadataResolver.class.getDeclaredMethod("parseTracks",
+                URI.class, URI.class, JsonObject.class, AudioCancellation.class);
+        projection.setAccessible(true);
+        InvocationTargetException failure = assertThrows(InvocationTargetException.class,
+                () -> projection.invoke(resolver, ALBUM, ALBUM, JsonParser.parseString(ALBUM_JSON).getAsJsonObject(), cancellation));
+        assertInstanceOf(CancellationException.class, failure.getCause());
     }
 
     @Test

@@ -68,6 +68,53 @@ class SoundCloudMetadataResolverTest {
     }
 
     @Test
+    void resolvesCoverWithoutTrackTitlesOrArtistAndPreservesMissingArtwork() throws Exception {
+        for (String kind : List.of("\"kind\":\"track\",\"streamable\":true",
+                "\"kind\":\"playlist\",\"is_album\":true")) {
+            for (String value : List.of("", ",\"artwork_url\":null",
+                    ",\"artwork_url\":\"https://images.example/cover.jpg\"")) {
+                try (Fixture fixture = new Fixture()) {
+                    fixture.discovery();
+                    fixture.server.handle("/resolve", exchange -> respond(exchange, 200, "{" + kind + value + "}"));
+                    var cover = fixture.resolver().resolveAlbumCover(TRACK, new AudioCancellation());
+                    assertEquals(!value.contains("images.example"), cover.isEmpty());
+                    if (cover.isPresent()) {
+                        assertEquals(URI.create("https://images.example/cover.jpg"), cover.get());
+                        assertTrue(fixture.checkedPages.contains(cover.get()));
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void rejectsUnsafeCoverUrlsAndBlockedArtworkInsteadOfReturningThem() throws Exception {
+        for (String value : List.of("file:///etc/passwd", "https://user@images.example/cover", "../relative", "bad url")) {
+            try (Fixture fixture = new Fixture()) {
+                fixture.discovery();
+                fixture.server.handle("/resolve", exchange -> respond(exchange, 200,
+                        "{\"kind\":\"track\",\"streamable\":true,\"artwork_url\":\"" + value + "\"}"));
+                assertThrows(IOException.class, () -> fixture.resolver().resolveAlbumCover(TRACK, new AudioCancellation()));
+            }
+        }
+        try (Fixture fixture = new Fixture()) {
+            fixture.discovery();
+            fixture.server.handle("/resolve", exchange -> respond(exchange, 200,
+                    "{\"kind\":\"track\",\"streamable\":true,\"artwork_url\":\"http://127.0.0.1/private\"}"));
+            AudioNetworkPolicy policy = uri -> {
+                if (uri.getPath().equals("/private")) {
+                    throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false, "blocked", null);
+                }
+            };
+            var resolver = new SoundCloudMetadataResolver(new RadioHttpTransportImpl(Proxy.NO_PROXY, ALLOW_ALL,
+                    Duration.ofSeconds(2), Duration.ofSeconds(2), 5), policy, fixture.server.uri("/"),
+                    fixture.server.uri("/resolve"), SoundCloudMetadataResolver.Limits.DEFAULT);
+            assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
+                    () -> resolver.resolveAlbumCover(TRACK, new AudioCancellation())).code());
+        }
+    }
+
+    @Test
     void refreshesClientIdOnceAndDoesNotShareDiscoveryAcrossRequests() throws Exception {
         AtomicInteger scripts = new AtomicInteger();
         AtomicInteger api = new AtomicInteger();

@@ -9,6 +9,7 @@ import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
 
 import java.util.Objects;
+import java.net.Proxy;
 
 /** Shared cancellation, transport, policy, limits, and budget for one resolution operation. */
 public record AudioResolveContext(AudioHttpTransport transport, AudioNetworkPolicy networkPolicy,
@@ -29,10 +30,14 @@ public record AudioResolveContext(AudioHttpTransport transport, AudioNetworkPoli
     }
 
     public static AudioResolveContext createDefault(AudioCancellation cancellation) {
+        return createDefault(Minecraft.getInstance().getProxy(), cancellation);
+    }
+
+    public static AudioResolveContext createDefault(Proxy proxy, AudioCancellation cancellation) {
         AudioNetworkPolicy networkPolicy = new DefaultRadioNetworkPolicy(
                 Etched.CLIENT_CONFIG.allowPrivateNetworkStations::get);
         AudioHttpTransport transport = new RadioHttpTransportImpl(
-                Minecraft.getInstance().getProxy(), networkPolicy,
+                proxy, networkPolicy,
                 RadioHttpTransportImpl.DEFAULT_CONNECT_TIMEOUT,
                 RadioHttpTransportImpl.DEFAULT_READ_TIMEOUT,
                 RadioHttpTransportImpl.DEFAULT_MAX_REDIRECTS);

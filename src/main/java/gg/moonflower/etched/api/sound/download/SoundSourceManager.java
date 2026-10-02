@@ -109,6 +109,9 @@ public final class SoundSourceManager {
      * @return The album cover found or nothing
      */
     public static CompletableFuture<AlbumCover> resolveAlbumCover(String url, @Nullable DownloadProgressListener listener, Proxy proxy, ResourceManager resourceManager) {
+        if (AlbumCoverCache.supportsProvider(url)) {
+            return AlbumCoverCache.requestProviderResource(url, listener, proxy);
+        }
         return CompletableFuture.supplyAsync(() -> SOURCES.stream().filter(s -> s.isValidUrl(url)).findFirst().flatMap(source -> {
             try {
                 return source.resolveAlbumCover(url, listener, proxy, resourceManager);
