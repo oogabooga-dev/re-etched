@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.cache;
 
 import com.sun.net.httpserver.HttpServer;
+import gg.moonflower.etched.api.util.AsyncInputStream;
 import gg.moonflower.etched.api.util.StreamingInputStream;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
@@ -9,6 +10,7 @@ import gg.moonflower.etched.common.audio.net.TestAudioHttpResponse;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
@@ -24,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -37,6 +40,41 @@ class LegacyAudioLoaderTest {
 
     @TempDir
     Path temporary;
+
+    @Test
+    @Timeout(10)
+    void asyncShortEofClosesItsOwnedResponseAndStillDeliversAllBytes() throws Exception {
+        byte[] bytes = {1, 2, 3};
+        AtomicInteger closes = new AtomicInteger();
+        AudioCancellation cancellation = new AudioCancellation();
+        URI uri = URI.create("https://audio.example/short-async");
+        Function<AudioCancellation, AudioResolveContext> contexts = token -> new AudioResolveContext(
+                (request, scope) -> TestAudioHttpResponse.owned(uri, 200, Map.of(), new ByteArrayInputStream(bytes) {
+                    @Override public void close() { closes.incrementAndGet(); }
+                }, scope), ignored -> {}, token, AudioResolveLimits.DEFAULT);
+        var worker = Executors.newSingleThreadExecutor();
+        var finished = new CompletableFuture<Void>();
+        try {
+            try (var stream = new AsyncInputStream(() -> LegacyAudioLoader.stream(uri, cancellation, contexts),
+                    8192, 8, task -> worker.execute(() -> {
+                        try {
+                            task.run();
+                            finished.complete(null);
+                        } catch (Throwable failure) {
+                            finished.completeExceptionally(failure);
+                        }
+                    }))) {
+                finished.get(2, TimeUnit.SECONDS);
+                assertTrue(cancellation.isCancelled());
+                assertEquals(1, closes.get());
+                assertArrayEquals(bytes, stream.readAllBytes());
+            }
+            assertEquals(1, closes.get());
+        } finally {
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(2, TimeUnit.SECONDS));
+        }
+    }
 
     @Test
     void multipartEofCloseAndLateOpenReleaseTheOwnedTransportResponses() throws Exception {
