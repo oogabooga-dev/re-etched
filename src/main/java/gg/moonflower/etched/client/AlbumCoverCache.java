@@ -31,12 +31,18 @@ import java.util.concurrent.TimeUnit;
 public final class AlbumCoverCache {
 
     private static final Logger LOGGER = LogManager.getLogger();
-    private static final ThreadPoolExecutor WORKERS = new ThreadPoolExecutor(2, 2,
-            0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32), task -> {
-        Thread thread = new Thread(task, "Etched cover cache");
-        thread.setDaemon(true);
-        return thread;
-    }, new ThreadPoolExecutor.AbortPolicy());
+    private static final ThreadPoolExecutor WORKERS = workers("Etched cover cache");
+    // Third-party synchronous metadata cannot be interrupted through the old API.
+    // Keep it bounded and isolated so a stalled provider cannot occupy first-party workers.
+    private static final ThreadPoolExecutor COMPATIBILITY_WORKERS = workers("Etched compatibility cover");
+
+    private static ThreadPoolExecutor workers(String name) {
+        return new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32), task -> {
+            Thread thread = new Thread(task, name);
+            thread.setDaemon(true);
+            return thread;
+        }, new ThreadPoolExecutor.AbortPolicy());
+    }
 
     private AlbumCoverCache() {
     }
@@ -61,7 +67,17 @@ public final class AlbumCoverCache {
                 token -> AudioResolveContext.createDefault(proxy, token), listener));
     }
 
+    public static CompletableFuture<AlbumCover> requestResolvedResource(CoverCacheLoader.CoverUrlResolver urls,
+                                                                       Proxy proxy) {
+        return request(cancellation -> CoverCacheLoader.openResolved(ClientMediaCache::get, urls, cancellation,
+                token -> AudioResolveContext.createDefault(proxy, token)), COMPATIBILITY_WORKERS);
+    }
+
     static CompletableFuture<AlbumCover> request(CoverOperation operation) {
+        return request(operation, WORKERS);
+    }
+
+    private static CompletableFuture<AlbumCover> request(CoverOperation operation, ThreadPoolExecutor workers) {
         AudioCancellation cancellation = new AudioCancellation();
         CompletableFuture<AlbumCover> result = new CompletableFuture<>();
         result.whenComplete((cover, failure) -> {
@@ -70,7 +86,7 @@ public final class AlbumCoverCache {
             }
         });
         try {
-            WORKERS.execute(() -> {
+            workers.execute(() -> {
                 try {
                     cancellation.throwIfCancelled();
                     Optional<BoundedMediaCache.Lease> resolved = operation.open(cancellation);

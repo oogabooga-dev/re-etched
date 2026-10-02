@@ -8,12 +8,37 @@ import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /** Checks destinations even on cache hits; misses use the shared proxy-aware secure transport. */
 public final class CoverCacheLoader {
 
     private CoverCacheLoader() {
+    }
+
+    /** A legacy resolver may not observe cancellation; never advance to image I/O after it returns late. */
+    public static Optional<BoundedMediaCache.Lease> openResolved(Supplier<BoundedMediaCache> cache,
+                                                                CoverUrlResolver urls,
+                                                                AudioCancellation cancellation,
+                                                                Function<AudioCancellation, AudioResolveContext> contexts)
+            throws IOException {
+        Objects.requireNonNull(cache, "cache");
+        Objects.requireNonNull(urls, "urls");
+        Objects.requireNonNull(contexts, "contexts");
+        cancellation.throwIfCancelled();
+        Optional<URI> resolved = urls.resolve(cancellation);
+        cancellation.throwIfCancelled();
+        if (resolved.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(open(cache.get(), resolved.get(), cancellation, contexts));
+    }
+
+    @FunctionalInterface
+    public interface CoverUrlResolver {
+        Optional<URI> resolve(AudioCancellation cancellation) throws IOException;
     }
 
     public static BoundedMediaCache.Lease open(BoundedMediaCache cache, URI uri,

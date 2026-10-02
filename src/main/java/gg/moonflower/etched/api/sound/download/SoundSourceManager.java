@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.Proxy;
+import java.net.URI;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -112,14 +113,15 @@ public final class SoundSourceManager {
         if (AlbumCoverCache.supportsProvider(url)) {
             return AlbumCoverCache.requestProviderResource(url, listener, proxy);
         }
-        return CompletableFuture.supplyAsync(() -> SOURCES.stream().filter(s -> s.isValidUrl(url)).findFirst().flatMap(source -> {
+        return AlbumCoverCache.requestResolvedResource(cancellation -> SOURCES.stream()
+                .filter(s -> s.isValidUrl(url)).findFirst().flatMap(source -> {
             try {
-                return source.resolveAlbumCover(url, listener, proxy, resourceManager);
+                return source.resolveAlbumCover(url, listener, proxy, resourceManager).map(URI::create);
             } catch (Exception e) {
                 LOGGER.error("Failed to connect to " + source.getApiName() + " API", e);
                 return Optional.empty();
             }
-        }), HttpUtil.DOWNLOAD_EXECUTOR).thenCompose(coverUrl -> coverUrl.map(AlbumCoverCache::requestResource).orElseGet(() -> CompletableFuture.completedFuture(AlbumCover.EMPTY)));
+        }), proxy);
     }
 
     /**
