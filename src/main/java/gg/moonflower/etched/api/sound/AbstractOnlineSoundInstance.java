@@ -4,7 +4,6 @@ import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.api.sound.stream.MonoWrapper;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
-import gg.moonflower.etched.client.sound.EmptyAudioStream;
 import gg.moonflower.etched.client.sound.SoundCache;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.Util;
@@ -82,15 +81,12 @@ public class AbstractOnlineSoundInstance extends AbstractSoundInstance {
                 return future;
             }
 
-            return loader.getStream(weighedSoundEvents.getSound(this.random).getPath(), repeatInstantly).thenApply(MonoWrapper::new).handleAsync((stream, throwable) -> {
-                if (throwable != null) {
-                    LOGGER.error("Failed to load audio from client: {}", onlineSound.getURL(), throwable);
-                    onlineSound.getProgressListener().onFail();
-                    return EmptyAudioStream.INSTANCE;
-                }
-                onlineSound.getProgressListener().onSuccess();
-                return stream;
-            }, Util.backgroundExecutor());
+            return LegacyLocalAudioStreamRequest.start(
+                    loader.getStream(weighedSoundEvents.getSound(this.random).getPath(), repeatInstantly),
+                    Util.backgroundExecutor(), () -> onlineSound.getProgressListener().onSuccess(), throwable -> {
+                        LOGGER.error("Failed to load audio from client: {}", onlineSound.getURL(), throwable);
+                        onlineSound.getProgressListener().onFail();
+                    });
         }
 
         return LegacyAudioStreamRequest.start(cancelled -> SoundCache.getAudioStream(onlineSound.getURL(),
