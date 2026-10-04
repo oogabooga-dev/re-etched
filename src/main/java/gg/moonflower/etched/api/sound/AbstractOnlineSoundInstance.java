@@ -23,7 +23,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.FileNotFoundException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 /**
  * @author Ocelot
@@ -94,21 +93,15 @@ public class AbstractOnlineSoundInstance extends AbstractSoundInstance {
             }, Util.backgroundExecutor());
         }
 
-        return SoundCache.getAudioStream(onlineSound.getURL(), onlineSound.getProgressListener(), onlineSound.getAudioFileType())
-                .thenCompose(AudioSource::openStream).thenApplyAsync(stream -> LegacyAudioDecoder.decode(
-                        stream, sound, repeatInstantly, () -> onlineSound.getProgressListener().progressStartLoading()),
-                        Util.backgroundExecutor()).handleAsync((stream, throwable) -> {
-            if (throwable != null) {
-                if (throwable instanceof CompletionException e) {
-                    throwable = e.getCause();
-                }
-
-                LOGGER.error("Failed to load audio from url: {}", onlineSound.getURL(), throwable);
-                onlineSound.getProgressListener().onFail();
-                return EmptyAudioStream.INSTANCE;
-            }
-            return LegacyAudioDecoder.publish(stream, () -> onlineSound.getProgressListener().onSuccess());
-        }, Util.backgroundExecutor());
+        return LegacyAudioStreamRequest.start(cancelled -> SoundCache.getAudioStream(onlineSound.getURL(),
+                        new LegacyDownloadProgress(onlineSound.getProgressListener(), cancelled),
+                        onlineSound.getAudioFileType()), Util.backgroundExecutor(),
+                stream -> LegacyAudioDecoder.decode(stream, sound, repeatInstantly,
+                        () -> onlineSound.getProgressListener().progressStartLoading()),
+                () -> onlineSound.getProgressListener().onSuccess(), throwable -> {
+                    LOGGER.error("Failed to load audio from url: {}", onlineSound.getURL(), throwable);
+                    onlineSound.getProgressListener().onFail();
+                });
     }
 
     public static class OnlineSound extends Sound implements SoundStreamModifier {

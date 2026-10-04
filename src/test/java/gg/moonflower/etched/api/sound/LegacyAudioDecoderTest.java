@@ -24,6 +24,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -160,14 +161,15 @@ class LegacyAudioDecoderTest {
     void successCallbackFailureClosesPublishedDecoderAndInput() {
         var input = new TrackedInput(new byte[]{42});
         AtomicReference<FakeAudio> decoded = new AtomicReference<>();
-        var stream = LegacyAudioDecoder.decode(input, () -> {}, audio -> audio, List.of(source -> {
-            var audio = new FakeAudio(source);
-            decoded.set(audio);
-            return audio;
-        }));
         IllegalStateException failure = new IllegalStateException("fixture success listener failure");
-        assertSame(failure, assertThrows(CompletionException.class,
-                () -> LegacyAudioDecoder.publish(stream, () -> { throw failure; })).getCause());
+        var pending = LegacyAudioStreamRequest.start(CompletableFuture.completedFuture(
+                        () -> CompletableFuture.completedFuture(input)), Runnable::run,
+                owned -> LegacyAudioDecoder.decode(owned, () -> {}, audio -> audio, List.of(source -> {
+                    var audio = new FakeAudio(source);
+                    decoded.set(audio);
+                    return audio;
+                })), () -> { throw failure; }, error -> { throw new AssertionError("Success failure invoked onFail"); });
+        assertSame(failure, assertThrows(CompletionException.class, pending::join).getCause());
         assertEquals(1, decoded.get().closes.get());
         assertEquals(1, input.closes.get());
     }
@@ -175,9 +177,12 @@ class LegacyAudioDecoderTest {
     @Test
     void successfulCallbackLeavesStreamOwnedByConsumer() throws Exception {
         var input = new TrackedInput(new byte[]{42});
-        var stream = LegacyAudioDecoder.decode(input, () -> {}, audio -> audio, List.of(FakeAudio::new));
         AtomicInteger successes = new AtomicInteger();
-        assertSame(stream, LegacyAudioDecoder.publish(stream, successes::incrementAndGet));
+        var pending = LegacyAudioStreamRequest.start(CompletableFuture.completedFuture(
+                        () -> CompletableFuture.completedFuture(input)), Runnable::run,
+                owned -> LegacyAudioDecoder.decode(owned, () -> {}, audio -> audio, List.of(FakeAudio::new)),
+                successes::incrementAndGet, error -> { throw new AssertionError(error); });
+        var stream = pending.join();
         assertEquals(1, successes.get());
         assertEquals(0, input.closes.get());
         stream.close();

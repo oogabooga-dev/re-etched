@@ -58,7 +58,7 @@ final class LegacyAudioDecoder {
 
     static AudioStream decode(InputStream input, Runnable loading, UnaryOperator<AudioStream> modifier,
                               List<Decoder> codecs) {
-        InputStream buffered = new BufferedInputStream(new CloseOnceInput(input));
+        InputStream buffered = new BufferedInputStream(ownInput(input));
         AudioStream decoded = null;
         try {
             loading.run();
@@ -98,14 +98,8 @@ final class LegacyAudioDecoder {
         throw failure;
     }
 
-    static AudioStream publish(AudioStream stream, Runnable success) {
-        try {
-            success.run();
-            return stream;
-        } catch (Throwable failure) {
-            closeAfterFailure(stream, failure);
-            throw completion(failure);
-        }
+    static InputStream ownInput(InputStream input) {
+        return new CloseOnceInput(input);
     }
 
     private static CompletionException completion(Throwable failure) {
