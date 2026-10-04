@@ -78,37 +78,60 @@ public final class AlbumCoverCache {
     }
 
     private static CompletableFuture<AlbumCover> request(CoverOperation operation, ThreadPoolExecutor workers) {
+        return request(operation, workers, cover -> AlbumImageProcessor.applyOwnedOverlay(
+                NativeImage.read(cover.body()), AlbumCoverItemRenderer::copyOverlayImage));
+    }
+
+    static CompletableFuture<AlbumCover> request(CoverOperation operation, CoverImageFactory images) {
+        return request(operation, WORKERS, images);
+    }
+
+    static CompletableFuture<AlbumCover> request(CoverOperation operation, ThreadPoolExecutor workers,
+                                                CoverImageFactory images) {
         AudioCancellation cancellation = new AudioCancellation();
         CompletableFuture<AlbumCover> result = new CompletableFuture<>();
-        result.whenComplete((cover, failure) -> {
-            if (result.isCancelled()) {
-                cancellation.cancel();
-            }
-        });
-        try {
-            workers.execute(() -> {
-                try {
+        Runnable task = () -> {
+            try {
+                cancellation.throwIfCancelled();
+                Optional<BoundedMediaCache.Lease> resolved = operation.open(cancellation);
+                if (resolved.isEmpty()) {
+                    result.complete(AlbumCover.EMPTY);
+                    return;
+                }
+                try (BoundedMediaCache.Lease cover = resolved.get()) {
                     cancellation.throwIfCancelled();
-                    Optional<BoundedMediaCache.Lease> resolved = operation.open(cancellation);
-                    if (resolved.isEmpty()) {
-                        result.complete(AlbumCover.EMPTY);
-                        return;
-                    }
-                    try (BoundedMediaCache.Lease cover = resolved.get()) {
-                        cancellation.throwIfCancelled();
-                        NativeImage image = AlbumImageProcessor.apply(
-                                NativeImage.read(cover.body()), AlbumCoverItemRenderer.getOverlayImage());
-                        if (!result.complete(AlbumCover.of(image))) {
+                    NativeImage image = java.util.Objects.requireNonNull(images.create(cover), "processed cover image");
+                    boolean delivered = false;
+                    try {
+                        delivered = result.complete(AlbumCover.of(image));
+                    } finally {
+                        if (!delivered) {
                             image.close();
                         }
                     }
-                } catch (Exception exception) {
-                    if (!cancellation.isCancelled()) {
-                        LOGGER.warn("Could not load album cover", exception);
-                    }
+                }
+            } catch (Throwable failure) {
+                if (!cancellation.isCancelled()) {
+                    LOGGER.warn("Could not load album cover", failure);
+                }
+                if (failure instanceof Error) {
+                    result.completeExceptionally(failure);
+                } else {
                     result.complete(AlbumCover.EMPTY);
                 }
-            });
+            }
+        };
+        result.whenComplete((cover, failure) -> {
+            if (result.isCancelled()) {
+                cancellation.cancel();
+                workers.remove(task);
+            }
+        });
+        try {
+            workers.execute(task);
+            if (result.isCancelled()) {
+                workers.remove(task);
+            }
         } catch (RejectedExecutionException exception) {
             result.complete(AlbumCover.EMPTY);
         }
@@ -118,6 +141,11 @@ public final class AlbumCoverCache {
     @FunctionalInterface
     interface CoverOperation {
         Optional<BoundedMediaCache.Lease> open(AudioCancellation cancellation) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface CoverImageFactory {
+        NativeImage create(BoundedMediaCache.Lease cover) throws IOException;
     }
 
 }

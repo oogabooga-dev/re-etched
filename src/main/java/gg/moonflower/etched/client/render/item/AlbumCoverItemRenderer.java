@@ -62,7 +62,7 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
     private static final BlockModel MODEL = BlockModel.fromString("{\"gui_light\":\"front\",\"textures\":{\"layer0\":\"texture\"},\"display\":{\"ground\":{\"rotation\":[0,0,0],\"translation\":[0,2,0],\"scale\":[0.5,0.5,0.5]},\"head\":{\"rotation\":[0,180,0],\"translation\":[0,13,7],\"scale\":[1,1,1]},\"thirdperson_righthand\":{\"rotation\":[0,0,0],\"translation\":[0,3,1],\"scale\":[0.55,0.55,0.55]},\"firstperson_righthand\":{\"rotation\":[0,-90,25],\"translation\":[1.13,3.2,1.13],\"scale\":[0.68,0.68,0.68]},\"fixed\":{\"rotation\":[0,180,0],\"scale\":[1,1,1]}}}");
 
     private final Map<CompoundTag, CompletableFuture<ModelData>> covers;
-    private CoverData data;
+    private volatile CoverData data;
 
     static {
         MinecraftForge.EVENT_BUS.<ClientPlayerNetworkEvent.LoggingOut>addListener(event -> INSTANCE.close());
@@ -82,6 +82,12 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
 
     public static NativeImage getOverlayImage() {
         return INSTANCE.data.overlay.getImage();
+    }
+
+    /** The caller owns this image; its pixels remain valid even if the renderer reloads. */
+    @ApiStatus.Internal
+    public static NativeImage copyOverlayImage() {
+        return INSTANCE.data.processingOverlay.copyImage();
     }
 
     private static void renderModelLists(BakedModel model, int combinedLight, int combinedOverlay, PoseStack matrixStack, VertexConsumer buffer, RenderType renderType) {
@@ -174,11 +180,18 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
     public static class CoverData {
 
         private final DynamicModelData overlay;
+        private final AlbumCoverOverlay processingOverlay;
         private final ModelData blank;
         private final ModelData defaultCover;
 
         private CoverData(NativeImage overlay) {
-            this.overlay = new DynamicModelData(overlay);
+            try {
+                this.processingOverlay = new AlbumCoverOverlay(overlay);
+                this.overlay = new DynamicModelData(overlay);
+            } catch (RuntimeException | Error failure) {
+                overlay.close();
+                throw failure;
+            }
             this.blank = new BakedModelData(BLANK_ALBUM_COVER);
             this.defaultCover = new BakedModelData(DEFAULT_ALBUM_COVER);
         }

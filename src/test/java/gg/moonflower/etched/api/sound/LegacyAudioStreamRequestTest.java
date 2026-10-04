@@ -415,6 +415,28 @@ class LegacyAudioStreamRequestTest {
     }
 
     @Test
+    void deliveredDecoderCloseRetiresProviderScopeWithoutCancellingTheCompletedResult() throws Exception {
+        var input = new TrackedInput();
+        AtomicReference<AudioCancellation> scope = new AtomicReference<>();
+        AtomicInteger retired = new AtomicInteger();
+        var result = LegacyAudioStreamRequest.startCancellable(cancellation -> {
+            scope.set(cancellation);
+            cancellation.onCancel(retired::incrementAndGet);
+            return source(input);
+        }, Runnable::run, FakeAudio::new, this.successes::incrementAndGet, error -> this.failures.incrementAndGet());
+        var delivered = result.join();
+        assertFalse(scope.get().isCancelled());
+        assertFalse(result.cancel(false));
+        assertEquals(42, delivered.read(1).get() & 0xFF);
+        delivered.close();
+        assertTrue(scope.get().isCancelled());
+        assertEquals(1, retired.get());
+        assertSame(delivered, result.join());
+        assertEquals(1, input.closes.get());
+        assertEquals(0, this.failures.get());
+    }
+
+    @Test
     void cancellationDuringBodyReadClosesAndCancelsTheOwnedTransportResponse() throws Exception {
         CountDownLatch reading = new CountDownLatch(1);
         CountDownLatch closed = new CountDownLatch(1);

@@ -8,6 +8,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.InputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -107,7 +109,14 @@ final class LegacyAudioStreamRequest {
             this.fail(new NullPointerException("opened input"));
             return;
         }
-        InputStream owned = LegacyAudioDecoder.ownInput(opened);
+        InputStream owned = LegacyAudioDecoder.ownInput(new FilterInputStream(opened) {
+            @Override
+            public void close() throws IOException {
+                // After successful handoff, SoundEngine close retires prefetched/provider work too.
+                LegacyAudioStreamRequest.this.cancellation.cancel();
+                super.close();
+            }
+        });
         synchronized (this.lifecycle) {
             if (!this.result.isDone()) {
                 this.input = owned;

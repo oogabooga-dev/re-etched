@@ -1,8 +1,11 @@
 package gg.moonflower.etched.client;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import gg.moonflower.etched.api.record.AlbumCover;
 import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.cache.CoverCacheLoader;
+import gg.moonflower.etched.client.cache.MediaValidators;
+import gg.moonflower.etched.client.render.item.ImageAlbumCover;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import gg.moonflower.etched.common.audio.AudioCancellation;
@@ -210,5 +213,74 @@ class AlbumCoverCacheTest {
                 "https://notbandcamp.com/test", "https://evilsoundcloud.com/test", "https://user@soundcloud.com/test"}) {
             assertFalse(AlbumCoverCache.supportsProvider(url));
         }
+    }
+
+    @Test
+    void cancellationDuringNativeImageCreationClosesLateResultAndReleasesCacheLease() throws Exception {
+        var cache = new BoundedMediaCache(temporary.resolve("native"));
+        CountDownLatch processing = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<NativeImage> lateImage = new AtomicReference<>();
+        var worker = new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+                new java.util.concurrent.ArrayBlockingQueue<>(2));
+        var pending = AlbumCoverCache.request(cancellation -> Optional.of(coverLease(cache, cancellation)), worker, lease -> {
+            NativeImage image = new NativeImage(1, 1, true);
+            lateImage.set(image);
+            processing.countDown();
+            try {
+                assertTrue(release.await(5, TimeUnit.SECONDS));
+            } catch (InterruptedException exception) {
+                image.close();
+                Thread.currentThread().interrupt();
+                throw new IOException(exception);
+            }
+            return image;
+        });
+        try {
+            assertTrue(processing.await(2, TimeUnit.SECONDS));
+            pending.cancel(false);
+            release.countDown();
+            worker.submit(() -> {}).get(2, TimeUnit.SECONDS);
+            assertThrows(IllegalStateException.class, () -> lateImage.get().getPixelRGBA(0, 0));
+            assertTrue(pending.isCancelled());
+        } finally {
+            release.countDown();
+            pending.cancel(false);
+            worker.shutdownNow();
+        }
+    }
+
+    @Test
+    void nativeImagePublicationTransfersOwnershipWithoutClosingConsumersImage() throws Exception {
+        var cache = new BoundedMediaCache(temporary.resolve("native-success"));
+        var pending = AlbumCoverCache.request(cancellation -> Optional.of(coverLease(cache, cancellation)),
+                lease -> new NativeImage(1, 1, true));
+        ImageAlbumCover cover = assertInstanceOf(ImageAlbumCover.class, pending.get(2, TimeUnit.SECONDS));
+        try (NativeImage image = cover.image()) {
+            assertFalse(pending.cancel(false));
+            image.setPixelRGBA(0, 0, -1);
+            assertEquals(-1, image.getPixelRGBA(0, 0));
+        }
+    }
+
+    @Test
+    void nativeImageFactoryErrorsAndProviderLinkageErrorsCompleteWaitersExceptionally() throws Exception {
+        var cache = new BoundedMediaCache(temporary.resolve("native-error"));
+        LinkageError failure = new LinkageError("fixture native image failure");
+        var pending = AlbumCoverCache.request(cancellation -> Optional.of(coverLease(cache, cancellation)),
+                lease -> { throw failure; });
+        assertSame(failure, assertThrows(java.util.concurrent.ExecutionException.class,
+                () -> pending.get(2, TimeUnit.SECONDS)).getCause());
+        var provider = AlbumCoverCache.request(cancellation -> { throw failure; });
+        assertSame(failure, assertThrows(java.util.concurrent.ExecutionException.class,
+                () -> provider.get(2, TimeUnit.SECONDS)).getCause());
+    }
+
+    private static BoundedMediaCache.Lease coverLease(BoundedMediaCache cache, AudioCancellation cancellation) throws IOException {
+        var bytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", bytes);
+        byte[] png = bytes.toByteArray();
+        return cache.acquire(BoundedMediaCache.Namespace.COVERS, "native-fixture", cancellation,
+                token -> new BoundedMediaCache.Content(new java.io.ByteArrayInputStream(png), png.length), MediaValidators::cover);
     }
 }

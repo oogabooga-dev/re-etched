@@ -1,5 +1,8 @@
 package gg.moonflower.etched.client.cache;
 
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioContentProbe;
+
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
@@ -22,19 +25,14 @@ public final class MediaValidators {
     }
 
     public static void audio(Path file) throws IOException {
-        byte[] prefix = new byte[4];
         try (InputStream input = Files.newInputStream(file,
                 StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
-            if (input.readNBytes(prefix, 0, prefix.length) < prefix.length) {
-                throw new IOException("Incomplete audio header");
+            byte[] prefix = AudioContentProbe.readPrefix(input, new AudioCancellation(),
+                    AudioContentProbe.DEFAULT_SNIFF_BYTES, AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES);
+            AudioContentProbe.Format format = AudioContentProbe.classify(prefix, AudioContentProbe.DEFAULT_MAX_ID3_PREFIX_BYTES);
+            if (format != AudioContentProbe.Format.MP3 && format != AudioContentProbe.Format.OGG) {
+                throw new UnsupportedAudioException();
             }
-        }
-        boolean ogg = prefix[0] == 'O' && prefix[1] == 'g' && prefix[2] == 'g' && prefix[3] == 'S';
-        boolean id3 = prefix[0] == 'I' && prefix[1] == 'D' && prefix[2] == '3';
-        boolean mp3 = (prefix[0] & 0xFF) == 0xFF && (prefix[1] & 0xE0) == 0xE0
-                && (prefix[1] & 0x18) != 0x08 && (prefix[1] & 0x06) != 0;
-        if (!ogg && !id3 && !mp3) {
-            throw new UnsupportedAudioException();
         }
     }
 
