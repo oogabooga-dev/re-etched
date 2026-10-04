@@ -204,4 +204,46 @@ class LegacyAudioLoaderTest {
             server.stop(0);
         }
     }
+
+    @Test
+    @Timeout(10)
+    void requestCancellationDuringFiniteCacheReadClosesResponseBeforeAnyInputIsPublished() throws Exception {
+        CountDownLatch reading = new CountDownLatch(1);
+        CountDownLatch closed = new CountDownLatch(1);
+        AtomicInteger closes = new AtomicInteger();
+        AudioCancellation cancellation = new AudioCancellation();
+        URI uri = URI.create("https://audio.example/cancelled-file");
+        Function<AudioCancellation, AudioResolveContext> contexts = token -> new AudioResolveContext(
+                (request, scope) -> TestAudioHttpResponse.owned(uri, 200, Map.of(), new InputStream() {
+                    @Override public int read() throws IOException {
+                        reading.countDown();
+                        try {
+                            assertTrue(closed.await(5, TimeUnit.SECONDS));
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new IOException(exception);
+                        }
+                        scope.throwIfCancelled();
+                        return -1;
+                    }
+                    @Override public void close() { closes.incrementAndGet(); closed.countDown(); }
+                }, scope), ignored -> {}, token, AudioResolveLimits.DEFAULT);
+        BoundedMediaCache cache = new BoundedMediaCache(temporary.resolve("cancelled"));
+        var worker = Executors.newSingleThreadExecutor();
+        var opening = CompletableFuture.runAsync(() -> assertThrows(java.util.concurrent.CancellationException.class,
+                () -> LegacyAudioLoader.file(cache, uri, cancellation, contexts, null)), worker);
+        try {
+            assertTrue(reading.await(2, TimeUnit.SECONDS));
+            cancellation.cancel();
+            opening.get(2, TimeUnit.SECONDS);
+            assertEquals(1, closes.get());
+            try (var files = Files.list(temporary.resolve("cancelled/audio"))) {
+                assertEquals(0, files.count());
+            }
+        } finally {
+            cancellation.cancel();
+            closed.countDown();
+            worker.shutdownNow();
+        }
+    }
 }

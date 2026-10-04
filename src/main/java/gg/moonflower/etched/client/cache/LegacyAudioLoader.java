@@ -29,6 +29,13 @@ public final class LegacyAudioLoader {
                                    Function<AudioCancellation, AudioResolveContext> contexts,
                                    @Nullable DownloadProgressListener listener) throws IOException {
         AudioCancellation cancellation = new AudioCancellation();
+        return file(cache, uri, cancellation, contexts, listener);
+    }
+
+    public static InputStream file(BoundedMediaCache cache, URI uri, AudioCancellation cancellation,
+                                   Function<AudioCancellation, AudioResolveContext> contexts,
+                                   @Nullable DownloadProgressListener listener) throws IOException {
+        cancellation.throwIfCancelled();
         AudioResolveContext context = contexts.apply(cancellation);
         context.networkPolicy().check(uri, cancellation);
         BoundedMediaCache.Lease lease;
@@ -42,7 +49,7 @@ public final class LegacyAudioLoader {
             }, MediaValidators::audio);
         } catch (MediaValidators.UnsupportedAudioException unsupported) {
             // WAV and other legacy file types are playable, but must not be cached as MP3/Ogg.
-            return stream(uri, new AudioCancellation(), contexts);
+            return stream(uri, cancellation, contexts);
         }
         return new FilterInputStream(lease.body()) {
             @Override

@@ -2,6 +2,7 @@ package gg.moonflower.etched.api.sound;
 
 import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
+import gg.moonflower.etched.common.audio.provider.CancellationProgressListener;
 import gg.moonflower.etched.client.sound.EmptyAudioStream;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ class LegacyDownloadProgressTest {
     void allCallbacksKeepTheirExactArgumentsAndAreSuppressedAfterCancellation() {
         var delegate = new Progress();
         var cancelled = new AtomicBoolean();
-        var listener = new LegacyDownloadProgress(delegate, cancelled::get);
+        var listener = new CancellationProgressListener(delegate, cancelled::get);
         Component request = Component.literal("fixture request");
         callbacks(listener, request);
         assertEquals(7, delegate.calls.get());
@@ -38,7 +39,7 @@ class LegacyDownloadProgressTest {
         var delegate = new Progress();
         var source = new CompletableFuture<AudioSource>();
         var result = LegacyAudioStreamRequest.start(cancelled -> {
-            var listener = new LegacyDownloadProgress(delegate, cancelled);
+            var listener = new CancellationProgressListener(delegate, cancelled);
             source.whenComplete((resolved, failure) -> {
                 if (failure != null) listener.onFail();
             });
@@ -55,9 +56,9 @@ class LegacyDownloadProgressTest {
     @Test
     void successfulHandoffDoesNotRetireDownloadCallbacksForTheDeliveredStream() throws Exception {
         var delegate = new Progress();
-        var listener = new java.util.concurrent.atomic.AtomicReference<LegacyDownloadProgress>();
+        var listener = new java.util.concurrent.atomic.AtomicReference<CancellationProgressListener>();
         var result = LegacyAudioStreamRequest.start(cancelled -> {
-            listener.set(new LegacyDownloadProgress(delegate, cancelled));
+            listener.set(new CancellationProgressListener(delegate, cancelled));
             return CompletableFuture.completedFuture(() -> CompletableFuture.completedFuture(new ByteArrayInputStream(new byte[]{42})));
         }, Runnable::run,
                 owned -> LegacyAudioDecoder.decode(owned, () -> {}, stream -> stream,
@@ -72,7 +73,7 @@ class LegacyDownloadProgressTest {
     void activeListenerExceptionsArePreservedButCancelledListenersAreNotInvoked() {
         var cancelled = new AtomicBoolean();
         IllegalStateException failure = new IllegalStateException("fixture callback failure");
-        var listener = new LegacyDownloadProgress(new Progress() {
+        var listener = new CancellationProgressListener(new Progress() {
             @Override public void onFail() { throw failure; }
         }, cancelled::get);
         assertSame(failure, assertThrows(IllegalStateException.class, listener::onFail));

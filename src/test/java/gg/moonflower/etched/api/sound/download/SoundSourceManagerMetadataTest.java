@@ -114,6 +114,28 @@ class SoundSourceManagerMetadataTest {
         assertSame(failure, assertThrows(CompletionException.class, request::join).getCause());
     }
 
+    @Test
+    void publicMetadataRejectsMalformedResultsAndSnapshotsMutableTitleTrees() throws Exception {
+        String malformed = "https://thirdparty.example/test-metadata-malformed";
+        SoundSourceManager.registerSource(new Provider(malformed) {
+            @Override public List<TrackData> resolveTracks(String url, DownloadProgressListener listener, Proxy proxy) {
+                return List.of(new TrackData("file:///tmp/music", "Artist", Component.literal("Track")));
+            }
+        });
+        var failure = SoundSourceManager.resolveTracks(malformed, null, Proxy.NO_PROXY);
+        assertInstanceOf(IOException.class, assertThrows(CompletionException.class, failure::join).getCause());
+        String input = "https://thirdparty.example/test-metadata-title-snapshot";
+        var title = Component.literal("Track").append(" original");
+        SoundSourceManager.registerSource(new Provider(input) {
+            @Override public List<TrackData> resolveTracks(String url, DownloadProgressListener listener, Proxy proxy) {
+                return List.of(new TrackData(input, "Artist", title));
+            }
+        });
+        var tracks = SoundSourceManager.resolveTracks(input, null, Proxy.NO_PROXY).get(2, TimeUnit.SECONDS);
+        title.append(" changed");
+        assertEquals("Track original", tracks[0].title().getString());
+    }
+
     private abstract static class Provider implements SoundDownloadSource {
         private final String input;
 

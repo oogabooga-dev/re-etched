@@ -2,6 +2,7 @@ package gg.moonflower.etched.api.sound;
 
 import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.client.sound.EmptyAudioStream;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import net.minecraft.client.sounds.AudioStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,6 +23,7 @@ final class LegacyAudioStreamRequest {
 
     private final Object lifecycle = new Object();
     private final CompletableFuture<AudioStream> result = new CompletableFuture<>();
+    private final AudioCancellation cancellation = new AudioCancellation();
     private final Executor executor;
     private final Function<InputStream, AudioStream> decoder;
     private final Runnable success;
@@ -36,6 +38,9 @@ final class LegacyAudioStreamRequest {
         this.success = success;
         this.failure = failure;
         this.result.whenComplete((delivered, error) -> {
+            if (this.result.isCancelled()) {
+                this.cancellation.cancel();
+            }
             Resources retired;
             synchronized (this.lifecycle) {
                 if (delivered != null && delivered == this.decoded) {
@@ -59,10 +64,16 @@ final class LegacyAudioStreamRequest {
     static CompletableFuture<AudioStream> start(Function<BooleanSupplier, CompletableFuture<AudioSource>> factory,
                                                Executor executor, Function<InputStream, AudioStream> decoder,
                                                Runnable success, Consumer<Throwable> failure) {
+        return startCancellable(token -> factory.apply(token::isCancelled), executor, decoder, success, failure);
+    }
+
+    static CompletableFuture<AudioStream> startCancellable(Function<AudioCancellation, CompletableFuture<AudioSource>> factory,
+                                                          Executor executor, Function<InputStream, AudioStream> decoder,
+                                                          Runnable success, Consumer<Throwable> failure) {
         var request = new LegacyAudioStreamRequest(executor, decoder, success, failure);
         CompletableFuture<AudioSource> source;
         try {
-            source = Objects.requireNonNull(factory.apply(request.result::isCancelled), "source future");
+            source = Objects.requireNonNull(factory.apply(request.cancellation), "source future");
         } catch (Throwable error) {
             request.fail(error);
             return request.result;

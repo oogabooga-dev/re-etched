@@ -3,6 +3,7 @@ package gg.moonflower.etched.client.sound;
 import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
@@ -40,6 +41,12 @@ public final class SoundCache {
             }
         });
         return pending;
+    }
+
+    public static CompletableFuture<AudioSource> getAudioStream(String url, @Nullable DownloadProgressListener listener,
+                                                               AudioSource.AudioFileType type, AudioCancellation cancellation) {
+        return getAudioStream(url, listener, type, (input, progress, fileType) ->
+                SoundSourceManager.getAudioSource(input, progress, Minecraft.getInstance().getProxy(), fileType, cancellation));
     }
 
     @FunctionalInterface

@@ -8,9 +8,16 @@ import gg.moonflower.etched.api.sound.source.StreamingAudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.client.AlbumCoverCache;
 import gg.moonflower.etched.common.audio.provider.LegacyTrackMetadataRequests;
+import gg.moonflower.etched.common.audio.provider.LegacyProviderResults;
+import gg.moonflower.etched.common.audio.provider.ProviderAudioSourceRequests;
+import gg.moonflower.etched.common.audio.provider.CancellationProgressListener;
+import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
+import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
+import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
+import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.util.HttpUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -22,7 +29,6 @@ import java.net.URI;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 /**
  * Manages all sources of sound obtained through sources besides direct downloads.
@@ -57,29 +63,58 @@ public final class SoundSourceManager {
      * @throws MalformedURLException If any error occurs when resolving URLs
      */
     public static CompletableFuture<AudioSource> getAudioSource(String url, @Nullable DownloadProgressListener listener, Proxy proxy, AudioSource.AudioFileType type) throws MalformedURLException {
-        Optional<SoundDownloadSource> sourceOptional = SOURCES.stream().filter(s -> s.isValidUrl(url)).findFirst();
-        CompletableFuture<List<URL>> urlFuture = sourceOptional.isPresent() ? CompletableFuture.supplyAsync(() -> {
-            SoundDownloadSource source = sourceOptional.get();
-            try {
-                return source.resolveUrl(url, listener, proxy);
-            } catch (Exception e) {
-                throw new CompletionException("Failed to connect to " + source.getApiName() + " API", e);
-            }
-        }, HttpUtil.DOWNLOAD_EXECUTOR) : CompletableFuture.completedFuture(Collections.singletonList(new URL(url)));
+        return getAudioSource(url, listener, proxy, type, new AudioCancellation());
+    }
 
-        return urlFuture.thenApplyAsync(urls -> {
-            try {
-                if (urls.isEmpty()) {
-                    throw new IOException("No audio data was found at the source!");
+    public static CompletableFuture<AudioSource> getAudioSource(String url, @Nullable DownloadProgressListener listener,
+                                                               Proxy proxy, AudioSource.AudioFileType type,
+                                                               AudioCancellation cancellation) throws MalformedURLException {
+        URI input;
+        try {
+            input = LegacyProviderResults.remote(url);
+        } catch (IOException exception) {
+            throw new MalformedURLException("Invalid audio URL");
+        }
+        DownloadProgressListener progress = listener == null ? null
+                : new CancellationProgressListener(listener, cancellation::isCancelled);
+        boolean bandcamp = BandcampPageReader.supports(input);
+        boolean soundcloud = SoundCloudPageReader.supports(input);
+        Optional<SoundDownloadSource> provider = bandcamp || soundcloud ? Optional.empty()
+                : sources().stream().filter(s -> s.isValidUrl(url)).findFirst();
+        URL direct = !bandcamp && !soundcloud && provider.isEmpty() ? new URL(url) : null;
+        return ProviderAudioSourceRequests.submit(() -> {
+            List<URL> resolved;
+            if (bandcamp || soundcloud) {
+                if (progress != null) {
+                    progress.progressStartRequest(Component.translatable("resourcepack.requesting"));
                 }
-                if (urls.size() == 1) {
-                    return new RawAudioSource(urls.get(0), listener, sourceOptional.map(s -> s.isTemporary(url)).orElse(false), type);
+                List<URI> media = bandcamp
+                        ? new BandcampMetadataResolver(proxy).resolveMediaUrls(input, cancellation)
+                        : new SoundCloudMetadataResolver(proxy).resolveMediaUrls(input, cancellation);
+                resolved = new ArrayList<>();
+                for (URI uri : media) {
+                    resolved.add(uri.toURL());
                 }
-                return new StreamingAudioSource(urls.toArray(URL[]::new), listener, sourceOptional.map(s -> s.isTemporary(url)).orElse(false), type);
-            } catch (Exception e) {
-                throw new CompletionException(e);
+                if (progress != null) {
+                    progress.progressStartRequest(SoundDownloadSource.RESOLVING_TRACKS);
+                }
+            } else if (provider.isPresent()) {
+                resolved = provider.get().resolveUrl(url, progress, proxy);
+            } else {
+                resolved = List.of(direct);
             }
-        }, HttpUtil.DOWNLOAD_EXECUTOR);
+            cancellation.throwIfCancelled();
+            List<URL> urls = LegacyProviderResults.urls(resolved);
+            boolean temporary = bandcamp || soundcloud || provider.map(s -> s.isTemporary(url)).orElse(false);
+            cancellation.throwIfCancelled();
+            return urls.size() == 1
+                    ? new RawAudioSource(urls.get(0), progress, temporary, type, proxy, cancellation)
+                    : new StreamingAudioSource(urls.toArray(URL[]::new), progress, temporary, type, proxy, cancellation);
+        }, cancellation, !bandcamp && !soundcloud && provider.isPresent());
+    }
+
+    private static synchronized List<SoundDownloadSource> sources() {
+        return List.copyOf(SOURCES);
     }
 
     /**
@@ -92,8 +127,21 @@ public final class SoundSourceManager {
      * @throws IOException If any error occurs when connecting to the sources
      */
     public static CompletableFuture<TrackData[]> resolveTracks(String url, @Nullable DownloadProgressListener listener, Proxy proxy) throws IOException {
-        SoundDownloadSource source = SOURCES.stream().filter(s -> s.isValidUrl(url)).findFirst().orElseThrow(() -> new IOException("Unknown source for: " + url));
-        return LegacyTrackMetadataRequests.submit(() -> source.resolveTracks(url, listener, proxy));
+        URI input = LegacyProviderResults.remote(url);
+        boolean bandcamp = BandcampPageReader.supports(input);
+        boolean soundcloud = SoundCloudPageReader.supports(input);
+        if (bandcamp || soundcloud) {
+            return LegacyTrackMetadataRequests.submitCancellable(cancellation -> {
+                if (listener != null && !cancellation.isCancelled()) {
+                    listener.progressStartRequest(SoundDownloadSource.RESOLVING_TRACKS);
+                }
+                return bandcamp ? new BandcampMetadataResolver(proxy).resolveTracks(input, cancellation)
+                        : new SoundCloudMetadataResolver(proxy).resolveTracks(input, cancellation);
+            }, false);
+        }
+        SoundDownloadSource source = sources().stream().filter(s -> s.isValidUrl(url)).findFirst().orElseThrow(() -> new IOException("Unknown source for: " + url));
+        return LegacyTrackMetadataRequests.submitCancellable(cancellation -> source.resolveTracks(url,
+                listener == null ? null : new CancellationProgressListener(listener, cancellation::isCancelled), proxy), true);
     }
 
     /**
@@ -108,15 +156,23 @@ public final class SoundSourceManager {
         if (AlbumCoverCache.supportsProvider(url)) {
             return AlbumCoverCache.requestProviderResource(url, listener, proxy);
         }
-        return AlbumCoverCache.requestResolvedResource(cancellation -> SOURCES.stream()
-                .filter(s -> s.isValidUrl(url)).findFirst().flatMap(source -> {
-            try {
-                return source.resolveAlbumCover(url, listener, proxy, resourceManager).map(URI::create);
-            } catch (Exception e) {
-                LOGGER.error("Failed to connect to " + source.getApiName() + " API", e);
-                return Optional.empty();
-            }
-        }), proxy);
+        return AlbumCoverCache.requestResolvedResource(cancellation -> {
+            LegacyProviderResults.remote(url);
+            return sources().stream()
+                    .filter(s -> s.isValidUrl(url)).findFirst().flatMap(source -> {
+                        try {
+                            Optional<String> cover = source.resolveAlbumCover(url, listener == null ? null
+                                    : new CancellationProgressListener(listener, cancellation::isCancelled), proxy, resourceManager);
+                            cancellation.throwIfCancelled();
+                            return cover.isPresent() ? Optional.of(LegacyProviderResults.remote(cover.get())) : Optional.empty();
+                        } catch (Exception e) {
+                            if (!cancellation.isCancelled()) {
+                                LOGGER.error("Failed to connect to " + source.getApiName() + " API", e);
+                            }
+                            return Optional.empty();
+                        }
+                    });
+        }, proxy);
     }
 
     /**
@@ -126,7 +182,7 @@ public final class SoundSourceManager {
      * @return The brand of that source or nothing
      */
     public static Optional<Component> getBrandText(String url) {
-        return SOURCES.stream().filter(source -> source.isValidUrl(url)).findFirst().flatMap(s -> s.getBrandText(url));
+        return sources().stream().filter(source -> source.isValidUrl(url)).findFirst().flatMap(s -> s.getBrandText(url));
     }
 
     /**
@@ -136,6 +192,6 @@ public final class SoundSourceManager {
      * @return Whether that URL refers to an external source
      */
     public static boolean isValidUrl(String url) {
-        return SOURCES.stream().anyMatch(s -> s.isValidUrl(url));
+        return sources().stream().anyMatch(s -> s.isValidUrl(url));
     }
 }

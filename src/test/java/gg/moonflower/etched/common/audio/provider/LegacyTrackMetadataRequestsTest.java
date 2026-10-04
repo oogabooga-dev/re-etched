@@ -196,6 +196,43 @@ class LegacyTrackMetadataRequestsTest {
         }
     }
 
+    @Test
+    void publicCancellableMetadataSignalsRunningProviderAndClosesItsOwnedResponse() throws Exception {
+        CountDownLatch reading = new CountDownLatch(1);
+        CountDownLatch closed = new CountDownLatch(1);
+        CountDownLatch returned = new CountDownLatch(1);
+        AtomicInteger closes = new AtomicInteger();
+        var pending = LegacyTrackMetadataRequests.submitCancellable(cancellation -> {
+            java.io.InputStream body = new java.io.InputStream() {
+                @Override public int read() throws IOException {
+                    reading.countDown();
+                    await(closed);
+                    cancellation.throwIfCancelled();
+                    return -1;
+                }
+                @Override public void close() { closes.incrementAndGet(); closed.countDown(); }
+            };
+            try (var response = gg.moonflower.etched.common.audio.net.TestAudioHttpResponse.owned(
+                    java.net.URI.create("https://provider.example/metadata"), 200, java.util.Map.of(), body, cancellation)) {
+                cancellation.onCancel(response::close);
+                response.body().read();
+                return List.of(TRACK);
+            } finally {
+                returned.countDown();
+            }
+        }, false);
+        try {
+            assertTrue(reading.await(2, TimeUnit.SECONDS));
+            pending.cancel(false);
+            assertTrue(returned.await(2, TimeUnit.SECONDS));
+            assertEquals(1, closes.get());
+            assertTrue(pending.isCancelled());
+        } finally {
+            pending.cancel(false);
+            closed.countDown();
+        }
+    }
+
     private static ThreadPoolExecutor workers() {
         return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
     }

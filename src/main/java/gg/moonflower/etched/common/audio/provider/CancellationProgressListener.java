@@ -1,4 +1,4 @@
-package gg.moonflower.etched.api.sound;
+package gg.moonflower.etched.common.audio.provider;
 
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import net.minecraft.network.chat.Component;
@@ -6,12 +6,12 @@ import net.minecraft.network.chat.Component;
 import java.util.function.BooleanSupplier;
 
 /** Suppresses late source/download callbacks for a cancelled operation, not a delivered stream. */
-final class LegacyDownloadProgress implements DownloadProgressListener {
+public final class CancellationProgressListener implements DownloadProgressListener {
 
     private final DownloadProgressListener delegate;
     private final BooleanSupplier cancelled;
 
-    LegacyDownloadProgress(DownloadProgressListener delegate, BooleanSupplier cancelled) {
+    public CancellationProgressListener(DownloadProgressListener delegate, BooleanSupplier cancelled) {
         this.delegate = delegate;
         this.cancelled = cancelled;
     }

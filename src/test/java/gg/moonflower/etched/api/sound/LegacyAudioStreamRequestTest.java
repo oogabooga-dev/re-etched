@@ -385,6 +385,36 @@ class LegacyAudioStreamRequestTest {
     }
 
     @Test
+    void cancellingFinalResultSignalsProviderLookupBeforeItHasProducedASource() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch cancelled = new CountDownLatch(1);
+        CountDownLatch returned = new CountDownLatch(1);
+        AtomicReference<AudioCancellation> scope = new AtomicReference<>();
+        var result = LegacyAudioStreamRequest.startCancellable(cancellation -> {
+            scope.set(cancellation);
+            cancellation.onCancel(cancelled::countDown);
+            return gg.moonflower.etched.common.audio.provider.ProviderAudioSourceRequests.submit(() -> {
+                started.countDown();
+                await(cancelled);
+                returned.countDown();
+                return () -> { throw new AssertionError("Retired lookup opened audio"); };
+            }, cancellation, false);
+        }, Runnable::run, input -> { throw new AssertionError("Retired lookup decoded"); },
+                this.successes::incrementAndGet, error -> this.failures.incrementAndGet());
+        try {
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+            result.cancel(false);
+            assertTrue(scope.get().isCancelled());
+            assertTrue(returned.await(2, TimeUnit.SECONDS));
+            assertEquals(0, this.successes.get());
+            assertEquals(0, this.failures.get());
+        } finally {
+            result.cancel(false);
+            cancelled.countDown();
+        }
+    }
+
+    @Test
     void cancellationDuringBodyReadClosesAndCancelsTheOwnedTransportResponse() throws Exception {
         CountDownLatch reading = new CountDownLatch(1);
         CountDownLatch closed = new CountDownLatch(1);
