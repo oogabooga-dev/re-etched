@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MinecraftLocalSoundEventSinkTest {
@@ -45,12 +46,31 @@ class MinecraftLocalSoundEventSinkTest {
         LocalSoundEventInstance sound = new LocalSoundEventInstance(owner, event,
                 new PlaybackSession().start(event.toString()).cancellation(), stopped::incrementAndGet, false);
 
-        sound.onStop();
-        sound.onStop();
+        PlaybackStopListener listener = sound;
+        listener.onStop();
+        listener.onStop();
 
         assertEquals(1, stopped.get());
         assertEquals(event, sound.getLocation());
         assertEquals(SoundSource.RECORDS, sound.getSource());
+    }
+
+    @Test
+    void failedEngineStopCallbackIsIsolatedAndNotRepeated() {
+        ResourceLocation event = ResourceLocation.parse("minecraft:music_disc.13");
+        PlaybackSession.Attempt attempt = new PlaybackSession().start(event.toString());
+        AtomicInteger stopped = new AtomicInteger();
+        PlaybackStopListener listener = new LocalSoundEventInstance(
+                PlaybackOwnerKey.block(DIMENSION, BlockPos.ZERO), event, attempt.cancellation(), () -> {
+                    stopped.incrementAndGet();
+                    throw new IllegalStateException("fixture stop callback failure");
+                }, false);
+
+        listener.onStop();
+        listener.onStop();
+
+        assertEquals(1, stopped.get());
+        assertFalse(attempt.cancellation().isCancelled());
     }
 
     @Test

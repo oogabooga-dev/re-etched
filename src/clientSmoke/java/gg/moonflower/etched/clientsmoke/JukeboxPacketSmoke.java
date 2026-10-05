@@ -2,7 +2,7 @@ package gg.moonflower.etched.clientsmoke;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.SoundTracker;
-import gg.moonflower.etched.api.sound.SoundStopListener;
+import gg.moonflower.etched.client.radio.sound.PlaybackStopListener;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
@@ -365,7 +365,7 @@ final class JukeboxPacketSmoke {
                 }
                 // Queue a completion from off-thread, then retire its sound before the client
                 // thread handles it. The old callback must not start another legacy track.
-                SoundStopListener sound = (SoundStopListener) SoundTracker.getEntitySound(client.player.getId());
+                PlaybackStopListener sound = (PlaybackStopListener) SoundTracker.getEntitySound(client.player.getId());
                 Thread completion = new Thread(sound::onStop, "etched-smoke-legacy-completion");
                 completion.start();
                 try {

@@ -131,10 +131,37 @@ class RadioSoundInstanceTest {
                 attempt.cancellation(), 4.0F, 8, () -> {
         }, stopped::incrementAndGet);
 
-        sound.onStop();
-        sound.onStop();
+        PlaybackStopListener listener = sound;
+        listener.onStop();
+        listener.onStop();
 
         assertEquals(1, stopped.get());
+    }
+
+    @Test
+    void engineRemovalNotificationDoesNotCloseTransferredStreamOrRepeatFailedCallback() throws Exception {
+        PlaybackSession.Attempt attempt = new PlaybackSession().start("https://radio.example/live");
+        FakeAudioStream stream = new FakeAudioStream();
+        AtomicInteger stopped = new AtomicInteger();
+        ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath("etched_test", "radio"));
+        RadioSoundInstance sound = new RadioSoundInstance(
+                PlaybackOwnerKey.block(dimension, BlockPos.ZERO), attempt.generation(), stream,
+                attempt.cancellation(), 4.0F, 8, () -> {}, () -> {
+                    stopped.incrementAndGet();
+                    throw new IllegalStateException("fixture stop callback failure");
+                });
+        assertSame(stream, sound.getStream(null, null, false).get());
+
+        PlaybackStopListener listener = sound;
+        listener.onStop();
+        listener.onStop();
+
+        assertEquals(1, stopped.get());
+        assertEquals(0, stream.closeCount.get());
+        assertFalse(attempt.cancellation().isCancelled());
+        stream.close(); // The SoundEngine consumer, not the notification, owns this stream.
+        assertEquals(1, stream.closeCount.get());
     }
 
     @Test

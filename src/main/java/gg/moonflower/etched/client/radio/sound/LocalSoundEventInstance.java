@@ -1,6 +1,5 @@
 package gg.moonflower.etched.client.radio.sound;
 
-import gg.moonflower.etched.api.sound.SoundStopListener;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
@@ -15,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /** Vanilla sound event positioned at a block or a live entity. */
-final class LocalSoundEventInstance extends AbstractTickableSoundInstance implements SoundStopListener {
+final class LocalSoundEventInstance extends AbstractTickableSoundInstance implements PlaybackStopListener {
 
     private final AudioCancellation cancellation;
     private final Runnable soundStopped;

@@ -1,5 +1,6 @@
 package gg.moonflower.etched.api.sound;
 
+import gg.moonflower.etched.client.radio.sound.PlaybackStopListener;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.resources.sounds.TickableSoundInstance;
@@ -14,23 +15,23 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Wrapper for {@link SoundInstance} that respects {@link SoundStopListener}.
+ * Wrapper for {@link SoundInstance} that respects {@link PlaybackStopListener}.
  *
  * @author Ocelot
  */
-public class StopListeningSound implements SoundInstance, SoundStopListener, WrappedSoundInstance {
+public class StopListeningSound implements SoundInstance, PlaybackStopListener, WrappedSoundInstance {
 
     private final SoundInstance source;
-    private final SoundStopListener listener;
+    private final PlaybackStopListener listener;
     private boolean ignoringEvents;
 
-    StopListeningSound(SoundInstance source, SoundStopListener listener) {
+    StopListeningSound(SoundInstance source, PlaybackStopListener listener) {
         this.source = source;
         this.listener = listener;
         this.ignoringEvents = false;
     }
 
-    public static StopListeningSound create(SoundInstance source, SoundStopListener listener) {
+    public static StopListeningSound create(SoundInstance source, PlaybackStopListener listener) {
         return source instanceof TickableSoundInstance ? new TickableStopListeningSound((TickableSoundInstance) source, listener) : new StopListeningSound(source, listener);
     }
 

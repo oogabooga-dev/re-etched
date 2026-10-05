@@ -34,6 +34,9 @@ public final class EtchedClientSmoke {
             verifyCoverOverlay();
             overlayChecked = true;
         }
+        if (!PlaybackStopSmoke.tick(client)) {
+            return;
+        }
         if ("1".equals(System.getenv("ETCHED_CLIENT_SMOKE_JUKEBOX"))) {
             JukeboxPacketSmoke.tick(client);
             return;
