@@ -6,7 +6,6 @@ import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
-import gg.moonflower.etched.common.sound.download.BandcampSource;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -327,15 +326,13 @@ class BandcampMetadataResolverTest {
         var resolver = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT);
         assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
                 () -> resolver.resolveTracks(ALBUM, new AudioCancellation())).code());
-        BandcampSource legacy = new BandcampSource();
         for (String url : List.of("https://notbandcamp.com/album/x", "https://bandcamp.com.example/x",
                 "https://user@artist.bandcamp.com/x", "ftp://artist.bandcamp.com/x")) {
             assertFalse(BandcampPageReader.supports(URI.create(url)));
-            assertFalse(legacy.isValidUrl(url));
             assertEquals(RadioFailure.Code.INVALID_URL, assertThrows(RadioTransportException.class,
                     () -> resolver.resolveTracks(URI.create(url), new AudioCancellation())).code());
         }
-        assertTrue(legacy.isValidUrl("https://Artist.Bandcamp.com/track/example"));
+        assertTrue(BandcampPageReader.supports(URI.create("https://Artist.Bandcamp.com/track/example")));
     }
 
     @Test

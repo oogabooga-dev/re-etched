@@ -5,6 +5,7 @@ import gg.moonflower.etched.api.record.AlbumCover;
 import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.cache.CoverCacheLoader;
 import gg.moonflower.etched.client.cache.MediaValidators;
+import gg.moonflower.etched.client.cache.ProviderCoverCacheLoader;
 import gg.moonflower.etched.client.render.item.ImageAlbumCover;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
@@ -32,35 +33,56 @@ class AlbumCoverCacheTest {
     @TempDir Path temporary;
 
     @Test
-    void stalledCompatibilityMetadataDoesNotOccupyFirstPartyCoverWorkers() throws Exception {
-        CountDownLatch started = new CountDownLatch(2);
-        CountDownLatch release = new CountDownLatch(1);
-        CoverCacheLoader.CoverUrlResolver stalled = cancellation -> {
-            started.countDown();
-            try {
-                if (!release.await(3, TimeUnit.SECONDS)) {
-                    throw new IOException("Fixture was not released");
+    void cancellingReturnedFutureDuringBuiltInMetadataReadClosesResponseAndNeverCreatesAnImage() throws Exception {
+        for (String source : new String[]{"https://artist.bandcamp.com/album/test", "https://soundcloud.com/artist/track"}) {
+            var cache = new BoundedMediaCache(temporary.resolve(URI.create(source).getHost()));
+            CountDownLatch reading = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            CountDownLatch closed = new CountDownLatch(1);
+            AtomicReference<AudioCancellation> metadataToken = new AtomicReference<>();
+            var body = new InputStream() {
+                @Override public int read() throws IOException {
+                    reading.countDown();
+                    try {
+                        if (!release.await(3, TimeUnit.SECONDS)) {
+                            throw new IOException("Fixture was not released");
+                        }
+                        return -1;
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException(exception);
+                    }
                 }
-                return Optional.empty();
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new IOException(exception);
+
+                @Override public void close() {
+                    closed.countDown();
+                    release.countDown();
+                }
+            };
+            var pending = AlbumCoverCache.request(cancellation -> ProviderCoverCacheLoader.open(cache,
+                    URI.create(source), cancellation, token -> {
+                        assertSame(cancellation, token);
+                        return new AudioResolveContext((request, responseToken) -> {
+                            assertSame(cancellation, responseToken);
+                            assertNull(metadataToken.getAndSet(responseToken));
+                            return TestAudioHttpResponse.owned(request.uri(), 200, Map.of(), body, responseToken);
+                        }, uri -> {}, token, AudioResolveLimits.DEFAULT);
+                    }), lease -> { throw new AssertionError("Retired metadata created a native image"); });
+            try {
+                assertTrue(reading.await(2, TimeUnit.SECONDS));
+                assertTrue(pending.cancel(false));
+                assertTrue(metadataToken.get().isCancelled());
+                assertTrue(closed.await(2, TimeUnit.SECONDS));
+                assertTrue(pending.isCancelled());
+            } finally {
+                release.countDown();
+                pending.cancel(false);
             }
-        };
-        var first = AlbumCoverCache.requestResolvedResource(stalled, Proxy.NO_PROXY);
-        var second = AlbumCoverCache.requestResolvedResource(stalled, Proxy.NO_PROXY);
-        try {
-            assertTrue(started.await(2, TimeUnit.SECONDS));
-            assertSame(AlbumCover.EMPTY, AlbumCoverCache.request(cancellation -> Optional.empty()).get(1, TimeUnit.SECONDS));
-        } finally {
-            release.countDown();
         }
-        assertSame(AlbumCover.EMPTY, first.get(2, TimeUnit.SECONDS));
-        assertSame(AlbumCover.EMPTY, second.get(2, TimeUnit.SECONDS));
     }
 
     @Test
-    void cancellingTheReturnedFutureDuringResolvedImageReadClosesItsResponse() throws Exception {
+    void cancellingTheReturnedFutureDuringImageReadClosesItsResponse() throws Exception {
         CountDownLatch reading = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch closed = new CountDownLatch(1);
@@ -86,50 +108,15 @@ class AlbumCoverCacheTest {
                 release.countDown();
             }
         };
-        var request = AlbumCoverCache.request(cancellation -> CoverCacheLoader.openResolved(() -> cache,
-                token -> Optional.of(URI.create("https://image.example/cover")), cancellation,
+        var request = AlbumCoverCache.request(cancellation -> Optional.of(CoverCacheLoader.open(cache,
+                URI.create("https://image.example/cover"), cancellation,
                 token -> new AudioResolveContext((httpRequest, responseToken) -> TestAudioHttpResponse.owned(
-                        httpRequest.uri(), 200, Map.of(), body, responseToken), uri -> {}, token, AudioResolveLimits.DEFAULT)));
+                        httpRequest.uri(), 200, Map.of(), body, responseToken), uri -> {}, token, AudioResolveLimits.DEFAULT))));
         try {
             assertTrue(reading.await(2, TimeUnit.SECONDS));
             assertTrue(request.cancel(false));
             assertTrue(closed.await(2, TimeUnit.SECONDS));
             assertTrue(request.isCancelled());
-        } finally {
-            release.countDown();
-        }
-    }
-
-    @Test
-    void resolvedResourceCancellationSuppressesLateProviderUrlsWithoutNativeImageOrCacheInitialization() throws Exception {
-        CountDownLatch started = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        CountDownLatch returned = new CountDownLatch(1);
-        AtomicReference<AudioCancellation> token = new AtomicReference<>();
-        var request = AlbumCoverCache.requestResolvedResource(cancellation -> {
-            token.set(cancellation);
-            started.countDown();
-            try {
-                if (!release.await(3, TimeUnit.SECONDS)) {
-                    throw new IOException("Fixture was not released");
-                }
-                return Optional.of(URI.create("https://image.example/late-cover.png"));
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new IOException(exception);
-            } finally {
-                returned.countDown();
-            }
-        }, Proxy.NO_PROXY);
-        try {
-            assertTrue(started.await(2, TimeUnit.SECONDS));
-            assertTrue(request.cancel(false));
-            assertTrue(token.get().isCancelled());
-            release.countDown();
-            assertTrue(returned.await(2, TimeUnit.SECONDS));
-            assertTrue(request.isCancelled());
-            assertSame(AlbumCover.EMPTY, AlbumCoverCache.requestResolvedResource(
-                    cancellation -> Optional.empty(), Proxy.NO_PROXY).get(2, TimeUnit.SECONDS));
         } finally {
             release.countDown();
         }
@@ -206,12 +193,16 @@ class AlbumCoverCacheTest {
     }
 
     @Test
-    void providerMatchingIsStrictAndDoesNotClaimDirectCoversOrLocalSounds() {
+    void unsupportedSourcesReturnEmptyImmediatelyWithoutImageOrCacheInitialization() {
         assertTrue(AlbumCoverCache.supportsProvider("https://artist.bandcamp.com/album/test"));
         assertTrue(AlbumCoverCache.supportsProvider("https://soundcloud.com/artist/track"));
         for (String url : new String[]{null, "minecraft:music_disc.13", "https://images.example/cover.png",
-                "https://notbandcamp.com/test", "https://evilsoundcloud.com/test", "https://user@soundcloud.com/test"}) {
+                "https://notbandcamp.com/test", "https://evilsoundcloud.com/test", "https://user@soundcloud.com/test",
+                "bad url", "ftp://soundcloud.com/artist/track", "https://soundcloud.com.evil.example/test"}) {
             assertFalse(AlbumCoverCache.supportsProvider(url));
+            var result = AlbumCoverCache.requestProviderResource(url, Proxy.NO_PROXY);
+            assertTrue(result.isDone());
+            assertSame(AlbumCover.EMPTY, result.join());
         }
     }
 

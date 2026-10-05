@@ -9,7 +9,6 @@ import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.common.audio.net.RadioTransportException;
 import gg.moonflower.etched.common.audio.net.TestAudioHttpResponse;
 import gg.moonflower.etched.common.audio.net.TestHttpServer;
-import gg.moonflower.etched.common.sound.download.SoundCloudSource;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -231,13 +230,11 @@ class SoundCloudMetadataResolverTest {
             assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
                     () -> resolver.resolveTracks(TRACK, new AudioCancellation())).code());
         }
-        SoundCloudSource legacy = new SoundCloudSource();
         for (String value : List.of("https://evilsoundcloud.com/x", "https://soundcloud.com.evil.example/x",
                 "https://user@soundcloud.com/x", "ftp://soundcloud.com/x")) {
-            assertFalse(legacy.isValidUrl(value));
             assertFalse(SoundCloudPageReader.supports(URI.create(value)));
         }
-        assertTrue(legacy.isValidUrl("https://M.SoundCloud.com/a/track"));
+        assertTrue(SoundCloudPageReader.supports(URI.create("https://M.SoundCloud.com/a/track")));
     }
 
     @Test

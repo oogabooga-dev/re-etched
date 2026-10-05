@@ -1,6 +1,7 @@
 package gg.moonflower.etched.api.record;
 
-import gg.moonflower.etched.api.sound.download.SoundSourceManager;
+import gg.moonflower.etched.client.AlbumCoverCache;
+import gg.moonflower.etched.common.audio.provider.AudioProviderPresentation;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -70,7 +71,7 @@ public abstract class PlayableRecordItem extends Item implements PlayableRecord 
         this.getAlbum(stack).ifPresent(track -> {
             boolean album = this.getTrackCount(stack) > 1;
             list.add(track.getDisplayName().copy().withStyle(ChatFormatting.GRAY));
-            SoundSourceManager.getBrandText(track.url())
+            AudioProviderPresentation.brand(track.url())
                     .map(component -> Component.literal("  ").append(component.copy()))
                     .map(component -> album ? component.append(" ").append(ALBUM) : component)
                     .ifPresentOrElse(list::add, () -> {
@@ -83,6 +84,7 @@ public abstract class PlayableRecordItem extends Item implements PlayableRecord 
 
     @Override
     public CompletableFuture<AlbumCover> getAlbumCover(ItemStack stack, Proxy proxy, ResourceManager resourceManager) {
-        return this.getAlbum(stack).map(data -> SoundSourceManager.resolveAlbumCover(data.url(), null, proxy, resourceManager)).orElseGet(() -> CompletableFuture.completedFuture(AlbumCover.EMPTY));
+        return this.getAlbum(stack).map(data -> AlbumCoverCache.requestProviderResource(data.url(), proxy))
+                .orElseGet(() -> CompletableFuture.completedFuture(AlbumCover.EMPTY));
     }
 }
