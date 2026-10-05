@@ -1,7 +1,5 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.sound.SoundTracker;
 import gg.moonflower.etched.common.audio.PlaybackRevision;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.item.BoomboxClientBridge;
@@ -18,7 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/** One playback owner per held or dropped boombox; unknown third-party records keep the legacy path. */
+/** One managed playback owner per held or dropped boombox; unsupported records never start another engine. */
 public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
 
     private static final int MAX_ACTIVE = 256;
@@ -58,23 +56,14 @@ public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
 
         var content = RecordContentResolver.resolve(record);
         if (content.isPresent()) {
-            if (previous != null && previous.legacy) {
-                SoundTracker.playBoombox(previous.entity.getId(), ItemStack.EMPTY);
-            }
             long revision = this.playback.getPlaybackState(key).map(PlaybackState::revision)
                     .map(PlaybackRevision::next).orElse(0L);
             if (this.playback.update(key, new PlaybackState(revision,
                     Optional.of(content.orElseThrow().program()), true))) {
-                this.active.put(key, new Active(entity, record.copy(), false));
+                this.active.put(key, new Active(entity, record.copy()));
                 this.playback.getSessionSnapshot(key).ifPresent(snapshot ->
                         this.playback.setFiniteLoop(key, revision, snapshot.generation(), FiniteLoopMode.ALL));
             }
-        } else if (record.getItem() instanceof PlayableRecord) {
-            if (previous != null && !previous.legacy) {
-                this.playback.remove(key);
-            }
-            SoundTracker.playBoombox(entity.getId(), record);
-            this.active.put(key, new Active(entity, record.copy(), true));
         } else if (previous != null) {
             this.remove(previous, key);
         }
@@ -84,8 +73,7 @@ public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
     public boolean isPlaying(Entity entity) {
         PlaybackOwnerKey.EntityOwner key = key(entity);
         Active current = this.active.get(key);
-        return current != null && current.entity == entity && (current.legacy
-                ? SoundTracker.getEntitySound(entity.getId()) != null : this.playback.isPlaying(key));
+        return current != null && current.entity == entity && this.playback.isPlaying(key);
     }
 
     public void remove(Entity entity) {
@@ -119,17 +107,13 @@ public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
         if (!this.active.remove(key, current)) {
             return;
         }
-        if (current.legacy) {
-            SoundTracker.playBoombox(current.entity.getId(), ItemStack.EMPTY);
-        } else {
-            this.playback.remove(key);
-        }
+        this.playback.remove(key);
     }
 
     private static PlaybackOwnerKey.EntityOwner key(Entity entity) {
         return PlaybackOwnerKey.entity(entity.level().dimension(), entity.getUUID());
     }
 
-    private record Active(Entity entity, ItemStack record, boolean legacy) {
+    private record Active(Entity entity, ItemStack record) {
     }
 }

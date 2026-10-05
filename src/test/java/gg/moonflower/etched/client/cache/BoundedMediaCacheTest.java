@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.cache;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BoundedMediaCacheTest {
 
-    private static final byte[] OGG = "OggS-data".getBytes(StandardCharsets.UTF_8);
+    // A valid MPEG header, not a full decode fixture; keep the nine-byte eviction tests small.
+    private static final byte[] AUDIO = {(byte) 0xFF, (byte) 0xFB, (byte) 0x90, 0, 1, 2, 3, 4, 5};
     private static final BoundedMediaCache.Limits SMALL = new BoundedMediaCache.Limits(
             16, 16, 1, Duration.ofDays(7));
 
@@ -44,21 +45,21 @@ class BoundedMediaCacheTest {
         AtomicInteger downloads = new AtomicInteger();
         BoundedMediaCache.Loader loader = token -> {
             downloads.incrementAndGet();
-            return new BoundedMediaCache.Content(new ByteArrayInputStream(OGG), OGG.length);
+            return new BoundedMediaCache.Content(new ByteArrayInputStream(AUDIO), AUDIO.length);
         };
         try (var first = cache.acquire(BoundedMediaCache.Namespace.AUDIO, "one", new AudioCancellation(),
                 loader, MediaValidators::audio);
              var second = cache.acquire(BoundedMediaCache.Namespace.AUDIO, "one", new AudioCancellation(),
                      loader, MediaValidators::audio)) {
-            assertEquals('O', first.body().read());
-            assertEquals('O', second.body().read());
+            assertEquals(0xFF, first.body().read());
+            assertEquals(0xFF, second.body().read());
             assertThrows(IOException.class, () -> cache.acquire(BoundedMediaCache.Namespace.AUDIO,
                     "two", new AudioCancellation(), loader, MediaValidators::audio));
-            assertArrayEquals("ggS-data".getBytes(StandardCharsets.UTF_8), first.body().readAllBytes());
+            assertArrayEquals(java.util.Arrays.copyOfRange(AUDIO, 1, AUDIO.length), first.body().readAllBytes());
         }
         try (var next = cache.acquire(BoundedMediaCache.Namespace.AUDIO, "two", new AudioCancellation(),
                 loader, MediaValidators::audio)) {
-            assertArrayEquals(OGG, next.body().readAllBytes());
+            assertArrayEquals(AUDIO, next.body().readAllBytes());
         }
         assertEquals(3, downloads.get());
     }
@@ -76,7 +77,7 @@ class BoundedMediaCacheTest {
         }
         assertThrows(IOException.class, () -> cache.acquire(BoundedMediaCache.Namespace.AUDIO, "hint",
                 new AudioCancellation(), token -> new BoundedMediaCache.Content(
-                        new ByteArrayInputStream(OGG), 17), MediaValidators::audio));
+                        new ByteArrayInputStream(AUDIO), 17), MediaValidators::audio));
     }
 
     @Test
@@ -100,7 +101,7 @@ class BoundedMediaCacheTest {
                             throw new IOException(exception);
                         }
                         token.throwIfCancelled();
-                        return new BoundedMediaCache.Content(new ByteArrayInputStream(OGG), OGG.length);
+                        return new BoundedMediaCache.Content(new ByteArrayInputStream(AUDIO), AUDIO.length);
                     }, MediaValidators::audio));
             assertTrue(fetching.await(5, TimeUnit.SECONDS));
             var second = workers.submit(() -> cache.acquire(BoundedMediaCache.Namespace.AUDIO, "shared",
@@ -112,7 +113,7 @@ class BoundedMediaCacheTest {
             finish.countDown();
             assertThrows(java.util.concurrent.ExecutionException.class, () -> first.get(5, TimeUnit.SECONDS));
             try (var leased = second.get(5, TimeUnit.SECONDS)) {
-                assertArrayEquals(OGG, leased.body().readAllBytes());
+                assertArrayEquals(AUDIO, leased.body().readAllBytes());
             }
         } finally {
             finish.countDown();
@@ -132,7 +133,7 @@ class BoundedMediaCacheTest {
         Path unsafe = audio.resolve("a".repeat(64) + ".bin");
         Files.createSymbolicLink(unsafe, target);
         Path partial = audio.resolve("b".repeat(64) + "-unfinished.part");
-        Files.write(partial, OGG);
+        Files.write(partial, AUDIO);
         Path unrelated = audio.resolve("note.txt");
         Files.writeString(unrelated, "leave me");
 
@@ -152,8 +153,8 @@ class BoundedMediaCacheTest {
         BoundedMediaCache cache = cache();
         try (var expired = cache.acquire(BoundedMediaCache.Namespace.AUDIO, "expired",
                 new AudioCancellation(), token -> new BoundedMediaCache.Content(
-                        new ByteArrayInputStream(OGG), OGG.length), MediaValidators::audio)) {
-            assertArrayEquals(OGG, expired.body().readAllBytes());
+                        new ByteArrayInputStream(AUDIO), AUDIO.length), MediaValidators::audio)) {
+            assertArrayEquals(AUDIO, expired.body().readAllBytes());
         }
         Path audio = temporary.resolve("v5/audio");
         try (var files = Files.list(audio)) {
@@ -196,10 +197,10 @@ class BoundedMediaCacheTest {
     void replacedNamespaceDirectoryIsNotFollowedAfterStartup() throws Exception {
         BoundedMediaCache cache = cache();
         var loader = (BoundedMediaCache.Loader) token -> new BoundedMediaCache.Content(
-                new ByteArrayInputStream(OGG), OGG.length);
+                new ByteArrayInputStream(AUDIO), AUDIO.length);
         try (var first = cache.acquire(BoundedMediaCache.Namespace.AUDIO, "one",
                 new AudioCancellation(), loader, MediaValidators::audio)) {
-            assertArrayEquals(OGG, first.body().readAllBytes());
+            assertArrayEquals(AUDIO, first.body().readAllBytes());
         }
         Path namespace = temporary.resolve("v5/audio");
         Path original = temporary.resolve("original-audio");

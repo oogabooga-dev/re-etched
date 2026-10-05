@@ -1,31 +1,130 @@
 package gg.moonflower.etched.client.cache;
 
 import com.sun.net.httpserver.HttpServer;
-import gg.moonflower.etched.client.radio.AudioCancellation;
-import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.api.util.AsyncInputStream;
+import gg.moonflower.etched.api.util.StreamingInputStream;
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.common.audio.net.TestAudioHttpResponse;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyAudioLoaderTest {
 
     @TempDir
     Path temporary;
+
+    @Test
+    @Timeout(10)
+    void asyncShortEofClosesItsOwnedResponseAndStillDeliversAllBytes() throws Exception {
+        byte[] bytes = {1, 2, 3};
+        AtomicInteger closes = new AtomicInteger();
+        AudioCancellation cancellation = new AudioCancellation();
+        URI uri = URI.create("https://audio.example/short-async");
+        Function<AudioCancellation, AudioResolveContext> contexts = token -> new AudioResolveContext(
+                (request, scope) -> TestAudioHttpResponse.owned(uri, 200, Map.of(), new ByteArrayInputStream(bytes) {
+                    @Override public void close() { closes.incrementAndGet(); }
+                }, scope), ignored -> {}, token, AudioResolveLimits.DEFAULT);
+        var worker = Executors.newSingleThreadExecutor();
+        var finished = new CompletableFuture<Void>();
+        try {
+            try (var stream = new AsyncInputStream(() -> LegacyAudioLoader.stream(uri, cancellation, contexts),
+                    8192, 8, task -> worker.execute(() -> {
+                        try {
+                            task.run();
+                            finished.complete(null);
+                        } catch (Throwable failure) {
+                            finished.completeExceptionally(failure);
+                        }
+                    }))) {
+                finished.get(2, TimeUnit.SECONDS);
+                assertTrue(cancellation.isCancelled());
+                assertEquals(1, closes.get());
+                assertArrayEquals(bytes, stream.readAllBytes());
+            }
+            assertEquals(1, closes.get());
+        } finally {
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void multipartEofCloseAndLateOpenReleaseTheOwnedTransportResponses() throws Exception {
+        Map<URI, AtomicInteger> closes = new ConcurrentHashMap<>();
+        Map<URI, AudioCancellation> tokens = new ConcurrentHashMap<>();
+        CountDownLatch firstClosed = new CountDownLatch(1);
+        URI first = URI.create("https://audio.example/first");
+        URI second = URI.create("https://audio.example/second");
+        URI third = URI.create("https://audio.example/third");
+        Function<AudioCancellation, AudioResolveContext> contexts = token -> new AudioResolveContext(
+                (request, cancellation) -> {
+                    URI uri = request.uri();
+                    tokens.put(uri, cancellation);
+                    var closeCount = new AtomicInteger();
+                    closes.put(uri, closeCount);
+                    InputStream body = new ByteArrayInputStream(new byte[]{42}) {
+                        @Override public void close() {
+                            closeCount.incrementAndGet();
+                            if (uri.equals(first)) {
+                                firstClosed.countDown();
+                            }
+                        }
+                    };
+                    return TestAudioHttpResponse.owned(uri, 200, Map.of(), body, cancellation);
+                }, ignored -> {}, token, AudioResolveLimits.DEFAULT);
+        InputStream one = LegacyAudioLoader.stream(first, new AudioCancellation(), contexts);
+        var late = new CompletableFuture<InputStream>();
+        InputStream three = LegacyAudioLoader.stream(third, new AudioCancellation(), contexts);
+        var stream = new StreamingInputStream(new java.net.URL[]{first.toURL(), second.toURL(), third.toURL()},
+                index -> switch (index) {
+                    case 0 -> CompletableFuture.completedFuture(one);
+                    case 1 -> late;
+                    default -> CompletableFuture.completedFuture(three);
+                });
+        try {
+            assertEquals(42, stream.read());
+            var reader = CompletableFuture.supplyAsync(() -> assertThrows(IOException.class, stream::read));
+            assertTrue(firstClosed.await(2, TimeUnit.SECONDS));
+            assertTrue(tokens.get(first).isCancelled());
+            stream.close();
+            reader.get(2, TimeUnit.SECONDS);
+            assertTrue(tokens.get(third).isCancelled());
+            late.complete(LegacyAudioLoader.stream(second, new AudioCancellation(), contexts));
+            assertTrue(tokens.get(second).isCancelled());
+            assertEquals(3, closes.size());
+            assertTrue(closes.values().stream().allMatch(count -> count.get() == 1));
+        } finally {
+            stream.close();
+        }
+    }
 
     @Test
     void finiteUsesOneSecureCachedDownloadAndLiveBypassesDisk() throws Exception {
@@ -103,6 +202,48 @@ class LegacyAudioLoaderTest {
             }
         } finally {
             server.stop(0);
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void requestCancellationDuringFiniteCacheReadClosesResponseBeforeAnyInputIsPublished() throws Exception {
+        CountDownLatch reading = new CountDownLatch(1);
+        CountDownLatch closed = new CountDownLatch(1);
+        AtomicInteger closes = new AtomicInteger();
+        AudioCancellation cancellation = new AudioCancellation();
+        URI uri = URI.create("https://audio.example/cancelled-file");
+        Function<AudioCancellation, AudioResolveContext> contexts = token -> new AudioResolveContext(
+                (request, scope) -> TestAudioHttpResponse.owned(uri, 200, Map.of(), new InputStream() {
+                    @Override public int read() throws IOException {
+                        reading.countDown();
+                        try {
+                            assertTrue(closed.await(5, TimeUnit.SECONDS));
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new IOException(exception);
+                        }
+                        scope.throwIfCancelled();
+                        return -1;
+                    }
+                    @Override public void close() { closes.incrementAndGet(); closed.countDown(); }
+                }, scope), ignored -> {}, token, AudioResolveLimits.DEFAULT);
+        BoundedMediaCache cache = new BoundedMediaCache(temporary.resolve("cancelled"));
+        var worker = Executors.newSingleThreadExecutor();
+        var opening = CompletableFuture.runAsync(() -> assertThrows(java.util.concurrent.CancellationException.class,
+                () -> LegacyAudioLoader.file(cache, uri, cancellation, contexts, null)), worker);
+        try {
+            assertTrue(reading.await(2, TimeUnit.SECONDS));
+            cancellation.cancel();
+            opening.get(2, TimeUnit.SECONDS);
+            assertEquals(1, closes.get());
+            try (var files = Files.list(temporary.resolve("cancelled/audio"))) {
+                assertEquals(0, files.count());
+            }
+        } finally {
+            cancellation.cancel();
+            closed.countDown();
+            worker.shutdownNow();
         }
     }
 }

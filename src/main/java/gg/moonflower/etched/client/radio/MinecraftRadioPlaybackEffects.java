@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.core.mixin.client.GuiAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;

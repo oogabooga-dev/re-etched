@@ -3,21 +3,17 @@ package gg.moonflower.etched.client.sound;
 import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.MalformedURLException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
-/** Coalesces legacy provider resolution only; media bytes use the v5 cache or bypass disk. */
+/** Legacy request entrypoint. Only media bytes may be cached, never sources or opened streams. */
 @ApiStatus.Internal
 public final class SoundCache {
-
-    private static final ConcurrentMap<Request, CompletableFuture<AudioSource>> IN_FLIGHT =
-            new ConcurrentHashMap<>();
 
     private SoundCache() {
     }
@@ -25,16 +21,21 @@ public final class SoundCache {
     public static CompletableFuture<AudioSource> getAudioStream(String url,
                                                                  @Nullable DownloadProgressListener listener,
                                                                  AudioSource.AudioFileType type) {
-        Request request = new Request(url, type);
-        CompletableFuture<AudioSource> pending = IN_FLIGHT.computeIfAbsent(request, ignored -> {
-            try {
-                return SoundSourceManager.getAudioSource(url, listener, Minecraft.getInstance().getProxy(), type);
-            } catch (MalformedURLException exception) {
-                return CompletableFuture.failedFuture(exception);
-            }
-        });
+        return getAudioStream(url, listener, type, (input, progress, fileType) ->
+                SoundSourceManager.getAudioSource(input, progress, Minecraft.getInstance().getProxy(), fileType));
+    }
+
+    static CompletableFuture<AudioSource> getAudioStream(String url, @Nullable DownloadProgressListener listener,
+                                                        AudioSource.AudioFileType type, SourceResolver resolver) {
+        // RawAudioSource and StreamingAudioSource memoize their opened stream: sharing a source
+        // across requests also shares decoder input and lets one consumer close another's stream.
+        CompletableFuture<AudioSource> pending;
+        try {
+            pending = resolver.resolve(url, listener, type);
+        } catch (MalformedURLException exception) {
+            pending = CompletableFuture.failedFuture(exception);
+        }
         pending.whenComplete((source, failure) -> {
-            IN_FLIGHT.remove(request, pending);
             if (failure != null && listener != null) {
                 listener.onFail();
             }
@@ -42,6 +43,15 @@ public final class SoundCache {
         return pending;
     }
 
-    private record Request(String url, AudioSource.AudioFileType type) {
+    public static CompletableFuture<AudioSource> getAudioStream(String url, @Nullable DownloadProgressListener listener,
+                                                               AudioSource.AudioFileType type, AudioCancellation cancellation) {
+        return getAudioStream(url, listener, type, (input, progress, fileType) ->
+                SoundSourceManager.getAudioSource(input, progress, Minecraft.getInstance().getProxy(), fileType, cancellation));
+    }
+
+    @FunctionalInterface
+    interface SourceResolver {
+        CompletableFuture<AudioSource> resolve(String url, @Nullable DownloadProgressListener listener,
+                                               AudioSource.AudioFileType type) throws MalformedURLException;
     }
 }

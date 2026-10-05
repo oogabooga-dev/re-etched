@@ -1,7 +1,6 @@
 package gg.moonflower.etched.common.network.play.handler;
 
 import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.SoundTracker;
 import gg.moonflower.etched.api.sound.StopListeningSound;
 import gg.moonflower.etched.client.screen.EtchingScreen;
@@ -52,20 +51,10 @@ public class EtchedClientPlayPacketHandler {
                 playingRecords.remove(pos);
             }
 
-            if (JukeboxPlayback.start(pos, pkt.record())) {
-                return;
+            // Unsupported replacements retire the previous owner, never start a second engine.
+            if (!JukeboxPlayback.start(pos, pkt.record())) {
+                JukeboxPlayback.stop(pos);
             }
-
-            // A replacement unsupported by the finite backends must not leave the old
-            // managed sound playing underneath the legacy fallback.
-            JukeboxPlayback.stop(pos);
-
-            TrackData[] tracks = pkt.tracks();
-            if (tracks.length == 0) {
-                return;
-            }
-
-            SoundTracker.playBlockRecord(pos, tracks, 0);
         });
     }
 

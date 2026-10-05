@@ -1,5 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

@@ -1,13 +1,13 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.AudioHttpRequest;
-import gg.moonflower.etched.client.radio.net.AudioHttpResponse;
-import gg.moonflower.etched.client.radio.net.RadioTransportException;
+import gg.moonflower.etched.common.audio.AudioContentProbe;
+import gg.moonflower.etched.common.audio.RadioFailure;
+import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
+import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
+import gg.moonflower.etched.common.audio.net.RadioTransportException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
@@ -17,8 +17,6 @@ import java.util.Objects;
 import java.util.Set;
 
 public final class DirectRadioSourceResolver implements AudioSourceResolver {
-
-    private static final int MINIMUM_SNIFF_BYTES = 4;
 
     @Override
     public boolean supports(URI input) {
@@ -75,8 +73,8 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         try {
             context.budget().consumeSteps(response.redirectCount());
             RadioHttpStatus.requireSuccess(response, "Radio host");
-            byte[] prefix = readPrefix(response, input, context);
-            SourceKind kind = classify(response, input, prefix);
+            byte[] prefix = readPrefix(response, context);
+            SourceKind kind = classify(response, input, prefix, context.limits().maxId3PrefixBytes());
             switch (kind) {
                 case HLS -> throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false,
                         "HLS radio playlists are not supported", null);
@@ -166,42 +164,11 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         }
     }
 
-    private static byte[] readPrefix(AudioHttpResponse response, URI requestedUri,
-                                     AudioResolveContext context)
+    private static byte[] readPrefix(AudioHttpResponse response, AudioResolveContext context)
             throws RadioSourceException {
-        int limit = context.limits().sniffBytes();
-        ByteArrayOutputStream prefix = new ByteArrayOutputStream(limit);
-        byte[] buffer = new byte[limit];
-        InputStream body = response.body();
         try {
-            while (prefix.size() < Math.min(limit, MINIMUM_SNIFF_BYTES)) {
-                context.cancellation().throwIfCancelled();
-                int read = body.read(buffer, 0,
-                        Math.min(buffer.length, Math.min(limit, MINIMUM_SNIFF_BYTES) - prefix.size()));
-                if (read < 0) {
-                    return prefix.toByteArray();
-                }
-                if (read == 0) {
-                    continue;
-                }
-                prefix.write(buffer, 0, read);
-            }
-            boolean readTextPrefix = isPlaylistHint(response, requestedUri)
-                    || looksLikeTextPrefix(prefix.toByteArray());
-            while (prefix.size() < limit) {
-                context.cancellation().throwIfCancelled();
-                int available = body.available();
-                if (available <= 0 && !readTextPrefix) {
-                    break;
-                }
-                int read = body.read(buffer, 0, Math.min(
-                        available > 0 ? available : buffer.length, limit - prefix.size()));
-                if (read <= 0) {
-                    break;
-                }
-                prefix.write(buffer, 0, read);
-            }
-            return prefix.toByteArray();
+            return AudioContentProbe.readPrefix(response.body(), context.cancellation(),
+                    context.limits().sniffBytes(), context.limits().maxId3PrefixBytes());
         } catch (RadioTransportException exception) {
             throw RadioSourceException.fromTransport(exception);
         } catch (IOException exception) {
@@ -241,7 +208,8 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 "Radio playlist exceeds the configured size limit", null);
     }
 
-    private static SourceKind classify(AudioHttpResponse response, URI requestedUri, byte[] prefix) {
+    private static SourceKind classify(AudioHttpResponse response, URI requestedUri, byte[] prefix,
+                                       int maxId3PrefixBytes) {
         String contentType = response.firstHeader("Content-Type")
                 .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
                 .orElse("");
@@ -253,18 +221,21 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         }
         String upper = text.toUpperCase(Locale.ROOT);
 
-        if (startsWith(prefix, "OggS")) {
-            return SourceKind.OGG;
+        switch (AudioContentProbe.classify(prefix, maxId3PrefixBytes)) {
+            case MP3 -> {
+                return SourceKind.MP3;
+            }
+            case OGG -> {
+                return SourceKind.OGG;
+            }
+            case AAC -> {
+                return SourceKind.AAC;
+            }
+            default -> {
+            }
         }
-        if (hasAdtsSignature(prefix)) {
-            return SourceKind.AAC;
-        }
-        if (hasMpegAudioSignature(prefix)) {
-            return SourceKind.MP3;
-        }
-        if (startsWith(prefix, "ID3")) {
-            return isAacHint(contentType, suffix, requestedSuffix)
-                    ? SourceKind.AAC : SourceKind.MP3;
+        if (startsWith(prefix, "ID3") || startsWith(prefix, "OggS")) {
+            return SourceKind.UNKNOWN;
         }
         if (containsHlsDirective(upper)) {
             return SourceKind.HLS;
@@ -277,7 +248,7 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || contentType.equals("application/vnd.apple.mpegurl"))) {
             return SourceKind.HLS;
         }
-        if (upper.startsWith("#EXTM3U") || looksLikePlainM3u(text)) {
+        if (upper.startsWith("#EXTM3U") || AudioContentProbe.looksLikeTextPrefix(prefix) && looksLikePlainM3u(text)) {
             return SourceKind.M3U;
         }
         if (text.startsWith("<")) {
@@ -299,14 +270,8 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
                 || requestedSuffix.equals("m3u")) {
             return SourceKind.M3U;
         }
-        if (contentType.equals("audio/ogg") || contentType.equals("application/ogg")
-                || suffix.equals("ogg") || suffix.equals("oga")) {
-            return SourceKind.OGG;
-        }
-        if (contentType.equals("audio/mpeg") || contentType.equals("audio/mp3")
-                || suffix.equals("mp3")) {
-            return SourceKind.MP3;
-        }
+        // Audio needs a recognizable body. A MIME type or extension alone cannot
+        // turn an arbitrary response into something safe to hand to a decoder.
         if (contentType.equals("text/plain")) {
             return SourceKind.M3U;
         }
@@ -317,39 +282,6 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         return suffix.equals("aac") || suffix.equals("aacp")
                 || requestedSuffix.equals("aac") || requestedSuffix.equals("aacp")
                 || contentType.equals("audio/aac") || contentType.equals("audio/aacp");
-    }
-
-    private static boolean isPlaylistHint(AudioHttpResponse response, URI requestedUri) {
-        String contentType = response.firstHeader("Content-Type")
-                .map(value -> value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT))
-                .orElse("");
-        String suffix = suffix(response.uri());
-        String requestedSuffix = suffix(requestedUri);
-        return suffix.equals("m3u") || suffix.equals("pls") || suffix.equals("m3u8")
-                || requestedSuffix.equals("m3u") || requestedSuffix.equals("pls")
-                || requestedSuffix.equals("m3u8") || contentType.equals("audio/x-scpls")
-                || contentType.equals("audio/x-mpegurl") || contentType.equals("audio/mpegurl")
-                || contentType.equals("application/x-mpegurl")
-                || contentType.equals("application/vnd.apple.mpegurl")
-                || contentType.equals("text/plain");
-    }
-
-    private static boolean looksLikeTextPrefix(byte[] prefix) {
-        if (prefix.length == 0) {
-            return false;
-        }
-        if (startsWith(prefix, "ID3") || startsWith(prefix, "OggS")
-                || hasAdtsSignature(prefix) || hasMpegAudioSignature(prefix)) {
-            return false;
-        }
-        for (int i = 0; i < prefix.length; i++) {
-            int current = prefix[i] & 0xFF;
-            if (current != '\t' && current != '\r' && current != '\n'
-                    && (current < 0x20 || current > 0x7E)) {
-                return i == 0 && current == 0xEF;
-            }
-        }
-        return true;
     }
 
     private static boolean containsHlsDirective(String text) {
@@ -379,14 +311,6 @@ public final class DirectRadioSourceResolver implements AudioSourceResolver {
         } catch (IllegalArgumentException exception) {
             return false;
         }
-    }
-
-    private static boolean hasAdtsSignature(byte[] bytes) {
-        return bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xF6) == 0xF0;
-    }
-
-    private static boolean hasMpegAudioSignature(byte[] bytes) {
-        return bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xE0) == 0xE0;
     }
 
     private static boolean startsWith(byte[] bytes, String signature) {

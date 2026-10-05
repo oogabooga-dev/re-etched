@@ -181,31 +181,6 @@ public class SoundTracker {
         soundManager.play(sound);
     }
 
-    public static void playBlockRecord(BlockPos pos, TrackData[] tracks, int track) {
-        ClientLevel level = Minecraft.getInstance().level;
-        if (level == null) {
-            return;
-        }
-
-        if (track >= tracks.length) {
-            setRecordPlayingNearby(level, pos, false);
-            return;
-        }
-
-        TrackData trackData = tracks[track];
-        String url = trackData.url();
-        if (!TrackData.isValidURL(url) || FAILED_URLS.contains(url)) {
-            playBlockRecord(pos, tracks, track + 1);
-            return;
-        }
-        playRecord(pos, StopListeningSound.create(getEtchedRecord(url, trackData.getDisplayName(), level, pos, AudioSource.AudioFileType.FILE), () -> Minecraft.getInstance().tell(() -> {
-            if (!((LevelRendererAccessor) Minecraft.getInstance().levelRenderer).getPlayingRecords().containsKey(pos)) {
-                return;
-            }
-            playBlockRecord(pos, tracks, track + 1);
-        })));
-    }
-
     /**
      * Plays a record stack for an entity.
      *
@@ -265,19 +240,6 @@ public class SoundTracker {
 
     public static void playEntityRecord(ItemStack record, int entityId, int track, boolean loop) {
         SoundTracker.playEntityRecord(record, entityId, track, 16, loop);
-    }
-
-    /**
-     * Plays a record stack for an entity with a boombox.
-     *
-     * @param entityId The id of the entity to play the record at
-     * @param record   The record to play
-     */
-    public static void playBoombox(int entityId, ItemStack record) {
-        setEntitySound(entityId, null);
-        if (!record.isEmpty()) {
-            playEntityRecord(record, entityId, 0, 8, true);
-        }
     }
 
     /**

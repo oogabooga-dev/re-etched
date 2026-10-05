@@ -1,10 +1,10 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
-import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.TestHttpServer;
+import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.common.audio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
 
 import java.net.Proxy;

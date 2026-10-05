@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -69,7 +69,7 @@ class CompositeRadioSourceResolverTest {
                 (request, cancellation) -> {
                     throw new AssertionError("Transport should not be used by this test");
                 }, uri -> {
-                }, new gg.moonflower.etched.client.radio.AudioCancellation(),
+                }, new gg.moonflower.etched.common.audio.AudioCancellation(),
                 new AudioResolveLimits(4, 64, 2, 32, 1, 4));
     }
 

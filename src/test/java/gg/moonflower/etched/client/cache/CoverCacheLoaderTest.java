@@ -1,11 +1,11 @@
 package gg.moonflower.etched.client.cache;
 
 import com.sun.net.httpserver.HttpServer;
-import gg.moonflower.etched.client.radio.AudioCancellation;
-import gg.moonflower.etched.client.radio.RadioFailure;
-import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioTransportException;
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.RadioFailure;
+import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.common.audio.net.RadioTransportException;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.client.radio.source.AudioResolveLimits;
 import org.junit.jupiter.api.Test;

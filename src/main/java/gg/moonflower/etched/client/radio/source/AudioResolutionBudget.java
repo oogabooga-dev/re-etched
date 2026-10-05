@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio.source;
 
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 
 /** Shared request and entry budget for one source-resolution operation. */
 public final class AudioResolutionBudget {

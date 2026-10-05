@@ -1,168 +1,97 @@
 package gg.moonflower.etched.common.sound.download;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.download.SoundDownloadSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
-import gg.moonflower.etched.api.util.ProgressTrackingInputStream;
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
+import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.util.GsonHelper;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringEscapeUtils;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.net.Proxy;
+import java.net.URI;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
 
-/**
- * @author Ocelot
- */
+/** Compatibility facade; all page requests use the common bounded, proxy-aware transport. */
 public class BandcampSource implements SoundDownloadSource {
 
-    private static final Pattern DATA_PATTERN = Pattern.compile("data-tralbum=\"([^\"]+)\"");
     private static final Component BRAND = Component.translatable("sound_source." + Etched.MOD_ID + ".bandcamp").withStyle(style -> style.withColor(TextColor.fromRgb(0x477987)));
 
-    private final Map<String, Boolean> validCache = new WeakHashMap<>();
+    private final Function<Proxy, BandcampMetadataResolver> resolvers;
 
-    private InputStream get(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException {
-        HttpURLConnection httpURLConnection;
-        if (progressListener != null) {
-            progressListener.progressStartRequest(Component.translatable("sound_source." + Etched.MOD_ID + ".requesting", this.getApiName()));
-        }
-
-        try {
-            URL uRL = new URL(url);
-            httpURLConnection = (HttpURLConnection) uRL.openConnection(proxy);
-            httpURLConnection.setInstanceFollowRedirects(true);
-            Map<String, String> map = SoundDownloadSource.getDownloadHeaders();
-
-            for (Map.Entry<String, String> entry : map.entrySet()) {
-                httpURLConnection.setRequestProperty(entry.getKey(), entry.getValue());
-            }
-
-            long size = httpURLConnection.getContentLengthLong();
-            int response = httpURLConnection.getResponseCode();
-            if (response != 200) {
-                throw new IOException(response + " " + httpURLConnection.getResponseMessage());
-            }
-
-            return size != -1 && progressListener != null ? new ProgressTrackingInputStream(httpURLConnection.getInputStream(), size, progressListener) : httpURLConnection.getInputStream();
-        } catch (IOException e) {
-            throw e;
-        } catch (Throwable e) {
-            throw new IOException(e);
-        }
+    public BandcampSource() {
+        this(BandcampMetadataResolver::new);
     }
 
-    @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
-    private <T> T resolve(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy, SourceRequest<T> function) throws IOException, JsonParseException {
-        try (InputStream stream = this.get(url, progressListener, proxy)) {
-            Matcher dataMatcher = DATA_PATTERN.matcher(IOUtils.toString(stream, StandardCharsets.UTF_8));
-            String raw = dataMatcher.find() ? dataMatcher.group(1) : null;
-            if (raw == null) {
-                throw new IOException("Failed to find properties");
-            }
-
-            JsonObject json = JsonParser.parseString(StringEscapeUtils.unescapeHtml4(raw)).getAsJsonObject();
-            String type = GsonHelper.getAsString(GsonHelper.getAsJsonObject(json, "current"), "type");
-            if (!"track".equals(type) && !"album".equals(type)) {
-                throw new IOException("URL is not a track or album");
-            }
-
-            return function.process(json);
-        }
-    }
-
-    @Nullable
-    private String getTrackUrl(JsonObject fileJson) {
-        if (fileJson.has("mp3-128")) {
-            return GsonHelper.getAsString(fileJson, "mp3-128");
-        }
-        return null;
+    BandcampSource(Function<Proxy, BandcampMetadataResolver> resolvers) {
+        this.resolvers = Objects.requireNonNull(resolvers, "resolvers");
     }
 
     @Override
     public List<URL> resolveUrl(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException {
-        return this.resolve(url, progressListener, proxy, json -> {
-            if (progressListener != null) {
-                progressListener.progressStartRequest(RESOLVING_TRACKS);
-            }
-            JsonArray trackInfoArray = GsonHelper.getAsJsonArray(json, "trackinfo");
-            List<URL> trackUrls = new ArrayList<>(trackInfoArray.size());
-            for (int i = 0; i < trackInfoArray.size(); i++) {
-                JsonObject trackInfoJson = GsonHelper.convertToJsonObject(trackInfoArray.get(i), "trackinfo[" + i + "]");
-                JsonObject fileJson = GsonHelper.getAsJsonObject(trackInfoJson, "file");
-                String trackUrl = this.getTrackUrl(fileJson);
-                if (trackUrl != null) {
-                    trackUrls.add(new URL(trackUrl));
-                }
-            }
-            return trackUrls;
-        });
+        URI input = input(url);
+        this.startRequest(progressListener);
+        List<URI> media = this.resolvers.apply(proxy).resolveMediaUrls(input, new AudioCancellation());
+        if (progressListener != null) {
+            progressListener.progressStartRequest(RESOLVING_TRACKS);
+        }
+        List<URL> urls = new ArrayList<>(media.size());
+        for (URI uri : media) {
+            urls.add(uri.toURL());
+        }
+        return urls;
     }
 
-    @SuppressWarnings("deprecation") // commons-lang3 is provided by Minecraft 1.20.1; commons-text is not.
     @Override
     public List<TrackData> resolveTracks(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException, JsonParseException {
-        return this.resolve(url, progressListener, proxy, json -> {
-            int urlEnd = url.indexOf(".com/");
-            if (urlEnd == -1) {
-                urlEnd = url.length() - 4;
-            }
-            JsonObject current = GsonHelper.getAsJsonObject(json, "current");
-            String artist = StringEscapeUtils.unescapeHtml4(GsonHelper.getAsString(json, "artist"));
-            String title = StringEscapeUtils.unescapeHtml4(GsonHelper.getAsString(current, "title"));
-            String type = GsonHelper.getAsString(current, "type");
-            if ("album".equals(type)) {
-                JsonArray trackInfoJson = GsonHelper.getAsJsonArray(json, "trackinfo");
-                List<TrackData> tracks = new ArrayList<>(trackInfoJson.size());
-                tracks.add(new TrackData(url, artist, Component.literal(title)));
-                for (int i = 0; i < trackInfoJson.size(); i++) {
-                    JsonObject trackJson = GsonHelper.convertToJsonObject(trackInfoJson.get(i), "trackinfo[" + i + "]");
-                    String trackUrl = url.substring(0, urlEnd + 4) + GsonHelper.getAsString(trackJson, "title_link");
-                    String trackArtist = trackJson.has("artist") && !trackJson.get("artist").isJsonNull() ? StringEscapeUtils.unescapeHtml4(GsonHelper.getAsString(trackJson, "artist", artist)) : artist;
-                    String trackTitle = StringEscapeUtils.unescapeHtml4(GsonHelper.getAsString(trackJson, "title"));
-
-                    tracks.add(new TrackData(trackUrl, trackArtist, Component.literal(trackTitle)));
-                }
-                return tracks;
-            }
-            return Collections.singletonList(new TrackData(url, artist, Component.literal(title)));
-        });
+        URI input = input(url);
+        this.startRequest(progressListener);
+        return this.resolvers.apply(proxy).resolveTracks(input, new AudioCancellation());
     }
 
     @Override
     public Optional<String> resolveAlbumCover(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy, ResourceManager resourceManager) throws IOException {
-        return this.resolve(url, progressListener, proxy, json -> {
-            JsonObject current = GsonHelper.getAsJsonObject(json, "current");
-            if (!current.has("art_id") || current.get("art_id").isJsonNull()) {
-                return Optional.empty();
+        URI input = input(url);
+        this.startRequest(progressListener);
+        return this.resolvers.apply(proxy).resolveAlbumCover(input, new AudioCancellation()).map(URI::toString);
+    }
+
+    private void startRequest(@Nullable DownloadProgressListener listener) {
+        if (listener != null) {
+            listener.progressStartRequest(Component.translatable("sound_source." + Etched.MOD_ID + ".requesting", this.getApiName()));
+        }
+    }
+
+    private static URI input(String url) throws IOException {
+        try {
+            URI uri = URI.create(url);
+            if (!BandcampPageReader.supports(uri)) {
+                throw new IOException("Bandcamp URL must use HTTP(S) on bandcamp.com without user info");
             }
-            return Optional.of("https://f4.bcbits.com/img/a" + current.get("art_id") + "_1.jpg");
-        });
+            return uri;
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IOException("Invalid Bandcamp URL", exception);
+        }
     }
 
     @Override
     public boolean isValidUrl(String url) {
-        return this.validCache.computeIfAbsent(url, key -> {
-            try {
-                String host = new URI(key).getHost();
-                return host != null && host.endsWith("bandcamp.com");
-            } catch (URISyntaxException e) {
-                return false;
-            }
-        });
+        try {
+            return url != null && BandcampPageReader.supports(URI.create(url));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     @Override

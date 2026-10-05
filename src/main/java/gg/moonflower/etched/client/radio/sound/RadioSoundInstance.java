@@ -1,10 +1,9 @@
 package gg.moonflower.etched.client.radio.sound;
 
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
-import gg.moonflower.etched.client.radio.RadioResourceDisposer;
+import gg.moonflower.etched.common.audio.RadioResourceDisposer;
 import gg.moonflower.etched.client.radio.stream.PlaybackAudioStream;
-import gg.moonflower.etched.api.sound.SoundStopListener;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
 import net.minecraft.client.resources.sounds.Sound;
@@ -24,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 /** Positional streaming sound backed exclusively by one owned audio stream. */
-public final class RadioSoundInstance extends AbstractTickableSoundInstance implements SoundStopListener {
+public final class RadioSoundInstance extends AbstractTickableSoundInstance implements PlaybackStopListener {
 
     private static final ResourceLocation LOCATION = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "radio_stream");
     private static final SoundEvent EVENT = SoundEvent.createVariableRangeEvent(LOCATION);

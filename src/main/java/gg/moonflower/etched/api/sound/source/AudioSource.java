@@ -5,7 +5,7 @@ import gg.moonflower.etched.api.util.AsyncInputStream;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.client.cache.ClientMediaCache;
 import gg.moonflower.etched.client.cache.LegacyAudioLoader;
-import gg.moonflower.etched.client.radio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
@@ -19,6 +19,7 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.net.Proxy;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -41,22 +42,32 @@ public interface AudioSource {
     static AsyncInputStream.InputStreamSupplier downloadTo(URL url, boolean temporary,
                                                             @Nullable DownloadProgressListener progressListener,
                                                             AudioFileType type) {
+        return downloadTo(url, temporary, progressListener, type, Minecraft.getInstance().getProxy(),
+                new AudioCancellation());
+    }
+
+    static AsyncInputStream.InputStreamSupplier downloadTo(URL url, boolean temporary,
+                                                            @Nullable DownloadProgressListener progressListener,
+                                                            AudioFileType type, Proxy proxy,
+                                                            AudioCancellation operation) {
         try {
             var uri = url.toURI();
             return () -> {
+                operation.throwIfCancelled();
+                AudioCancellation cancellation = new AudioCancellation();
+                operation.onCancel(cancellation::cancel);
                 if (progressListener != null) {
                     progressListener.progressStartRequest(Component.translatable("resourcepack.requesting"));
                 }
                 try {
                     InputStream stream;
                     if (type == AudioFileType.FILE && !temporary) {
-                        stream = LegacyAudioLoader.file(ClientMediaCache.get(), uri,
-                                AudioResolveContext::createDefault, progressListener);
+                        stream = LegacyAudioLoader.file(ClientMediaCache.get(), uri, cancellation,
+                                token -> AudioResolveContext.createDefault(proxy, token), progressListener);
                     } else {
-                        AudioCancellation cancellation = new AudioCancellation();
                         stream = new FilterInputStream(new AsyncInputStream(
                                 () -> LegacyAudioLoader.stream(uri, cancellation,
-                                        AudioResolveContext::createDefault),
+                                        token -> AudioResolveContext.createDefault(proxy, token)),
                                 8192, 8, HttpUtil.DOWNLOAD_EXECUTOR)) {
                             @Override
                             public void close() throws IOException {

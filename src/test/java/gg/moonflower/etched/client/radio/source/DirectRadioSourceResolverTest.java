@@ -1,12 +1,12 @@
 package gg.moonflower.etched.client.radio.source;
 
 import com.sun.net.httpserver.Headers;
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
-import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.RadioTransportException;
-import gg.moonflower.etched.client.radio.net.TestHttpServer;
+import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.common.audio.net.RadioTransportException;
+import gg.moonflower.etched.common.audio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -41,7 +42,7 @@ class DirectRadioSourceResolverTest {
 
     @Test
     void returnsTheOriginalMp3ResponseWithSniffedBytesRestored() throws Exception {
-        byte[] audio = "ID3-complete-audio-body".getBytes(StandardCharsets.US_ASCII);
+        byte[] audio = TestMp3Audio.tagged("complete-audio-body");
         AtomicInteger requests = new AtomicInteger();
         AtomicReference<Headers> headers = new AtomicReference<>();
         try (TestHttpServer server = new TestHttpServer()) {
@@ -64,8 +65,116 @@ class DirectRadioSourceResolverTest {
     }
 
     @Test
+    void recognizesARealId3TaggedMp3WithoutTrustingTheContentType() throws Exception {
+        byte[] audio = mp3Fixture();
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/track", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
+                respond(exchange, 200, audio);
+            });
+            try (RadioResolvedSource source = resolver().resolve(server.uri("/track"), context())) {
+                assertEquals(RadioResolvedSource.Format.MP3, source.format());
+                assertArrayEquals(audio, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void acceptsAnId3TagWhoseFrameHeaderFitsExactlyInTheSniffBudget() throws Exception {
+        byte[] audio = TestMp3Audio.tagged("x".repeat(50)); // 10 + 50 + 4 = 64 bytes.
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/exact.mp3", exchange -> respond(exchange, 200, audio));
+            try (RadioResolvedSource source = resolver().resolve(server.uri("/exact.mp3"), context())) {
+                assertEquals(RadioResolvedSource.Format.MP3, source.format());
+                assertArrayEquals(audio, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void allowsBoundedEmbeddedId3ArtWithoutIncreasingTheOrdinarySniffBudget() throws Exception {
+        byte[] audio = TestMp3Audio.taggedWithPadding(16 * 1024);
+        AudioResolveLimits limits = AudioResolveLimits.DEFAULT;
+        assertTrue(audio.length > limits.sniffBytes());
+        assertTrue(audio.length < limits.maxId3PrefixBytes());
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/art.mp3", exchange -> respond(exchange, 200, audio));
+            try (RadioResolvedSource source = resolver().resolve(
+                    server.uri("/art.mp3"), context(ALLOW_TEST_SERVER, limits))) {
+                assertEquals(RadioResolvedSource.Format.MP3, source.format());
+                assertArrayEquals(audio, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void rejectsTagsLargerThanTheSeparateId3LimitEvenWithAHighOrdinarySniffLimit() throws Exception {
+        byte[] audio = TestMp3Audio.taggedWithPadding(200);
+        AudioResolveLimits limits = new AudioResolveLimits(512, 4096, 10, 512, 3, 20, 128);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/too-large.mp3", exchange -> respond(exchange, 200, audio));
+            RadioSourceException error = assertThrows(RadioSourceException.class,
+                    () -> resolver().resolve(server.uri("/too-large.mp3"),
+                            context(ALLOW_TEST_SERVER, limits)));
+            assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, error.code());
+        }
+    }
+
+    @Test
+    void rejectsId3WithoutAValidMpegFrameWithinTheSniffBudget() throws Exception {
+        byte[] valid = TestMp3Audio.tagged("marker");
+        byte[] invalidVersion = valid.clone();
+        invalidVersion[3] = 1;
+        byte[] invalidSize = valid.clone();
+        invalidSize[9] = (byte) 0x80; // Not a synchsafe ID3 size.
+        byte[] invalidFlags = valid.clone();
+        invalidFlags[5] = 1; // Reserved ID3v2.4 flag.
+        byte[] oversized = valid.clone();
+        oversized[9] = 51; // 10 + 51 + 4 exceeds the 64-byte sniff budget.
+        byte[] notMpeg = valid.clone();
+        Arrays.fill(notMpeg, notMpeg.length - 4, notMpeg.length, (byte) 0);
+        byte[][] invalid = {bytes("ID3"), Arrays.copyOf(valid, 10),
+                Arrays.copyOf(valid, valid.length - 4), invalidVersion,
+                invalidFlags, invalidSize, oversized, notMpeg};
+        try (TestHttpServer server = new TestHttpServer()) {
+            for (int i = 0; i < invalid.length; i++) {
+                byte[] body = invalid[i];
+                server.handle("/bad-" + i + ".mp3", exchange -> {
+                    exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
+                    respond(exchange, 200, body);
+                });
+            }
+            for (int i = 0; i < invalid.length; i++) {
+                URI uri = server.uri("/bad-" + i + ".mp3");
+                RadioSourceException failure = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(uri, context()));
+                assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, failure.code(), uri.toString());
+            }
+        }
+    }
+
+    @Test
+    void skipsAnId3v24FooterBeforeCheckingTheMpegFrame() throws Exception {
+        byte[] tagged = TestMp3Audio.tagged("footer");
+        byte[] withFooter = new byte[tagged.length + 10];
+        System.arraycopy(tagged, 0, withFooter, 0, tagged.length - 4);
+        withFooter[5] = 0x10;
+        withFooter[tagged.length - 4] = '3';
+        withFooter[tagged.length - 3] = 'D';
+        withFooter[tagged.length - 2] = 'I';
+        System.arraycopy(tagged, tagged.length - 4, withFooter, withFooter.length - 4, 4);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/footer.mp3", exchange -> respond(exchange, 200, withFooter));
+            try (RadioResolvedSource source = resolver().resolve(server.uri("/footer.mp3"), context())) {
+                assertEquals(RadioResolvedSource.Format.MP3, source.format());
+                assertArrayEquals(withFooter, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
     void detectsOggFromSignatureWhenContentTypeIsGeneric() throws Exception {
-        byte[] audio = "OggS-independent-stream".getBytes(StandardCharsets.US_ASCII);
+        byte[] audio = vorbisFixture();
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/unknown", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
@@ -75,6 +184,91 @@ class DirectRadioSourceResolverTest {
             try (RadioResolvedSource source = resolver().resolve(server.uri("/unknown"), context())) {
                 assertEquals(RadioResolvedSource.Format.OGG, source.format());
                 assertArrayEquals(audio, source.body().readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void rejectsTruncatedOrNonVorbisOggBeforeOpeningTheDecoder() throws Exception {
+        byte[] truncated = Arrays.copyOf(vorbisFixture(), 30);
+        byte[] wrongCodec = Arrays.copyOf(vorbisFixture(), 58);
+        wrongCodec[29] = 'X';
+        byte[] wrongPage = Arrays.copyOf(vorbisFixture(), 58);
+        wrongPage[5] = 0;
+        byte[] wrongVersion = Arrays.copyOf(vorbisFixture(), 58);
+        wrongVersion[35] = 1;
+        byte[] noChannels = Arrays.copyOf(vorbisFixture(), 58);
+        noChannels[39] = 0;
+        byte[] wrongBlockSizes = Arrays.copyOf(vorbisFixture(), 58);
+        wrongBlockSizes[56] = 0x55;
+        byte[] noFraming = Arrays.copyOf(vorbisFixture(), 58);
+        noFraming[57] = 0;
+        try (TestHttpServer server = new TestHttpServer()) {
+            byte[][] invalid = {bytes("OggS"), truncated, wrongCodec, wrongPage,
+                    wrongVersion, noChannels, wrongBlockSizes, noFraming};
+            for (int i = 0; i < invalid.length; i++) {
+                byte[] body = invalid[i];
+                server.handle("/bad-" + i + ".ogg", exchange -> {
+                    exchange.getResponseHeaders().add("Content-Type", "audio/ogg");
+                    respond(exchange, 200, body);
+                });
+            }
+            for (int i = 0; i < invalid.length; i++) {
+                URI uri = server.uri("/bad-" + i + ".ogg");
+                RadioSourceException failure = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(uri, context()));
+                assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, failure.code(), uri.toString());
+            }
+        }
+    }
+
+    @Test
+    void doesNotTreatAudioHeadersOrExtensionsAsProofOfAudio() throws Exception {
+        byte[] garbage = new byte[]{0, 1, 2, 3, 4, 5};
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/claimed-mp3", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
+                respond(exchange, 200, garbage);
+            });
+            server.handle("/claimed-ogg.ogg", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "audio/ogg");
+                respond(exchange, 200, garbage);
+            });
+            server.handle("/claimed-mp3.mp3", exchange -> respond(exchange, 200, garbage));
+
+            for (String path : List.of("/claimed-mp3", "/claimed-ogg.ogg", "/claimed-mp3.mp3")) {
+                RadioSourceException exception = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(server.uri(path), context()));
+                assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, exception.code());
+            }
+        }
+    }
+
+    @Test
+    void rejectsReservedOrIncompleteMpegFrameHeaders() throws Exception {
+        byte[][] invalid = {
+                {(byte) 0xFF, (byte) 0xFB},                 // Sync alone is not a frame.
+                {(byte) 0xFF, (byte) 0xFB, 0, 0},           // Free-format bitrate is unsupported.
+                {(byte) 0xFF, (byte) 0xEB, (byte) 0x90, 0}, // Reserved MPEG version.
+                {(byte) 0xFF, (byte) 0xF9, (byte) 0x90, 0}, // Reserved layer.
+                {(byte) 0xFF, (byte) 0xFB, (byte) 0xF0, 0}, // Reserved bitrate.
+                {(byte) 0xFF, (byte) 0xFB, (byte) 0x9C, 0}  // Reserved sample rate.
+        };
+        try (TestHttpServer server = new TestHttpServer()) {
+            for (int i = 0; i < invalid.length; i++) {
+                byte[] body = invalid[i];
+                server.handle("/bad-" + i + ".mp3", exchange -> {
+                    exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
+                    respond(exchange, 200, body);
+                });
+            }
+            for (int i = 0; i < invalid.length; i++) {
+                URI uri = server.uri("/bad-" + i + ".mp3");
+                RadioSourceException failure = assertThrows(RadioSourceException.class,
+                        () -> resolver().resolve(uri, context()));
+                // The reserved MPEG layer also resembles unsupported ADTS/AAC.
+                assertEquals(i == 3 ? RadioFailure.Code.UNSUPPORTED_AAC
+                        : RadioFailure.Code.UNSUPPORTED_AUDIO, failure.code(), uri.toString());
             }
         }
     }
@@ -92,7 +286,7 @@ class DirectRadioSourceResolverTest {
             });
             server.handle("/station.mp3", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
 
             try (RadioResolvedSource m3u = resolver().resolve(server.uri("/m3u"), context());
@@ -110,7 +304,7 @@ class DirectRadioSourceResolverTest {
             server.handle("/station.m3u", exchange -> {
                 headers.set(exchange.getRequestHeaders());
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
 
             try (RadioResolvedSource source = resolver().resolve(server.uri("/station.m3u"), context())) {
@@ -127,7 +321,7 @@ class DirectRadioSourceResolverTest {
             server.handle("/live", exchange -> {
                 int request = requests.incrementAndGet();
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-stream-" + request));
+                respond(exchange, 200, TestMp3Audio.frame("stream-" + request));
             });
             DirectRadioSourceResolver resolver = resolver();
             RadioHttpTransportImpl transport = new RadioHttpTransportImpl(
@@ -145,7 +339,7 @@ class DirectRadioSourceResolverTest {
                  RadioResolvedSource second = resolver.resolve(server.uri("/live"), secondContext)) {
                 firstSession.stop();
                 assertThrows(CancellationException.class, () -> first.body().read());
-                assertArrayEquals(bytes("ID3-stream-2"), second.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("stream-2"), second.body().readAllBytes());
             }
             assertEquals(2, requests.get());
         }
@@ -158,7 +352,7 @@ class DirectRadioSourceResolverTest {
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/live", exchange -> {
                 exchange.sendResponseHeaders(200, 0);
-                exchange.getResponseBody().write(new byte[]{(byte) 0xFF, (byte) 0xFB, 0, 0});
+                exchange.getResponseBody().write(new byte[]{(byte) 0xFF, (byte) 0xFB, (byte) 0x90, 0x64});
                 exchange.getResponseBody().flush();
                 signatureSent.countDown();
                 await(release);
@@ -184,10 +378,112 @@ class DirectRadioSourceResolverTest {
     }
 
     @Test
+    void vorbisIdentificationDoesNotWaitForTheStreamToEnd() throws Exception {
+        byte[] identification = Arrays.copyOf(vorbisFixture(), 58);
+        CountDownLatch headerSent = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/live.m3u8", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().write(identification);
+                exchange.getResponseBody().flush();
+                headerSent.countDown();
+                await(release);
+                exchange.close();
+            });
+            CompletableFuture<RadioResolvedSource> result = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return resolver().resolve(server.uri("/live.m3u8"), context());
+                } catch (RadioSourceException exception) {
+                    throw new java.util.concurrent.CompletionException(exception);
+                }
+            });
+            try {
+                assertTrue(headerSent.await(1, TimeUnit.SECONDS));
+                try (RadioResolvedSource source = result.get(1, TimeUnit.SECONDS)) {
+                    assertEquals(RadioResolvedSource.Format.OGG, source.format());
+                }
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void taggedMpegDoesNotWaitForTheStreamToEnd() throws Exception {
+        byte[] tagged = TestMp3Audio.tagged("live");
+        CountDownLatch headerSent = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/live.m3u8", exchange -> {
+                exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().write(tagged);
+                exchange.getResponseBody().flush();
+                headerSent.countDown();
+                await(release);
+                exchange.close();
+            });
+            CompletableFuture<RadioResolvedSource> result = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return resolver().resolve(server.uri("/live.m3u8"), context());
+                } catch (RadioSourceException exception) {
+                    throw new java.util.concurrent.CompletionException(exception);
+                }
+            });
+            try {
+                assertTrue(headerSent.await(1, TimeUnit.SECONDS));
+                try (RadioResolvedSource source = result.get(1, TimeUnit.SECONDS)) {
+                    assertEquals(RadioResolvedSource.Format.MP3, source.format());
+                }
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void oversizedId3TagFailsWithoutWaitingForItsClaimedBody() throws Exception {
+        byte[] header = Arrays.copyOf(TestMp3Audio.tagged(""), 10);
+        header[8] = 1; // Claims 128 tag bytes plus header: beyond the separate 128-byte ID3 cap.
+        AudioResolveLimits limits = new AudioResolveLimits(512, 4096, 10, 512, 3, 20, 128);
+        CountDownLatch headerSent = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/oversized.mp3", exchange -> {
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().write(header);
+                exchange.getResponseBody().flush();
+                headerSent.countDown();
+                await(release);
+                exchange.close();
+            });
+            CompletableFuture<RadioResolvedSource> result = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return resolver().resolve(server.uri("/oversized.mp3"),
+                            context(ALLOW_TEST_SERVER, limits));
+                } catch (RadioSourceException exception) {
+                    throw new java.util.concurrent.CompletionException(exception);
+                }
+            });
+            try {
+                assertTrue(headerSent.await(1, TimeUnit.SECONDS));
+                ExecutionException error = assertThrows(ExecutionException.class,
+                        () -> result.get(1, TimeUnit.SECONDS));
+                assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO,
+                        assertInstanceOf(RadioSourceException.class, error.getCause()).code());
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
     void resolvesRelativeM3uEntriesAndUsesRecoverableFallback() throws Exception {
         AtomicInteger primaryRequests = new AtomicInteger();
         AtomicInteger backupRequests = new AtomicInteger();
-        byte[] audio = "ID3-backup-stream".getBytes(StandardCharsets.US_ASCII);
+        byte[] audio = TestMp3Audio.frame("backup-stream");
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/lists/stations.m3u", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/x-mpegurl");
@@ -217,7 +513,7 @@ class DirectRadioSourceResolverTest {
 
     @Test
     void usesTheRedirectedPlaylistUriAsTheRelativeBase() throws Exception {
-        byte[] audio = "ID3-redirected-playlist".getBytes(StandardCharsets.US_ASCII);
+        byte[] audio = TestMp3Audio.frame("redirected-playlist");
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/start.m3u", exchange -> {
                 exchange.getResponseHeaders().add("Location", "/generated/stations");
@@ -258,7 +554,7 @@ class DirectRadioSourceResolverTest {
             server.handle("/second", exchange -> {
                 secondRequests.incrementAndGet();
                 exchange.getResponseHeaders().add("Content-Type", "audio/ogg");
-                respond(exchange, 200, bytes("OggS-backup"));
+                respond(exchange, 200, vorbisFixture());
             });
 
             try (RadioResolvedSource source = resolver().resolve(server.uri("/stations.pls"), context())) {
@@ -279,7 +575,7 @@ class DirectRadioSourceResolverTest {
                     bytes(server.uri("/station") + "\n" + blocked + "\n")));
             server.handle("/station", exchange -> {
                 stationRequests.incrementAndGet();
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
             AudioNetworkPolicy policy = uri -> {
                 if (uri.equals(blocked)) {
@@ -325,25 +621,24 @@ class DirectRadioSourceResolverTest {
         try (TestHttpServer server = new TestHttpServer()) {
             server.handle("/wrong.aac", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/aacp");
-                respond(exchange, 200, bytes("OggS-audio"));
+                respond(exchange, 200, vorbisFixture());
             });
             server.handle("/wrong.m3u8", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
-                respond(exchange, 200, new byte[]{(byte) 0xFF, (byte) 0xFB, 0, 0});
+                respond(exchange, 200, new byte[]{(byte) 0xFF, (byte) 0xFB, (byte) 0x90, 0x64});
             });
             server.handle("/tagged.aac", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/aac");
-                respond(exchange, 200, bytes("ID3-tagged-aac"));
+                respond(exchange, 200, TestMp3Audio.tagged("mpeg-despite-aac-hint"));
             });
 
             try (RadioResolvedSource ogg = resolver().resolve(server.uri("/wrong.aac"), context());
-                 RadioResolvedSource mp3 = resolver().resolve(server.uri("/wrong.m3u8"), context())) {
+                 RadioResolvedSource mp3 = resolver().resolve(server.uri("/wrong.m3u8"), context());
+                 RadioResolvedSource tagged = resolver().resolve(server.uri("/tagged.aac"), context())) {
                 assertEquals(RadioResolvedSource.Format.OGG, ogg.format());
                 assertEquals(RadioResolvedSource.Format.MP3, mp3.format());
+                assertEquals(RadioResolvedSource.Format.MP3, tagged.format());
             }
-            RadioSourceException aac = assertThrows(RadioSourceException.class,
-                    () -> resolver().resolve(server.uri("/tagged.aac"), context()));
-            assertEquals(RadioFailure.Code.UNSUPPORTED_AAC, aac.code());
         }
     }
 
@@ -397,14 +692,14 @@ class DirectRadioSourceResolverTest {
             server.handle("/two", exchange -> redirect(exchange, "/final"));
             server.handle("/final", exchange -> {
                 finalRequests.incrementAndGet();
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
             server.handle("/budget.m3u", exchange -> respond(exchange, 200,
                     bytes("budget-station\n")));
             server.handle("/budget-station", exchange -> redirect(exchange, "/budget-final"));
             server.handle("/budget-final", exchange -> {
                 crossRequestFinalRequests.incrementAndGet();
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
 
             RadioSourceException large = assertThrows(RadioSourceException.class,
@@ -432,7 +727,7 @@ class DirectRadioSourceResolverTest {
             server.handle("/exact.m3u", exchange -> respond(exchange, 200, bytes("audio\n")));
             server.handle("/audio", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-audio"));
+                respond(exchange, 200, TestMp3Audio.frame("audio"));
             });
 
             try (RadioResolvedSource source = resolver().resolve(
@@ -459,7 +754,7 @@ class DirectRadioSourceResolverTest {
             server.handle("/dead", exchange -> respond(exchange, 503, new byte[0]));
             server.handle("/good", exchange -> {
                 exchange.getResponseHeaders().add("Content-Type", "audio/mpeg");
-                respond(exchange, 200, bytes("ID3-good"));
+                respond(exchange, 200, TestMp3Audio.frame("good"));
             });
 
             try (RadioResolvedSource source = resolver().resolve(server.uri("/root.m3u"), context())) {
@@ -629,6 +924,26 @@ class DirectRadioSourceResolverTest {
 
     private static byte[] bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] vorbisFixture() throws IOException {
+        try (var input = DirectRadioSourceResolverTest.class.getResourceAsStream(
+                "/gg/moonflower/etched/client/radio/audio/stereo.ogg")) {
+            if (input == null) {
+                throw new IOException("Missing Ogg/Vorbis test fixture");
+            }
+            return input.readAllBytes();
+        }
+    }
+
+    private static byte[] mp3Fixture() throws IOException {
+        try (var input = DirectRadioSourceResolverTest.class.getResourceAsStream(
+                "/gg/moonflower/etched/client/radio/audio/mono.mp3")) {
+            if (input == null) {
+                throw new IOException("Missing MP3 test fixture");
+            }
+            return input.readAllBytes();
+        }
     }
 
     private static void respond(com.sun.net.httpserver.HttpExchange exchange, int status, byte[] body)

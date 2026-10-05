@@ -1,8 +1,6 @@
 package gg.moonflower.etched.clientsmoke;
 
 import gg.moonflower.etched.api.record.TrackData;
-import gg.moonflower.etched.api.sound.SoundTracker;
-import gg.moonflower.etched.api.sound.SoundStopListener;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
@@ -336,7 +334,7 @@ final class JukeboxPacketSmoke {
                 Item record = ForgeRegistries.ITEMS.getValue(LegacySmokeRecord.ID);
                 if (!(record instanceof LegacySmokeRecord)
                         || RecordContentResolver.resolve(new ItemStack(record)).isPresent()) {
-                    throw new AssertionError("Client smoke fallback record was not registered as a third-party item");
+                    throw new AssertionError("Client smoke unsupported record was not registered as a third-party item");
                 }
                 step = 13;
                 ticks = 0;
@@ -356,26 +354,27 @@ final class JukeboxPacketSmoke {
         if (step == 13 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
-                    && SoundTracker.getEntitySound(client.player.getId()) != null
-                    && BoomboxPlayback.getInstance().isPlaying(client.player)) {
-                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
-                assertParrotDances(client, true);
-                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
-                    throw new AssertionError("Third-party record incorrectly entered managed playback");
+                    && BoomboxItem.getRecord(client.player.getOffhandItem()).getItem() instanceof LegacySmokeRecord
+                    && !BoomboxItem.isPaused(client.player.getOffhandItem())) {
+                if (BoomboxPlayback.getInstance().isPlaying(client.player)
+                        || AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
+                    throw new AssertionError("Unsupported record entered managed playback");
                 }
-                // Queue a completion from off-thread, then retire its sound before the client
-                // thread handles it. The old callback must not start another legacy track.
-                SoundStopListener sound = (SoundStopListener) SoundTracker.getEntitySound(client.player.getId());
-                Thread completion = new Thread(sound::onStop, "etched-smoke-legacy-completion");
-                completion.start();
-                try {
-                    completion.join(2000L);
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Interrupted while queuing legacy completion", exception);
+                assertPlayingModel(client, client.player, client.player.getOffhandItem(), 0.0F);
+                assertPlayingArm(client, InteractionHand.OFF_HAND, false);
+                assertParrotDances(client, false);
+                if (++ticks < 20) {
+                    return;
                 }
-                if (completion.isAlive()) {
-                    throw new AssertionError("Legacy completion was not queued");
+                // Replace a currently admitted first-party owner with the unsupported item.
+                BoomboxPlayback.getInstance().update(client.player, new ItemStack(Items.MUSIC_DISC_CAT));
+                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+                    throw new AssertionError("Supported record was not admitted before the replacement check");
+                }
+                BoomboxPlayback.getInstance().update(client.player, BoomboxItem.getRecord(client.player.getOffhandItem()));
+                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()
+                        || BoomboxPlayback.getInstance().isPlaying(client.player)) {
+                    throw new AssertionError("Unsupported replacement left the managed session alive");
                 }
                 BoomboxItem.setPaused(client.player.getOffhandItem(), true);
                 BoomboxPlayback.getInstance().update(client.player, ItemStack.EMPTY);
@@ -383,22 +382,33 @@ final class JukeboxPacketSmoke {
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID playerId = client.player.getUUID();
+                var jukeboxKey = PlaybackOwnerKey.block(client.level.dimension(), pos);
+                if (AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isEmpty()) {
+                    throw new AssertionError("Managed jukebox owner disappeared before the unsupported replacement check");
+                }
+                var dimension = client.level.dimension();
                 server.execute(() -> {
                     ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                     ItemStack boombox = player.getOffhandItem().copy();
                     BoomboxItem.setPaused(boombox, true);
                     player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                    ItemStack unsupported = BoomboxItem.getRecord(boombox);
+                    ServerLevel level = server.getLevel(dimension);
+                    level.levelEvent(null, 1010, pos, Item.getId(unsupported.getItem()));
+                    EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                            new ClientboundPlayMusicPacket(unsupported, pos));
                 });
             } else if (++ticks >= 100) {
-                throw new AssertionError("Third-party record did not start legacy playback");
+                throw new AssertionError("Unsupported third-party record did not reach the held boombox");
             }
         }
         if (step == 14 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (BoomboxItem.isPaused(client.player.getOffhandItem())
-                    && SoundTracker.getEntitySound(client.player.getId()) == null
                     && !BoomboxPlayback.getInstance().isPlaying(client.player)
-                    && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+                    && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()
+                    && AudioPlaybackManager.getInstance().getPlaybackState(
+                    PlaybackOwnerKey.block(client.level.dimension(), pos)).isEmpty()) {
                 if (++ticks < 20) {
                     return;
                 }
@@ -413,7 +423,7 @@ final class JukeboxPacketSmoke {
                     standId = spawnStand(level, player);
                 });
             } else if (++ticks >= 100) {
-                throw new AssertionError("Pausing a third-party record did not stop legacy playback");
+                throw new AssertionError("Unsupported boombox/jukebox replacement left a playback owner");
             }
         }
         if (step == 15 && standId != null && client.level != null) {
@@ -593,7 +603,8 @@ final class JukeboxPacketSmoke {
                     System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
                     System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
                     System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
-                    System.out.println("ETCHED THIRD-PARTY BOOMBOX FALLBACK AND LATE STOP SMOKE PASSED");
+                    System.out.println("ETCHED UNSUPPORTED BOOMBOX RECORD AND REPLACEMENT SMOKE PASSED");
+                    System.out.println("ETCHED UNSUPPORTED JUKEBOX PACKET REPLACEMENT SMOKE PASSED");
                     System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
                     System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
                     System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");

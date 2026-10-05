@@ -4,6 +4,8 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.Util;
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.function.Supplier;
+
 @ApiStatus.Internal
 public class AlbumImageProcessor {
 
@@ -15,6 +17,25 @@ public class AlbumImageProcessor {
     });
 
     public static NativeImage apply(NativeImage image, NativeImage overlay) {
+        return apply(image, () -> overlay);
+    }
+
+    /** Takes ownership of the decoded image before overlay lookup or output allocation can fail. */
+    public static NativeImage apply(NativeImage image, Supplier<NativeImage> overlays) {
+        try (image) {
+            NativeImage overlay = overlays.get();
+            return process(image, overlay);
+        }
+    }
+
+    /** Both inputs are request-owned, including the independently copied reload-safe overlay. */
+    public static NativeImage applyOwnedOverlay(NativeImage image, Supplier<NativeImage> overlays) {
+        try (image; NativeImage overlay = overlays.get()) {
+            return process(image, overlay);
+        }
+    }
+
+    private static NativeImage process(NativeImage image, NativeImage overlay) {
         NativeImage nativeImage2 = new NativeImage(overlay.getWidth(), overlay.getHeight(), true);
         try {
             float xFactor = (float) image.getWidth() / (float) (overlay.getWidth() * 2);
@@ -31,11 +52,9 @@ public class AlbumImageProcessor {
                 }
             }
             return nativeImage2;
-        } catch (RuntimeException exception) {
+        } catch (RuntimeException | Error exception) {
             nativeImage2.close();
             throw exception;
-        } finally {
-            image.close();
         }
     }
 

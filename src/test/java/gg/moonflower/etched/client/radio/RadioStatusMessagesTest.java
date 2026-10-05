@@ -1,5 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
+import gg.moonflower.etched.common.audio.RadioFailure;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;

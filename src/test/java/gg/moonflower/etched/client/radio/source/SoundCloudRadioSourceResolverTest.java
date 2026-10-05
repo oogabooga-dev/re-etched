@@ -1,12 +1,12 @@
 package gg.moonflower.etched.client.radio.source;
 
 import com.sun.net.httpserver.HttpExchange;
-import gg.moonflower.etched.client.radio.AudioCancellation;
-import gg.moonflower.etched.client.radio.RadioFailure;
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.client.radio.PlaybackSession;
-import gg.moonflower.etched.client.radio.net.AudioNetworkPolicy;
-import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
-import gg.moonflower.etched.client.radio.net.TestHttpServer;
+import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
+import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
+import gg.moonflower.etched.common.audio.net.TestHttpServer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -53,7 +53,7 @@ class SoundCloudRadioSourceResolverTest {
     void prefersProgressiveMp3EvenWhenHlsAppearsFirst() throws Exception {
         AtomicInteger hlsRequests = new AtomicInteger();
         AtomicInteger progressiveRequests = new AtomicInteger();
-        byte[] audio = bytes("ID3-progressive-audio");
+        byte[] audio = TestMp3Audio.frame("progressive-audio");
         try (Fixture fixture = new Fixture()) {
             fixture.installDiscovery("client-one");
             fixture.server.handle("/resolve", exchange -> respondJson(exchange, 200,
@@ -127,10 +127,10 @@ class SoundCloudRadioSourceResolverTest {
                     "{\"url\":\"" + fixture.server.uri("/second.mp3") + "\"}"));
             fixture.server.handle("/first.mp3", exchange -> {
                 int request = firstMediaRequests.incrementAndGet();
-                respondAudio(exchange, 200, bytes("ID3-first-" + request));
+                respondAudio(exchange, 200, TestMp3Audio.frame("first-" + request));
             });
             fixture.server.handle("/second.mp3", exchange -> respondAudio(exchange, 200,
-                    bytes("ID3-second")));
+                    TestMp3Audio.frame("second")));
 
             URI album = URI.create("https://soundcloud.com/a/album");
             RadioSourceProgram program = fixture.resolver.resolveProgram(album, fixture.context());
@@ -140,11 +140,11 @@ class SoundCloudRadioSourceResolverTest {
             assertEquals("Second", program.tracks().get(1).title());
             try (RadioResolvedSource first = program.openTrack(0, fixture.context());
                  RadioResolvedSource second = program.openTrack(1, fixture.context())) {
-                assertArrayEquals(bytes("ID3-first-1"), first.body().readAllBytes());
-                assertArrayEquals(bytes("ID3-second"), second.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("first-1"), first.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("second"), second.body().readAllBytes());
             }
             try (RadioResolvedSource firstAgain = program.openTrack(0, fixture.context())) {
-                assertArrayEquals(bytes("ID3-first-2"), firstAgain.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("first-2"), firstAgain.body().readAllBytes());
             }
             assertEquals(2, firstMediaRequests.get());
         }
@@ -197,7 +197,7 @@ class SoundCloudRadioSourceResolverTest {
             fixture.server.handle("/transcoding", exchange -> respondJson(exchange, 200,
                     "{\"url\":\"" + fixture.server.uri("/media.mp3") + "\"}"));
             fixture.server.handle("/media.mp3", exchange -> respondAudio(exchange, 200,
-                    bytes("ID3-audio")));
+                    TestMp3Audio.frame("audio")));
 
             RadioSourceProgram program = fixture.resolver.resolveProgram(TRACK, fixture.context());
             try (RadioResolvedSource ignored = program.openTrack(0, fixture.context())) {
@@ -233,11 +233,11 @@ class SoundCloudRadioSourceResolverTest {
                 respondAudio(exchange, 404, bytes("expired"));
             });
             fixture.server.handle("/fresh.mp3", exchange -> respondAudio(exchange, 200,
-                    bytes("ID3-fresh")));
+                    TestMp3Audio.frame("fresh")));
 
             RadioSourceProgram program = fixture.resolver.resolveProgram(TRACK, fixture.context());
             try (RadioResolvedSource source = program.openTrack(0, fixture.context())) {
-                assertArrayEquals(bytes("ID3-fresh"), source.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("fresh"), source.body().readAllBytes());
             }
 
             assertEquals(3, trackResolutions.get());
@@ -350,12 +350,12 @@ class SoundCloudRadioSourceResolverTest {
             fixture.server.handle("/transcoding", exchange -> respondJson(exchange, 200,
                     "{\"url\":\"" + fixture.server.uri("/media.mp3") + "\"}"));
             fixture.server.handle("/media.mp3", exchange -> respondAudio(exchange, 200,
-                    bytes("ID3-hydrated")));
+                    TestMp3Audio.frame("hydrated")));
 
             RadioSourceProgram program = fixture.resolver.resolveProgram(
                     URI.create("https://soundcloud.com/a/set"), fixture.context());
             try (RadioResolvedSource source = program.openTrack(0, fixture.context())) {
-                assertArrayEquals(bytes("ID3-hydrated"), source.body().readAllBytes());
+                assertArrayEquals(TestMp3Audio.frame("hydrated"), source.body().readAllBytes());
             }
 
             assertEquals(1, hydrated.get());
@@ -380,7 +380,7 @@ class SoundCloudRadioSourceResolverTest {
                         "{\"url\":\"" + fixture.server.uri("/media.mp3") + "\"}");
             });
             fixture.server.handle("/media.mp3", exchange -> respondAudio(exchange, 200,
-                    bytes("ID3-authorized")));
+                    TestMp3Audio.frame("authorized")));
 
             RadioSourceProgram program = fixture.resolver.resolveProgram(TRACK, fixture.context());
             try (RadioResolvedSource ignored = program.openTrack(0, fixture.context())) {
