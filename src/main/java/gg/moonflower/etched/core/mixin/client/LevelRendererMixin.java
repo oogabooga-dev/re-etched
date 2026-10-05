@@ -1,6 +1,5 @@
 package gg.moonflower.etched.core.mixin.client;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.client.radio.sound.RecordSoundInstance;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
@@ -40,7 +39,7 @@ public abstract class LevelRendererMixin {
 
     @Inject(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;setNowPlaying(Lnet/minecraft/network/chat/Component;)V", shift = At.Shift.BEFORE))
     public void preNowPlaying(SoundEvent arg, BlockPos arg2, RecordItem musicDiscItem, CallbackInfo ci) {
-        if (!this.level.getBlockState(arg2.above()).isAir() || !PlayableRecord.canShowMessage(arg2.getX() + 0.5, arg2.getY() + 0.5, arg2.getZ() + 0.5)) {
+        if (!this.level.getBlockState(arg2.above()).isAir() || !GuiHook.canShowPlayingText(arg2.getX() + 0.5, arg2.getY() + 0.5, arg2.getZ() + 0.5)) {
             GuiHook.setHidePlayingText(true);
         }
     }

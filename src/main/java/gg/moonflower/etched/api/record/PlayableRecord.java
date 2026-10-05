@@ -1,8 +1,5 @@
 package gg.moonflower.etched.api.record;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -28,20 +25,6 @@ public interface PlayableRecord {
      */
     static boolean isPlayableRecord(ItemStack stack) {
         return stack.getItem() instanceof PlayableRecord && ((PlayableRecord) stack.getItem()).canPlay(stack);
-    }
-
-    /**
-     * Checks to see if the local player is close enough to receive the record text.
-     *
-     * @param x The x position of the entity
-     * @param y The y position of the entity
-     * @param z The z position of the entity
-     * @return Whether the player is within distance
-     */
-    @OnlyIn(Dist.CLIENT)
-    static boolean canShowMessage(double x, double y, double z) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        return player == null || player.distanceToSqr(x, y, z) <= 4096.0;
     }
 
     /**

@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.client.GuiHook;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.core.mixin.client.GuiAccessor;
 import net.minecraft.client.Minecraft;
@@ -146,7 +146,7 @@ final class MinecraftRadioPlaybackEffects implements PlaybackEffects {
     private boolean canShowOverlay(PlaybackOwnerKey.BlockOwner key, boolean playing) {
         ClientLevel level = getLevel(key);
         if (level == null || playing && !level.getBlockState(key.pos().above()).isAir()
-                || !PlayableRecord.canShowMessage(
+                || !GuiHook.canShowPlayingText(
                 key.pos().getX() + 0.5, key.pos().getY() + 0.5, key.pos().getZ() + 0.5)) {
             return false;
         }

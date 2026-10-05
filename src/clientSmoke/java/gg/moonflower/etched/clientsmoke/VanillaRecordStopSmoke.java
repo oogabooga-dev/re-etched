@@ -1,5 +1,6 @@
 package gg.moonflower.etched.clientsmoke;
 
+import gg.moonflower.etched.client.GuiHook;
 import gg.moonflower.etched.client.radio.sound.RecordSoundInstance;
 import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
 import net.minecraft.client.Minecraft;
@@ -16,6 +17,11 @@ final class VanillaRecordStopSmoke {
     }
 
     static void verify(Minecraft client) {
+        var playerPos = client.player.position();
+        if (!GuiHook.canShowPlayingText(playerPos.x + 64, playerPos.y, playerPos.z)
+                || GuiHook.canShowPlayingText(playerPos.x + 64.001, playerPos.y, playerPos.z)) {
+            throw new AssertionError("Internal playing-text visibility changed its inclusive 64-block range");
+        }
         BlockPos firstPos = client.player.blockPosition().offset(8, 0, 0);
         BlockPos secondPos = client.player.blockPosition().offset(16, 0, 0);
         Parrot first = EntityType.PARROT.create(client.level);
