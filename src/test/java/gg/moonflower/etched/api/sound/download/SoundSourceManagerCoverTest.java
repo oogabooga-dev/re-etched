@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
-import java.net.URL;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -105,11 +104,7 @@ class SoundSourceManagerCoverTest {
         private Provider(String input) { this.input = input; }
 
         @Override public boolean isValidUrl(String url) { return input.equals(url); }
-        @Override public boolean isTemporary(String url) { return true; }
         @Override public String getApiName() { return "Fixture provider"; }
-        @Override public List<URL> resolveUrl(String url, DownloadProgressListener listener, Proxy proxy) {
-            throw new AssertionError("Cover resolution reached audio URL lookup");
-        }
         @Override public List<TrackData> resolveTracks(String url, DownloadProgressListener listener, Proxy proxy) {
             throw new AssertionError("Cover resolution reached track lookup");
         }

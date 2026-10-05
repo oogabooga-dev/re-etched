@@ -4,15 +4,12 @@ import com.google.gson.JsonParseException;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.core.Etched;
-import net.minecraft.SharedConstants;
-import net.minecraft.WorldVersion;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.net.Proxy;
-import java.net.URL;
 import java.util.*;
 
 /**
@@ -24,30 +21,6 @@ import java.util.*;
 public interface SoundDownloadSource {
 
     Component RESOLVING_TRACKS = Component.translatable("record." + Etched.MOD_ID + ".resolvingTracks");
-
-    /**
-     * @return The vanilla Minecraft download headers
-     */
-    static Map<String, String> getDownloadHeaders() {
-        Map<String, String> map = new HashMap<>();
-        WorldVersion version = SharedConstants.getCurrentVersion();
-        map.put("X-Minecraft-Version", version.getName());
-        map.put("X-Minecraft-Version-ID", version.getId());
-        map.put("User-Agent", "Minecraft Java/" + version.getName());
-        return map;
-    }
-
-    /**
-     * Resolves the streaming URL for the specified track.
-     *
-     * @param url              The URL to the track or album
-     * @param progressListener The listener for net status
-     * @param proxy            The internet proxy
-     * @return The URL to the audio file
-     * @throws IOException        If any error occurs with requests
-     * @throws JsonParseException If any error occurs when parsing
-     */
-    List<URL> resolveUrl(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException;
 
     /**
      * Resolves the artist and title for the specified track. If the more than one tracks are returned, the first data will be treated as the album data.
@@ -79,14 +52,6 @@ public interface SoundDownloadSource {
      * @return Whether that URL is valid
      */
     boolean isValidUrl(String url);
-
-    /**
-     * Checks to see if the specified URL should be stored in the temporary cache.
-     *
-     * @param url The URL to check
-     * @return <code>true</code> if the sound should be placed in the temporary folder or <code>false</code> to place it in the minecraft folder
-     */
-    boolean isTemporary(String url);
 
     /**
      * @return The name of this API source

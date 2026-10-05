@@ -16,8 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.URI;
-import java.net.URL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -36,21 +34,6 @@ public class SoundCloudSource implements SoundDownloadSource {
 
     SoundCloudSource(Function<Proxy, SoundCloudMetadataResolver> resolvers) {
         this.resolvers = Objects.requireNonNull(resolvers, "resolvers");
-    }
-
-    @Override
-    public List<URL> resolveUrl(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException {
-        URI input = input(url);
-        this.startRequest(progressListener);
-        List<URI> media = this.resolvers.apply(proxy).resolveMediaUrls(input, new AudioCancellation());
-        if (progressListener != null) {
-            progressListener.progressStartRequest(RESOLVING_TRACKS);
-        }
-        List<URL> urls = new ArrayList<>(media.size());
-        for (URI uri : media) {
-            urls.add(uri.toURL());
-        }
-        return urls;
     }
 
     @Override
@@ -92,11 +75,6 @@ public class SoundCloudSource implements SoundDownloadSource {
         } catch (IllegalArgumentException exception) {
             return false;
         }
-    }
-
-    @Override
-    public boolean isTemporary(String url) {
-        return true;
     }
 
     @Override

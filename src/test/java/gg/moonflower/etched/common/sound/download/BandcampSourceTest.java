@@ -36,7 +36,7 @@ class BandcampSourceTest {
             """;
 
     @Test
-    void allLegacyEntrypointsUseIndependentCommonRequestsAndPreserveTheirContracts() throws Exception {
+    void retainedMetadataEntrypointsUseIndependentCommonRequestsAndPreserveTheirContracts() throws Exception {
         AtomicInteger opened = new AtomicInteger();
         AtomicInteger closed = new AtomicInteger();
         List<Object> tokens = new ArrayList<>();
@@ -58,21 +58,16 @@ class BandcampSourceTest {
             }, uri -> assertEquals(opened.get(), closed.get()), BandcampMetadataResolver.Limits.DEFAULT);
         });
         Progress listener = new Progress();
-        var urls = source.resolveUrl(INPUT, listener, proxy);
-        assertEquals(List.of("https://media.example/one.mp3", "https://media.example/two.mp3"),
-                urls.stream().map(Object::toString).toList());
         var tracks = source.resolveTracks(INPUT, listener, proxy);
         assertEquals(List.of(INPUT, "https://artist.bandcamp.com/track/one", "https://artist.bandcamp.com/track/two"),
                 tracks.stream().map(track -> track.url()).toList());
         assertEquals(List.of("Album", "One", "Two"), tracks.stream().map(track -> track.title().getString()).toList());
         assertTrue(tracks.stream().allMatch(track -> track.artist().equals("Artist")));
         assertEquals("https://f4.bcbits.com/img/a123_1.jpg", source.resolveAlbumCover(INPUT, listener, proxy, null).orElseThrow());
-        assertEquals(3, opened.get());
+        assertEquals(2, opened.get());
         assertEquals(opened.get(), closed.get());
-        assertEquals(3, tokens.stream().distinct().count());
-        assertEquals(List.of("sound_source.etched.requesting", "record.etched.resolvingTracks",
-                "sound_source.etched.requesting", "sound_source.etched.requesting"), listener.requests);
-        assertTrue(source.isTemporary(INPUT));
+        assertEquals(2, tokens.stream().distinct().count());
+        assertEquals(List.of("sound_source.etched.requesting", "sound_source.etched.requesting"), listener.requests);
         assertEquals("Bandcamp", source.getApiName());
         assertTrue(source.getBrandText(INPUT).isPresent());
     }
@@ -85,7 +80,6 @@ class BandcampSourceTest {
         for (String url : new String[]{null, "bad url", "file:///etc/passwd", "https://notbandcamp.com/album/test",
                 "https://user@artist.bandcamp.com/track/test", "https://bandcamp.com.example/test"}) {
             assertFalse(source.isValidUrl(url));
-            assertThrows(IOException.class, () -> source.resolveUrl(url, null, Proxy.NO_PROXY));
             assertThrows(IOException.class, () -> source.resolveTracks(url, null, Proxy.NO_PROXY));
             assertThrows(IOException.class, () -> source.resolveAlbumCover(url, null, Proxy.NO_PROXY, null));
         }
@@ -107,16 +101,14 @@ class BandcampSourceTest {
             throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false, "blocked", null);
         }, BandcampMetadataResolver.Limits.DEFAULT));
         assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
-                () -> source.resolveUrl(INPUT, null, Proxy.NO_PROXY)).code());
-        assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
                 () -> source.resolveTracks(INPUT, null, Proxy.NO_PROXY)).code());
         assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
                 () -> source.resolveAlbumCover(INPUT, null, Proxy.NO_PROXY, null)).code());
-        assertEquals(3, closed.get());
+        assertEquals(2, closed.get());
     }
 
     @Test
-    void audioUrlResolutionPreservesProxyAndRejectsRedirectsBeforeOpeningPrivateTargets() throws Exception {
+    void metadataResolutionPreservesProxyAndRejectsRedirectsBeforeOpeningPrivateTargets() throws Exception {
         URI forbidden = URI.create("http://127.0.0.1/private");
         AtomicInteger opened = new AtomicInteger();
         AudioNetworkPolicy policy = uri -> {
@@ -137,7 +129,7 @@ class BandcampSourceTest {
                     new RadioHttpTransportImpl(configuredProxy, policy, Duration.ofSeconds(1), Duration.ofSeconds(1), 5),
                     policy, BandcampMetadataResolver.Limits.DEFAULT));
             assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
-                    () -> source.resolveUrl(INPUT.replace("https:", "http:"), null, proxy)).code());
+                    () -> source.resolveTracks(INPUT.replace("https:", "http:"), null, proxy)).code());
             assertEquals(1, opened.get());
         }
     }

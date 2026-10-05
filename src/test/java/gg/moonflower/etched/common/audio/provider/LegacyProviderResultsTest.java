@@ -6,7 +6,6 @@ import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -64,21 +63,4 @@ class LegacyProviderResultsTest {
         }
     }
 
-    @Test
-    void mediaDestinationsAreBoundedHttpOnlyIndependentSnapshots() throws Exception {
-        URL url = new URL("https://audio.example/media");
-        var entries = new ArrayList<>(List.of(url, url));
-        var copy = LegacyProviderResults.urls(entries);
-        entries.clear();
-        assertEquals(List.of(url, url), copy);
-        assertThrows(UnsupportedOperationException.class, () -> copy.add(url));
-        assertEquals(AudioProgram.MAX_TRACKS, LegacyProviderResults.urls(Collections.nCopies(AudioProgram.MAX_TRACKS, url)).size());
-        assertThrows(IOException.class, () -> LegacyProviderResults.urls(null));
-        assertThrows(IOException.class, () -> LegacyProviderResults.urls(List.of()));
-        assertThrows(IOException.class, () -> LegacyProviderResults.urls(Arrays.asList(url, null)));
-        assertThrows(IOException.class, () -> LegacyProviderResults.urls(Collections.nCopies(AudioProgram.MAX_TRACKS + 1, url)));
-        for (String invalid : List.of("file:///tmp/music", "ftp://audio.example/media", "https://u:p@audio.example/media")) {
-            assertThrows(IOException.class, () -> LegacyProviderResults.urls(List.of(new URL(invalid))));
-        }
-    }
 }

@@ -7,7 +7,6 @@ import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,21 +44,6 @@ public final class LegacyProviderResults {
             }
         }
         return copy.toArray(TrackData[]::new);
-    }
-
-    public static List<URL> urls(List<URL> entries) throws IOException {
-        if (entries == null || entries.isEmpty() || entries.size() > AudioProgram.MAX_TRACKS) {
-            throw new IOException("Provider returned missing or excessive media destinations");
-        }
-        List<URL> copy = new ArrayList<>();
-        for (URL url : entries) {
-            if (copy.size() >= AudioProgram.MAX_TRACKS || url == null) {
-                throw new IOException("Provider returned invalid media destinations");
-            }
-            remote(url.toExternalForm());
-            copy.add(url);
-        }
-        return List.copyOf(copy);
     }
 
     private static void source(String source) throws IOException {
