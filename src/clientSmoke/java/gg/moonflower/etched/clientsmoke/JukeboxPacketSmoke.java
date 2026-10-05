@@ -382,11 +382,21 @@ final class JukeboxPacketSmoke {
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID playerId = client.player.getUUID();
+                var jukeboxKey = PlaybackOwnerKey.block(client.level.dimension(), pos);
+                if (AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isEmpty()) {
+                    throw new AssertionError("Managed jukebox owner disappeared before the unsupported replacement check");
+                }
+                var dimension = client.level.dimension();
                 server.execute(() -> {
                     ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                     ItemStack boombox = player.getOffhandItem().copy();
                     BoomboxItem.setPaused(boombox, true);
                     player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                    ItemStack unsupported = BoomboxItem.getRecord(boombox);
+                    ServerLevel level = server.getLevel(dimension);
+                    level.levelEvent(null, 1010, pos, Item.getId(unsupported.getItem()));
+                    EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                            new ClientboundPlayMusicPacket(unsupported, pos));
                 });
             } else if (++ticks >= 100) {
                 throw new AssertionError("Unsupported third-party record did not reach the held boombox");
@@ -396,7 +406,9 @@ final class JukeboxPacketSmoke {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (BoomboxItem.isPaused(client.player.getOffhandItem())
                     && !BoomboxPlayback.getInstance().isPlaying(client.player)
-                    && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
+                    && AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()
+                    && AudioPlaybackManager.getInstance().getPlaybackState(
+                    PlaybackOwnerKey.block(client.level.dimension(), pos)).isEmpty()) {
                 if (++ticks < 20) {
                     return;
                 }
@@ -411,7 +423,7 @@ final class JukeboxPacketSmoke {
                     standId = spawnStand(level, player);
                 });
             } else if (++ticks >= 100) {
-                throw new AssertionError("Pausing an unsupported record left a playback owner");
+                throw new AssertionError("Unsupported boombox/jukebox replacement left a playback owner");
             }
         }
         if (step == 15 && standId != null && client.level != null) {
@@ -592,6 +604,7 @@ final class JukeboxPacketSmoke {
                     System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
                     System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
                     System.out.println("ETCHED UNSUPPORTED BOOMBOX RECORD AND REPLACEMENT SMOKE PASSED");
+                    System.out.println("ETCHED UNSUPPORTED JUKEBOX PACKET REPLACEMENT SMOKE PASSED");
                     System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
                     System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
                     System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");

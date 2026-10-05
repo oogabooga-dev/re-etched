@@ -52,7 +52,7 @@ public final class LegacySmokeRecord extends Item implements PlayableRecord {
 
     @Override
     public Optional<TrackData[]> getMusic(ItemStack stack) {
-        return Optional.of(new TrackData[]{TRACK});
+        throw new AssertionError("Unsupported legacy record reached getMusic");
     }
 
     @Override

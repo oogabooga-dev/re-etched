@@ -7,6 +7,7 @@ import gg.moonflower.etched.common.blockentity.RadioBlockEntity;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
+import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedBlocks;
@@ -200,14 +201,20 @@ public final class EtchedGameTests {
         try {
             sentPacket.writePacketData(buffer);
             ClientboundPlayMusicPacket receivedPacket = new ClientboundPlayMusicPacket(buffer);
-            TrackData[] tracks = receivedPacket.tracks();
+            var tracks = RecordContentResolver.resolve(receivedPacket.record()).orElseThrow().program().tracks();
 
             helper.assertTrue(receivedPacket.pos().equals(absoluteJukeboxPos),
                     "The jukebox playback packet changed its position");
-            helper.assertTrue(tracks.length == 3, "The Album Cover packet did not contain every track");
-            helper.assertTrue(tracks[0].equals(first), "The first Album Cover track changed order");
-            helper.assertTrue(tracks[1].equals(second), "The second Album Cover track changed order");
-            helper.assertTrue(tracks[2].equals(third), "The third Album Cover track changed order");
+            helper.assertTrue(ItemStack.matches(receivedPacket.record(), sentPacket.record()),
+                    "The jukebox playback packet changed the record NBT");
+            helper.assertTrue(tracks.size() == 3, "The Album Cover packet did not contain every track");
+            TrackData[] expected = {first, second, third};
+            for (int i = 0; i < expected.length; i++) {
+                helper.assertTrue(tracks.get(i).source().equals(expected[i].url())
+                                && tracks.get(i).artist().equals(expected[i].artist())
+                                && tracks.get(i).title().equals(expected[i].title().getString()),
+                        "The Album Cover track changed order or metadata at index " + i);
+            }
         } finally {
             buffer.release();
         }
