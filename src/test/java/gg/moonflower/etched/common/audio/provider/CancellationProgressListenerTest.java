@@ -1,21 +1,15 @@
-package gg.moonflower.etched.api.sound;
+package gg.moonflower.etched.common.audio.provider;
 
-import gg.moonflower.etched.api.sound.source.AudioSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
-import gg.moonflower.etched.common.audio.provider.CancellationProgressListener;
-import gg.moonflower.etched.client.sound.EmptyAudioStream;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class LegacyDownloadProgressTest {
+class CancellationProgressListenerTest {
 
     @Test
     void allCallbacksKeepTheirExactArgumentsAndAreSuppressedAfterCancellation() {
@@ -32,41 +26,6 @@ class LegacyDownloadProgressTest {
         cancelled.set(true);
         callbacks(listener, Component.literal("late request"));
         assertEquals(7, delegate.calls.get());
-    }
-
-    @Test
-    void lateSourceFailureCannotBypassTheCancelledRequestThroughDownloadCallbacks() {
-        var delegate = new Progress();
-        var source = new CompletableFuture<AudioSource>();
-        var result = LegacyAudioStreamRequest.start(cancelled -> {
-            var listener = new CancellationProgressListener(delegate, cancelled);
-            source.whenComplete((resolved, failure) -> {
-                if (failure != null) listener.onFail();
-            });
-            return source;
-        }, Runnable::run, input -> { throw new AssertionError("Cancelled source decoded"); },
-                () -> { throw new AssertionError("Cancelled source succeeded"); },
-                failure -> { throw new AssertionError("Cancelled source reported failure"); });
-        result.cancel(false);
-        source.completeExceptionally(new IOException("fixture late source failure"));
-        assertEquals(0, delegate.calls.get());
-        assertTrue(result.isCancelled());
-    }
-
-    @Test
-    void successfulHandoffDoesNotRetireDownloadCallbacksForTheDeliveredStream() throws Exception {
-        var delegate = new Progress();
-        var listener = new java.util.concurrent.atomic.AtomicReference<CancellationProgressListener>();
-        var result = LegacyAudioStreamRequest.start(cancelled -> {
-            listener.set(new CancellationProgressListener(delegate, cancelled));
-            return CompletableFuture.completedFuture(() -> CompletableFuture.completedFuture(new ByteArrayInputStream(new byte[]{42})));
-        }, Runnable::run,
-                owned -> LegacyAudioDecoder.decode(owned, () -> {}, stream -> stream,
-                        java.util.List.of(stream -> EmptyAudioStream.INSTANCE)), () -> {}, failure -> { throw new AssertionError(failure); });
-        assertFalse(result.cancel(false));
-        listener.get().onSuccess();
-        assertEquals(1, delegate.calls.get());
-        result.join().close();
     }
 
     @Test

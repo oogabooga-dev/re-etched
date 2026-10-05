@@ -77,23 +77,6 @@ the MPEG/audio committee. That statement appears alongside JLayer's later GNU
 Library General Public License notice. Re-Etched does not attempt to resolve
 those upstream notices.
 
-## OpenJDK WaveFileReader
-
-`gg.moonflower.etched.api.util.WaveDataReader` is derived from OpenJDK's
-`com.sun.media.sound.WaveFileReader`.
-
-- Original source: https://github.com/openjdk/jdk8u/blob/d8e9a28061080610370084422bde4356a02382dd/jdk/src/share/classes/com/sun/media/sound/WaveFileReader.java
-- Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
-- Original authors: Kara Kytle, Jan Borgersen, and Florian Bomers.
-
-The derived file is licensed under the GNU General Public License version 2
-only with the Classpath Exception. A copy is provided at
-`META-INF/licenses/GPL-2.0-with-Classpath-exception.txt`.
-
-The file was modified for Etched beginning on 2021-06-10. Changes include its
-package, class name, API, constants, parsing implementation, and later Minecraft
-compatibility updates through 2024-01-24.
-
 ## Gradle Wrapper
 
 The repository includes the Gradle Wrapper bootstrap JAR from Gradle 7.0.2.
