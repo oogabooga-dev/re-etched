@@ -123,7 +123,7 @@ public class AlbumCoverMenu extends AbstractContainerMenu {
             return true;
         }
         if (stack.getItem() instanceof EtchedMusicDiscItem) {
-            return EtchedMusicDiscItem.hasLegacyMusic(stack);
+            return EtchedMusicDiscItem.readContent(stack).isPresent();
         }
         return PlayableRecord.isPlayableRecord(stack);
     }

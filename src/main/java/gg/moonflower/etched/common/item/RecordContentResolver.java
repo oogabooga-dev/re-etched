@@ -1,19 +1,17 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
-import net.minecraft.nbt.Tag;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** First-party disc adapter; defers albums containing third-party playable items to the legacy path. */
+/** First-party record content; unsupported third-party entries reject the managed program. */
 public final class RecordContentResolver {
 
     private RecordContentResolver() {
@@ -59,44 +57,7 @@ public final class RecordContentResolver {
     }
 
     static Optional<RecordContent> fromDisc(ItemStack stack) {
-        Optional<RecordContent> content = fromTracks(EtchedMusicDiscItem.readMusic(stack).orElseGet(() -> new TrackData[0]));
-        if (content.isEmpty() || stack.getTag() == null || !stack.getTag().contains("Album", Tag.TAG_COMPOUND)) {
-            return content;
-        }
-        Optional<RecordContent.AlbumMetadata> album = EtchedMusicDiscItem.readAlbum(stack)
-                .flatMap(RecordContentResolver::albumMetadata);
-        try {
-            return Optional.of(new RecordContent(content.orElseThrow().program(), album));
-        } catch (IllegalArgumentException exception) {
-            return content;
-        }
-    }
-
-    static Optional<RecordContent> fromTracks(TrackData[] data) {
-        List<AudioTrack> tracks = new ArrayList<>();
-        for (TrackData track : data) {
-            if (tracks.size() >= AudioProgram.MAX_TRACKS) {
-                break;
-            }
-            try {
-                tracks.add(new AudioTrack(TrackData.isLocalSound(track.url())
-                        ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
-                        track.url(), track.artist(), track.title().getString()));
-            } catch (IllegalArgumentException exception) {
-                // Old disc NBT can contain URLs/metadata that the bounded internal model rejects.
-            }
-        }
-        return fromAudioTracks(tracks);
-    }
-
-    private static Optional<RecordContent.AlbumMetadata> albumMetadata(TrackData data) {
-        try {
-            return Optional.of(new RecordContent.AlbumMetadata(TrackData.isLocalSound(data.url())
-                    ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
-                    data.url(), data.artist(), data.title().getString()));
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
+        return EtchedMusicDiscItem.readContent(stack);
     }
 
     private static Optional<RecordContent> fromAudioTracks(List<AudioTrack> tracks) {

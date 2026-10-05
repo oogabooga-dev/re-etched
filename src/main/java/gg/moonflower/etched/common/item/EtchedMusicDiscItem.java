@@ -2,16 +2,20 @@ package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.PlayableRecordItem;
 import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.audio.AudioNbtCodec;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -19,6 +23,8 @@ import java.util.Optional;
  * @author Ocelot
  */
 public class EtchedMusicDiscItem extends PlayableRecordItem {
+
+    public static final String CONTENT_TAG = "AudioContent";
 
     public EtchedMusicDiscItem(Properties properties) {
         super(properties);
@@ -29,44 +35,19 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
         return readMusic(stack);
     }
 
-    public static boolean hasLegacyMusic(ItemStack stack) {
-        return readMusic(stack).isPresent();
+    /** Only the versioned audio envelope is accepted; legacy disc data is intentionally not migrated. */
+    public static Optional<RecordContent> readContent(ItemStack stack) {
+        CompoundTag nbt = stack.getTag();
+        if (nbt == null || !(nbt.get(CONTENT_TAG) instanceof CompoundTag content)) {
+            return Optional.empty();
+        }
+        return AudioNbtCodec.readRecordContent(content).result();
     }
 
     static Optional<TrackData[]> readMusic(ItemStack stack) {
-        CompoundTag nbt = stack.getTag();
-        if (nbt == null || (!nbt.contains("Music", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST))) {
-            return Optional.empty();
-        }
-
-        if (nbt.contains("Music", Tag.TAG_LIST)) {
-            ListTag musicNbt = nbt.getList("Music", Tag.TAG_COMPOUND);
-            TrackData[] data = new TrackData[musicNbt.size()];
-
-            int valid = 0;
-            for (int i = 0; i < musicNbt.size(); i++) {
-                CompoundTag trackNbt = musicNbt.getCompound(i);
-                if (TrackData.isValid(trackNbt)) {
-                    Optional<TrackData> optional = TrackData.CODEC.parse(NbtOps.INSTANCE, trackNbt).result();
-                    if (optional.isPresent()) {
-                        data[valid++] = optional.get();
-                    }
-                }
-            }
-
-            if (valid == 0) {
-                return Optional.empty();
-            }
-            if (valid >= data.length) {
-                return Optional.of(data);
-            }
-
-            TrackData[] result = new TrackData[valid];
-            System.arraycopy(data, 0, result, 0, result.length);
-            return Optional.of(result);
-        }
-
-        return TrackData.isValid(nbt.getCompound("Music")) ? TrackData.CODEC.parse(NbtOps.INSTANCE, nbt.getCompound("Music")).result().map(track -> new TrackData[]{track}) : Optional.empty();
+        // Temporary presentation projection for the still-live metadata/UI consumers.
+        return readContent(stack).map(content -> content.program().tracks().stream()
+                .map(track -> presentation(track.source(), track.artist(), track.title())).toArray(TrackData[]::new));
     }
 
     @Override
@@ -75,11 +56,16 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
     }
 
     static Optional<TrackData> readAlbum(ItemStack stack) {
-        CompoundTag nbt = stack.getTag();
-        if (nbt == null || !nbt.contains("Album", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST)) {
-            return readMusic(stack).filter(data -> data.length > 0).map(data -> data[0]);
-        }
-        return TrackData.isValid(nbt.getCompound("Album")) ? TrackData.CODEC.parse(NbtOps.INSTANCE, nbt.getCompound("Album")).result() : Optional.empty();
+        return readContent(stack).map(content -> content.album()
+                .map(album -> presentation(album.source(), album.artist(), album.title()))
+                .orElseGet(() -> {
+                    AudioTrack first = content.program().tracks().get(0);
+                    return presentation(first.source(), first.artist(), first.title());
+                }));
+    }
+
+    private static TrackData presentation(String source, String artist, String title) {
+        return new TrackData(source, artist, Component.literal(title));
     }
 
     @Override
@@ -88,26 +74,7 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
     }
 
     static int countTracks(ItemStack stack) {
-        CompoundTag nbt = stack.getTag();
-        if (nbt == null || (!nbt.contains("Music", Tag.TAG_COMPOUND) && !nbt.contains("Music", Tag.TAG_LIST))) {
-            return 0;
-        }
-
-        if (nbt.contains("Music", Tag.TAG_LIST)) {
-            ListTag musicNbt = nbt.getList("Music", Tag.TAG_COMPOUND);
-
-            int valid = 0;
-            for (int i = 0; i < musicNbt.size(); i++) {
-                CompoundTag trackNbt = musicNbt.getCompound(i);
-                if (TrackData.isValid(trackNbt)) {
-                    valid++;
-                }
-            }
-
-            return valid;
-        }
-
-        return TrackData.isValid(nbt.getCompound("Music")) ? 1 : 0;
+        return readContent(stack).map(content -> content.program().tracks().size()).orElse(0);
     }
 
     /**
@@ -205,21 +172,44 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
      */
     public static void setMusic(ItemStack stack, TrackData... tracks) {
         if (tracks.length == 0) {
-            stack.removeTagKey("Music");
-            stack.removeTagKey("Album");
-        } else if (tracks.length == 1) {
-            CompoundTag nbt = stack.getOrCreateTag();
-            nbt.put("Music", tracks[0].save(new CompoundTag()));
-            nbt.remove("Album");
-        } else {
-            ListTag musicNbt = new ListTag();
-            for (int i = 1; i < tracks.length; i++) {
-                musicNbt.add(tracks[i].save(new CompoundTag()));
-            }
-            CompoundTag nbt = stack.getOrCreateTag();
-            nbt.put("Music", musicNbt);
-            nbt.put("Album", tracks[0].save(new CompoundTag()));
+            clearContent(stack);
+            return;
         }
+        // Temporary input boundary for metadata consumers: validate the whole result before touching NBT.
+        int firstTrack = tracks.length == 1 ? 0 : 1;
+        if (tracks.length - firstTrack > AudioProgram.MAX_TRACKS) {
+            throw new IllegalArgumentException("Disc exceeds the track limit");
+        }
+        var program = new ArrayList<AudioTrack>(tracks.length - firstTrack);
+        for (int i = firstTrack; i < tracks.length; i++) {
+            program.add(audioTrack(tracks[i]));
+        }
+        Optional<RecordContent.AlbumMetadata> album = Optional.empty();
+        if (firstTrack == 1) {
+            AudioTrack descriptor = audioTrack(tracks[0]);
+            album = Optional.of(new RecordContent.AlbumMetadata(descriptor.sourceType(), descriptor.source(),
+                    descriptor.artist(), descriptor.title()));
+        }
+        setContent(stack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, program), album));
+    }
+
+    private static AudioTrack audioTrack(TrackData track) {
+        return new AudioTrack(TrackData.isLocalSound(track.url())
+                ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
+                track.url(), track.artist(), track.title().getString());
+    }
+
+    public static void setContent(ItemStack stack, RecordContent content) {
+        CompoundTag encoded = AudioNbtCodec.write(content);
+        stack.getOrCreateTag().put(CONTENT_TAG, encoded);
+        stack.removeTagKey("Music");
+        stack.removeTagKey("Album");
+    }
+
+    public static void clearContent(ItemStack stack) {
+        stack.removeTagKey(CONTENT_TAG);
+        stack.removeTagKey("Music");
+        stack.removeTagKey("Album");
     }
 
     /**

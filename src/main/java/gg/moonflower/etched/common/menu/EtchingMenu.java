@@ -324,7 +324,12 @@ public class EtchingMenu extends AbstractContainerMenu {
                         data[i] = trackData;
                     }
 
-                    EtchedMusicDiscItem.setMusic(resultStack, data);
+                    try {
+                        EtchedMusicDiscItem.setMusic(resultStack, data);
+                    } catch (IllegalArgumentException e) {
+                        this.sendUrlError(currentId, e.getMessage());
+                        throw new CompletionException(e);
+                    }
                     EtchedMusicDiscItem.setColor(resultStack, discColor, primaryLabelColor, secondaryLabelColor);
                     EtchedMusicDiscItem.setPattern(resultStack, EtchedMusicDiscItem.LabelPattern.values()[requestPattern]);
 

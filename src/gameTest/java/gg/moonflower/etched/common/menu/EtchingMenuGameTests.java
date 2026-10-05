@@ -1,10 +1,13 @@
 package gg.moonflower.etched.common.menu;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.common.audio.AudioNbtCodec;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
+import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
+import gg.moonflower.etched.common.item.RecordContentResolver;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
@@ -126,6 +129,32 @@ public final class EtchingMenuGameTests {
                     && tracks[1].title().getString().equals("Two") && tracks[1].artist().equals("Guest"),
                     "Etching lost metadata track order or artist");
             helper.assertTrue(metadata[0].title().getString().equals("Album"), "Etching mutated worker metadata");
+            helper.assertFalse(result.getTag().contains("Music") || result.getTag().contains("Album"),
+                    "Etching wrote obsolete audio fields");
+            helper.assertTrue(result.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getInt("SchemaVersion")
+                    == AudioNbtCodec.SCHEMA_VERSION, "Etching omitted the schema version");
+            var content = RecordContentResolver.resolve(result).orElseThrow();
+            helper.assertTrue(content.program().tracks().size() == 2 && content.album().orElseThrow().source().equals(input),
+                    "Managed playback cannot read the etched versioned album");
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 100)
+    public static void oversizeMetadataCannotPublishAnEtchedDisc(GameTestHelper helper) {
+        String input = "https://fixture.bandcamp.com/track/oversize";
+        Player player = helper.makeMockSurvivalPlayer();
+        EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
+                (uri, proxy, cancellation) -> CompletableFuture.completedFuture(new TrackData[]{
+                        new TrackData(input, "Artist", Component.literal("x".repeat(129)))}));
+        player.containerMenu = menu;
+        menu.setUrl(input);
+        menu.getSlot(0).set(new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get()));
+        CompletableFuture<?> request = field(menu, "currentRequest", CompletableFuture.class);
+        helper.succeedWhen(() -> {
+            helper.assertTrue(request.isDone(), "Invalid metadata request has not retired");
+            helper.assertTrue(menu.getSlot(2).getItem().isEmpty(), "Invalid metadata published a partial disc");
+            helper.assertTrue(menu.getSlot(0).getItem().is(EtchedItems.ETCHED_MUSIC_DISC.get()),
+                    "Invalid etching consumed the input disc");
         });
     }
 

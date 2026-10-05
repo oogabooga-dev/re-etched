@@ -1,14 +1,27 @@
 package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.audio.AudioNbtCodec;
+import gg.moonflower.etched.common.menu.AlbumCoverMenu;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.JukeboxBlock;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
@@ -20,6 +33,43 @@ import java.util.List;
 public final class RecordPresentationGameTests {
 
     private RecordPresentationGameTests() {
+    }
+
+    @GameTest(template = "empty")
+    public static void versionedDiscsRoundTripAndLegacyOrInvalidDiscsAreNotInsertionSources(GameTestHelper helper) {
+        var descriptor = new TrackData("minecraft:music_disc.blocks", "Minecraft", Component.literal("Blocks"));
+        ItemStack valid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setMusic(valid, descriptor);
+        ItemStack restored = ItemStack.of(valid.save(new CompoundTag()));
+        helper.assertTrue(AlbumCoverMenu.isValid(restored), "Versioned disc was not accepted for album insertion");
+        helper.assertTrue(RecordContentResolver.resolve(restored).orElseThrow().program().tracks().get(0).source()
+                .equals(descriptor.url()), "Versioned disc lost its local source during stack persistence");
+        helper.assertTrue(restored.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getInt("SchemaVersion")
+                == AudioNbtCodec.SCHEMA_VERSION, "Stack persistence lost the audio version");
+
+        ItemStack old = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        CompoundTag legacy = new CompoundTag();
+        legacy.putString("Url", descriptor.url());
+        legacy.putString("Author", descriptor.artist());
+        legacy.putString("Title", Component.Serializer.toJson(descriptor.title()));
+        old.getOrCreateTag().put("Music", legacy);
+        ItemStack invalid = valid.copy();
+        invalid.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getCompound("Program")
+                .getList("Tracks", Tag.TAG_COMPOUND).getCompound(0).putString("SourceType", "invalid");
+        helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
+        var player = helper.makeMockSurvivalPlayer();
+        BlockPos absolute = helper.absolutePos(BlockPos.ZERO);
+        var hit = new BlockHitResult(Vec3.atCenterOf(absolute), Direction.UP, absolute, false);
+        for (ItemStack disc : List.of(old, invalid)) {
+            helper.assertFalse(AlbumCoverMenu.isValid(disc), "Unversioned/invalid disc was accepted for album insertion");
+            helper.assertTrue(RecordContentResolver.resolve(disc).isEmpty(), "Unversioned/invalid disc became managed content");
+            player.setItemInHand(InteractionHand.MAIN_HAND, disc);
+            helper.assertTrue(disc.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit)) == InteractionResult.PASS,
+                    "Unversioned/invalid disc was inserted into the jukebox");
+            helper.assertBlockProperty(BlockPos.ZERO, JukeboxBlock.HAS_RECORD, false);
+            helper.assertTrue(disc.getCount() == 1, "Rejected disc was consumed");
+        }
+        helper.succeed();
     }
 
     @GameTest(template = "empty")
