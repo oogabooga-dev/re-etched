@@ -413,6 +413,7 @@ final class JukeboxPacketSmoke {
                     return;
                 }
                 step = 15;
+                VanillaRecordStopSmoke.verify(client);
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID playerId = client.player.getUUID();

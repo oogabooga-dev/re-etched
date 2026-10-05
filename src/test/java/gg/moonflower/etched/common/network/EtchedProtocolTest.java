@@ -21,7 +21,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -64,8 +63,6 @@ class EtchedProtocolTest {
     void assignsDistinctIdsAndExplicitDirectionsToCurrentPackets() {
         assertContract(EtchedProtocol.CLIENTBOUND_ETCHING_URL_ERROR, 0,
                 ClientboundEtchingUrlErrorPacket.class, NetworkDirection.PLAY_TO_CLIENT);
-        assertContract(EtchedProtocol.CLIENTBOUND_PLAY_ENTITY_MUSIC, 1,
-                ClientboundPlayEntityMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
         assertContract(EtchedProtocol.CLIENTBOUND_PLAY_MUSIC, 2,
                 ClientboundPlayMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
         assertContract(EtchedProtocol.CLIENTBOUND_RADIO_MENU_INIT, 3,
@@ -79,13 +76,13 @@ class EtchedProtocolTest {
 
         Set<Integer> ids = new HashSet<>();
         ids.add(EtchedProtocol.CLIENTBOUND_ETCHING_URL_ERROR.id());
-        ids.add(EtchedProtocol.CLIENTBOUND_PLAY_ENTITY_MUSIC.id());
         ids.add(EtchedProtocol.CLIENTBOUND_PLAY_MUSIC.id());
         ids.add(EtchedProtocol.CLIENTBOUND_RADIO_MENU_INIT.id());
         ids.add(EtchedProtocol.SERVERBOUND_SET_ETCHING_URL.id());
         ids.add(EtchedProtocol.SERVERBOUND_EDIT_MUSIC_LABEL.id());
         ids.add(EtchedProtocol.SERVERBOUND_SET_RADIO_URL.id());
-        assertEquals(Set.of(0, 1, 2, 3, 4, 5, 6), ids);
+        assertEquals(Set.of(0, 2, 3, 4, 5, 6), ids);
+        assertFalse(ids.contains(1), "Retired entity packet ID must not be reassigned");
     }
 
     @Test
@@ -186,15 +183,6 @@ class EtchedProtocolTest {
         assertEquals(pos, decoded.pos());
     }
 
-    @Test
-    void roundTripsCurrentEntityMusicCodecs() {
-        ItemStack record = recordWithLegacyPayload();
-
-        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.START, record, 42);
-        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.RESTART, record, 300);
-        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.STOP, ItemStack.EMPTY, 7);
-    }
-
     private static ItemStack recordWithLegacyPayload() {
         ItemStack record = new ItemStack(Items.PAPER);
         record.getOrCreateTag().putString("Music", "legacy-payload");
@@ -206,23 +194,6 @@ class EtchedProtocolTest {
         assertEquals(id, contract.id());
         assertEquals(type, contract.type());
         assertEquals(direction, contract.direction());
-    }
-
-    private static void assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action action,
-                                               ItemStack record, int entityId) {
-        byte[] encoded = write(buffer -> {
-            buffer.writeEnum(action);
-            if (action != ClientboundPlayEntityMusicPacket.Action.STOP) {
-                buffer.writeItem(record);
-            }
-            buffer.writeVarInt(entityId);
-        });
-        ClientboundPlayEntityMusicPacket decoded = decode(encoded, ClientboundPlayEntityMusicPacket::new);
-
-        assertEquals(action, decoded.getAction());
-        assertTrue(ItemStack.matches(record, decoded.getRecord()));
-        assertEquals(entityId, decoded.getEntityId());
-        assertArrayEquals(encoded, encode(decoded));
     }
 
     private static <T extends EtchedPacket> T roundTrip(T packet, Function<FriendlyByteBuf, T> decoder) {

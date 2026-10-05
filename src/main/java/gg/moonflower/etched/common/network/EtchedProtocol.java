@@ -18,8 +18,7 @@ public final class EtchedProtocol {
     public static final int MAX_URL_LENGTH = 8_192;
     static final PacketContract<ClientboundEtchingUrlErrorPacket> CLIENTBOUND_ETCHING_URL_ERROR =
             new PacketContract<>(0, ClientboundEtchingUrlErrorPacket.class, NetworkDirection.PLAY_TO_CLIENT);
-    static final PacketContract<ClientboundPlayEntityMusicPacket> CLIENTBOUND_PLAY_ENTITY_MUSIC =
-            new PacketContract<>(1, ClientboundPlayEntityMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
+    // ID 1 belonged to the retired legacy entity sound packet. Do not reuse it before the final v5 freeze.
     static final PacketContract<ClientboundPlayMusicPacket> CLIENTBOUND_PLAY_MUSIC =
             new PacketContract<>(2, ClientboundPlayMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
     static final PacketContract<ClientboundRadioMenuInitPacket> CLIENTBOUND_RADIO_MENU_INIT =

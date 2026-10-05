@@ -1,8 +1,5 @@
 package gg.moonflower.etched.common.network.play.handler;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.sound.SoundTracker;
-import gg.moonflower.etched.api.sound.StopListeningSound;
 import gg.moonflower.etched.client.screen.EtchingScreen;
 import gg.moonflower.etched.client.screen.RadioScreen;
 import gg.moonflower.etched.client.radio.JukeboxPlayback;
@@ -12,20 +9,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.NetworkEvent;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.Map;
-import java.util.Optional;
 
 @ApiStatus.Internal
 public class EtchedClientPlayPacketHandler {
-
-    private static final Logger LOGGER = LogManager.getLogger();
 
     public static void handlePlayMusicPacket(ClientboundPlayMusicPacket pkt, NetworkEvent.Context ctx) {
         Minecraft client = Minecraft.getInstance();
@@ -55,57 +45,6 @@ public class EtchedClientPlayPacketHandler {
             if (!JukeboxPlayback.start(pos, pkt.record())) {
                 JukeboxPlayback.stop(pos);
             }
-        });
-    }
-
-    public static void handlePlayEntityMusicPacket(ClientboundPlayEntityMusicPacket pkt, NetworkEvent.Context ctx) {
-        Minecraft client = Minecraft.getInstance();
-        ClientLevel level = client.level;
-        if (level == null) {
-            return;
-        }
-
-        ctx.enqueueWork(() -> {
-            int entityId = pkt.getEntityId();
-            SoundInstance soundInstance = SoundTracker.getEntitySound(entityId);
-            if (soundInstance != null) {
-                if (soundInstance instanceof StopListeningSound) {
-                    ((StopListeningSound) soundInstance).stopListening();
-                }
-                if (pkt.getAction() == ClientboundPlayEntityMusicPacket.Action.RESTART && client.getSoundManager().isActive(soundInstance)) {
-                    return;
-                }
-                SoundTracker.setEntitySound(entityId, null);
-            }
-
-            if (pkt.getAction() == ClientboundPlayEntityMusicPacket.Action.STOP) {
-                return;
-            }
-
-            Entity entity = level.getEntity(entityId);
-            if (entity == null) {
-                LOGGER.error("Server sent sound for nonexistent entity: " + entityId);
-                return;
-            }
-
-            ItemStack record = pkt.getRecord();
-            if (!PlayableRecord.isPlayableRecord(record)) {
-                LOGGER.error("Server sent invalid music disc: " + record);
-                return;
-            }
-
-            Optional<? extends SoundInstance> sound = ((PlayableRecord) record.getItem()).createEntitySound(record, entity, 0);
-            if (sound.isEmpty()) {
-                LOGGER.error("Server sent invalid music disc: " + record);
-                return;
-            }
-
-            SoundInstance entitySound = StopListeningSound.create(sound.get(), () -> client.tell(() -> {
-                SoundTracker.setEntitySound(entityId, null);
-                SoundTracker.playEntityRecord(record, entityId, 1, false);
-            }));
-
-            SoundTracker.setEntitySound(entityId, entitySound);
         });
     }
 

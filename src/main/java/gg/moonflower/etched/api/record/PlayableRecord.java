@@ -1,18 +1,12 @@
 package gg.moonflower.etched.api.record;
 
-import gg.moonflower.etched.api.sound.SoundTracker;
-import gg.moonflower.etched.common.network.EtchedMessages;
-import gg.moonflower.etched.common.network.play.ClientboundPlayEntityMusicPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.network.PacketDistributor;
 
 import java.net.Proxy;
 import java.util.Optional;
@@ -48,26 +42,6 @@ public interface PlayableRecord {
     static boolean canShowMessage(double x, double y, double z) {
         LocalPlayer player = Minecraft.getInstance().player;
         return player == null || player.distanceToSqr(x, y, z) <= 4096.0;
-    }
-
-    /**
-     * Sends a packet to the client notifying them to begin playing an entity record.
-     *
-     * @param entity  The entity playing the record
-     * @param record  The record to play
-     * @param restart Whether to restart the track from the beginning or start a new playback
-     */
-    static void playEntityRecord(Entity entity, ItemStack record, boolean restart) {
-        EtchedMessages.PLAY.send(PacketDistributor.TRACKING_ENTITY.with(() -> entity), new ClientboundPlayEntityMusicPacket(record, entity, restart));
-    }
-
-    /**
-     * Sends a packet to the client notifying them to stop playing an entity record.
-     *
-     * @param entity The entity to stop playing records
-     */
-    static void stopEntityRecord(Entity entity) {
-        EtchedMessages.PLAY.send(PacketDistributor.TRACKING_ENTITY.with(() -> entity), new ClientboundPlayEntityMusicPacket(entity));
     }
 
     /**
@@ -117,33 +91,6 @@ public interface PlayableRecord {
      */
     default boolean canPlay(ItemStack stack) {
         return this.getMusic(stack).isPresent();
-    }
-
-    /**
-     * Creates the sound for an entity.
-     *
-     * @param stack               The stack to play
-     * @param entity              The entity to play the sound for
-     * @param track               The track to play on the disc
-     * @param attenuationDistance The attenuation distance of the sound
-     * @return The sound to play or nothing to error
-     */
-    @OnlyIn(Dist.CLIENT)
-    default Optional<? extends SoundInstance> createEntitySound(ItemStack stack, Entity entity, int track, int attenuationDistance) {
-        return track < 0 ? Optional.empty() : this.getMusic(stack).filter(tracks -> track < tracks.length).map(tracks -> SoundTracker.getEtchedRecord(tracks[track].url(), tracks[track].getDisplayName(), entity, attenuationDistance, false));
-    }
-
-    /**
-     * Creates the sound for an entity with the default attenuation distance.
-     *
-     * @param stack  The stack to play
-     * @param entity The entity to play the sound for
-     * @param track  The track to play on the disc
-     * @return The sound to play or nothing to error
-     */
-    @OnlyIn(Dist.CLIENT)
-    default Optional<? extends SoundInstance> createEntitySound(ItemStack stack, Entity entity, int track) {
-        return this.createEntitySound(stack, entity, track, 16);
     }
 
     /**

@@ -1,6 +1,5 @@
-package gg.moonflower.etched.api.sound;
+package gg.moonflower.etched.client.radio.sound;
 
-import gg.moonflower.etched.client.radio.sound.PlaybackStopListener;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.resources.sounds.TickableSoundInstance;
@@ -11,37 +10,36 @@ import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.ApiStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
- * Wrapper for {@link SoundInstance} that respects {@link PlaybackStopListener}.
+ * Internal vanilla-record delegate. Only reports engine removal; never owns the delegate's stream.
  *
  * @author Ocelot
  */
-public class StopListeningSound implements SoundInstance, PlaybackStopListener, WrappedSoundInstance {
+@ApiStatus.Internal
+public class RecordSoundInstance implements SoundInstance, PlaybackStopListener {
 
+    private static final Logger LOGGER = LogManager.getLogger();
     private final SoundInstance source;
-    private final PlaybackStopListener listener;
-    private boolean ignoringEvents;
+    private final Consumer<SoundInstance> stopped;
+    private final AtomicBoolean stopReported = new AtomicBoolean();
 
-    StopListeningSound(SoundInstance source, PlaybackStopListener listener) {
-        this.source = source;
-        this.listener = listener;
-        this.ignoringEvents = false;
+    private RecordSoundInstance(SoundInstance source, Consumer<SoundInstance> stopped) {
+        this.source = Objects.requireNonNull(source, "source");
+        this.stopped = Objects.requireNonNull(stopped, "stopped");
     }
 
-    public static StopListeningSound create(SoundInstance source, PlaybackStopListener listener) {
-        return source instanceof TickableSoundInstance ? new TickableStopListeningSound((TickableSoundInstance) source, listener) : new StopListeningSound(source, listener);
-    }
-
-    public void stopListening() {
-        this.ignoringEvents = true;
-    }
-
-    @Override
-    public SoundInstance getParent() {
-        return this.source;
+    public static RecordSoundInstance wrap(SoundInstance source, Consumer<SoundInstance> stopped) {
+        return source instanceof TickableSoundInstance tickable
+                ? new TickableRecordSound(tickable, stopped) : new RecordSoundInstance(source, stopped);
     }
 
     @Override
@@ -127,8 +125,32 @@ public class StopListeningSound implements SoundInstance, PlaybackStopListener, 
 
     @Override
     public void onStop() {
-        if (!this.ignoringEvents) {
-            this.listener.onStop();
+        if (this.stopReported.compareAndSet(false, true)) {
+            try {
+                this.stopped.accept(this);
+            } catch (RuntimeException failure) {
+                LOGGER.warn("Could not notify vanilla record removal", failure);
+            }
+        }
+    }
+
+    private static final class TickableRecordSound extends RecordSoundInstance implements TickableSoundInstance {
+
+        private final TickableSoundInstance tickable;
+
+        private TickableRecordSound(TickableSoundInstance source, Consumer<SoundInstance> stopped) {
+            super(source, stopped);
+            this.tickable = source;
+        }
+
+        @Override
+        public void tick() {
+            this.tickable.tick();
+        }
+
+        @Override
+        public boolean isStopped() {
+            return this.tickable.isStopped();
         }
     }
 }

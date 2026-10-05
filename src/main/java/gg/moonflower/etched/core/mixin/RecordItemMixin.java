@@ -5,13 +5,9 @@ import gg.moonflower.etched.api.record.AlbumCover;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.render.item.AlbumCoverItemRenderer;
-import gg.moonflower.etched.client.sound.EntityRecordSoundInstance;
 import gg.moonflower.etched.common.item.VanillaRecordAdapter;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
@@ -40,19 +36,6 @@ public abstract class RecordItemMixin extends Item implements PlayableRecord {
     @Override
     public boolean canPlay(ItemStack stack) {
         return true;
-    }
-
-    @OnlyIn(Dist.CLIENT)
-    @Override
-    public Optional<? extends SoundInstance> createEntitySound(ItemStack stack, Entity entity, int track, int attenuationDistance) {
-        if (track != 0 || !(stack.getItem() instanceof RecordItem record)) {
-            return Optional.empty();
-        }
-
-        if (PlayableRecord.canShowMessage(entity.getX(), entity.getY(), entity.getZ())) {
-            Minecraft.getInstance().gui.setNowPlaying(record.getDisplayName());
-        }
-        return Optional.of(new EntityRecordSoundInstance(record.getSound(), entity));
     }
 
     @OnlyIn(Dist.CLIENT)

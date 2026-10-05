@@ -4,11 +4,9 @@ import gg.moonflower.etched.api.record.AlbumCover;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.core.Etched;
-import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -37,12 +35,6 @@ public final class LegacySmokeRecord extends Item implements PlayableRecord {
     public static void register(RegisterEvent event) {
         event.register(ForgeRegistries.Keys.ITEMS, helper ->
                 helper.register(ID, new LegacySmokeRecord(new Item.Properties().stacksTo(1))));
-    }
-
-    @Override
-    public Optional<? extends SoundInstance> createEntitySound(ItemStack stack, Entity entity,
-                                                                 int track, int attenuationDistance) {
-        throw new AssertionError("Unsupported legacy record reached createEntitySound");
     }
 
     @Override

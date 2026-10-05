@@ -1,15 +1,16 @@
 package gg.moonflower.etched.core.mixin.client;
 
 import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.sound.StopListeningSound;
+import gg.moonflower.etched.client.radio.sound.RecordSoundInstance;
+import gg.moonflower.etched.client.radio.AudioPlaybackManager;
+import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.GuiHook;
 import gg.moonflower.etched.client.radio.JukeboxPlayback;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.resources.sounds.SoundInstance;
+import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.item.ItemStack;
@@ -17,10 +18,8 @@ import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Final;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
@@ -28,9 +27,6 @@ import java.util.Map;
 
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
-
-    @Unique
-    private BlockPos etched$pos;
 
     @Shadow
     private ClientLevel level;
@@ -44,7 +40,7 @@ public abstract class LevelRendererMixin {
 
     @Inject(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;setNowPlaying(Lnet/minecraft/network/chat/Component;)V", shift = At.Shift.BEFORE))
     public void preNowPlaying(SoundEvent arg, BlockPos arg2, RecordItem musicDiscItem, CallbackInfo ci) {
-        if (!this.level.getBlockState(this.etched$pos.above()).isAir() || !PlayableRecord.canShowMessage(this.etched$pos.getX() + 0.5, this.etched$pos.getY() + 0.5, this.etched$pos.getZ() + 0.5)) {
+        if (!this.level.getBlockState(arg2.above()).isAir() || !PlayableRecord.canShowMessage(arg2.getX() + 0.5, arg2.getY() + 0.5, arg2.getZ() + 0.5)) {
             GuiHook.setHidePlayingText(true);
         }
     }
@@ -52,11 +48,6 @@ public abstract class LevelRendererMixin {
     @Inject(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;setNowPlaying(Lnet/minecraft/network/chat/Component;)V", shift = At.Shift.AFTER))
     public void postNowPlaying(SoundEvent arg, BlockPos arg2, RecordItem musicDiscItem, CallbackInfo ci) {
         GuiHook.setHidePlayingText(false);
-    }
-
-    @Inject(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At("HEAD"), remap = false)
-    public void playRecord(SoundEvent soundEvent, BlockPos pos, RecordItem musicDiscItem, CallbackInfo ci) {
-        this.etched$pos = pos;
     }
 
     @Inject(method = "levelEvent", at = @At("HEAD"), cancellable = true)
@@ -86,8 +77,25 @@ public abstract class LevelRendererMixin {
         }
     }
 
-    @ModifyVariable(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At(value = "INVOKE", target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", shift = At.Shift.BEFORE), index = 4, remap = false)
-    public SoundInstance modifySoundInstance(SoundInstance soundInstance) {
-        return StopListeningSound.create(soundInstance, () -> this.notifyNearbyEntities(this.level, this.etched$pos, false));
+    @Redirect(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/sounds/SoundManager;play(Lnet/minecraft/client/resources/sounds/SoundInstance;)V", remap = true), remap = false)
+    private void etched$playVanillaRecord(SoundManager sounds, SoundInstance soundInstance,
+                                         SoundEvent event, BlockPos pos, RecordItem disc) {
+        ClientLevel ownerLevel = this.level;
+        BlockPos ownerPos = pos.immutable();
+        RecordSoundInstance wrapped = RecordSoundInstance.wrap(soundInstance, removed -> {
+            if (this.level != ownerLevel) {
+                return;
+            }
+            SoundInstance current = this.playingRecords.get(ownerPos);
+            if ((current != null && current != removed)
+                    || AudioPlaybackManager.getInstance().getPlaybackState(
+                    PlaybackOwnerKey.block(ownerLevel.dimension(), ownerPos)).isPresent()) {
+                return;
+            }
+            this.notifyNearbyEntities(ownerLevel, ownerPos, false);
+        });
+        // Vanilla already inserted the delegate. The map and engine must share the same wrapper.
+        this.playingRecords.put(ownerPos, wrapped);
+        sounds.play(wrapped);
     }
 }

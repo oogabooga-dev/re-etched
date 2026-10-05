@@ -20,7 +20,6 @@ public class EtchedMessages {
 
     public static synchronized void init() {
         register(EtchedProtocol.CLIENTBOUND_ETCHING_URL_ERROR, ClientboundEtchingUrlErrorPacket::new);
-        register(EtchedProtocol.CLIENTBOUND_PLAY_ENTITY_MUSIC, ClientboundPlayEntityMusicPacket::new);
         register(EtchedProtocol.CLIENTBOUND_PLAY_MUSIC, ClientboundPlayMusicPacket::new);
         register(EtchedProtocol.CLIENTBOUND_RADIO_MENU_INIT, ClientboundRadioMenuInitPacket::new);
         register(EtchedProtocol.SERVERBOUND_SET_ETCHING_URL, ServerboundSetEtchingUrlPacket::new);
