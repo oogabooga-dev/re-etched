@@ -3,26 +3,22 @@ package gg.moonflower.etched.common.menu;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
-import gg.moonflower.etched.api.sound.download.SoundDownloadSource;
-import gg.moonflower.etched.api.sound.download.SoundSourceManager;
-import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 import java.io.IOException;
 import java.net.Proxy;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,57 +31,48 @@ public final class EtchingMenuGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 100)
-    public static void replacementRetiresThirdPartyWaitBeforeProviderReturns(GameTestHelper helper) {
-        cancelledThirdPartyWait(helper, true);
+    public static void replacementRetiresMetadataWaitBeforeWorkerReturns(GameTestHelper helper) {
+        cancelledMetadataWait(helper, true);
     }
 
     @GameTest(template = "empty", timeoutTicks = 100)
-    public static void closeRetiresThirdPartyWaitBeforeProviderReturns(GameTestHelper helper) {
-        cancelledThirdPartyWait(helper, false);
+    public static void closeRetiresMetadataWaitBeforeWorkerReturns(GameTestHelper helper) {
+        cancelledMetadataWait(helper, false);
     }
 
-    private static void cancelledThirdPartyWait(GameTestHelper helper, boolean replace) {
-        String input = "https://metadata-fixture.example/" + UUID.randomUUID();
+    private static void cancelledMetadataWait(GameTestHelper helper, boolean replace) {
+        String input = "https://fixture.bandcamp.com/album/" + UUID.randomUUID();
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         AtomicBoolean returned = new AtomicBoolean();
         Proxy expectedProxy = helper.getLevel().getServer().getProxy();
-        SoundSourceManager.registerSource(new SoundDownloadSource() {
-            @Override
-            public List<TrackData> resolveTracks(String url, DownloadProgressListener listener, Proxy proxy) throws IOException {
-                helper.assertTrue(proxy == expectedProxy, "Third-party etching lost the server proxy");
-                started.countDown();
-                try {
-                    if (!release.await(10, TimeUnit.SECONDS)) {
-                        throw new IOException("Fixture was not released");
-                    }
-                    return List.of(new TrackData(input, "Artist", Component.literal("Late metadata")));
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException(exception);
-                } finally {
-                    returned.set(true);
-                }
-            }
-
-            @Override public boolean isValidUrl(String url) { return input.equals(url); }
-            @Override public String getApiName() { return "GameTest metadata provider"; }
-            @Override public Optional<String> resolveAlbumCover(String url, DownloadProgressListener listener,
-                                                               Proxy proxy, ResourceManager resources) {
-                throw new AssertionError("Etching tried to open a cover");
-            }
-        });
         Player player = helper.makeMockSurvivalPlayer();
-        EtchingMenu menu = new EtchingMenu(1, player.getInventory());
+        EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
+                (uri, proxy, cancellation) -> CompletableFuture.supplyAsync(() -> {
+                    helper.assertTrue(proxy == expectedProxy, "Etching metadata lost the server proxy");
+                    helper.assertTrue(uri.toString().equals(input), "Etching metadata changed the submitted page");
+                    started.countDown();
+                    try {
+                        if (!release.await(10, TimeUnit.SECONDS)) {
+                            throw new CompletionException(new IOException("Fixture was not released"));
+                        }
+                        return new TrackData[]{new TrackData(input, "Artist", Component.literal("Late metadata"))};
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new CompletionException(exception);
+                    } finally {
+                        returned.set(true);
+                    }
+                }));
         player.containerMenu = menu;
         menu.setUrl(input);
         menu.getSlot(0).set(new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get()));
         CompletableFuture<?> request = field(menu, "currentRequest", CompletableFuture.class);
         AtomicBoolean cancelled = new AtomicBoolean();
-        // Release the bounded compatibility worker even if the GameTest never reaches its success path.
+        // Release the deliberately uninterruptible fixture even if the GameTest never succeeds.
         helper.runAfterDelay(80, release::countDown);
         helper.succeedWhen(() -> {
-            helper.assertTrue(started.getCount() == 0, "Third-party metadata has not started yet");
+            helper.assertTrue(started.getCount() == 0, "Metadata worker has not started yet");
             if (cancelled.compareAndSet(false, true)) {
                 if (replace) {
                     menu.setUrl("minecraft:music_disc.blocks");
@@ -93,18 +80,52 @@ public final class EtchingMenuGameTests {
                     menu.removed(player);
                 }
             }
-            helper.assertTrue(request.isDone(), "Cancelled etching still waits for provider I/O");
-            helper.assertTrue(!returned.get(), "Etching only retired after the provider returned");
+            helper.assertTrue(request.isDone(), "Cancelled etching still waits for metadata I/O");
+            helper.assertTrue(!returned.get(), "Etching only retired after the metadata worker returned");
             if (replace) {
                 var result = menu.getSlot(2).getItem();
                 helper.assertTrue(result.is(EtchedItems.ETCHED_MUSIC_DISC.get()), "Replacement has no etching result yet");
                 var tracks = PlayableRecord.getStackMusic(result).orElseThrow();
                 helper.assertTrue(tracks.length == 1 && tracks[0].url().equals("minecraft:music_disc.blocks"),
-                        "Late third-party metadata replaced the fresh local result");
+                        "Late metadata replaced the fresh local result");
             } else {
                 helper.assertTrue(menu.getSlot(2).getItem().isEmpty(), "Closed menu published retired metadata");
             }
             release.countDown();
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 100)
+    public static void builtInMetadataPublishesAlbumAndOrderedTracksForTheOpenMenu(GameTestHelper helper) {
+        String input = "https://fixture.bandcamp.com/album/ordered";
+        Proxy expectedProxy = helper.getLevel().getServer().getProxy();
+        Player player = helper.makeMockSurvivalPlayer();
+        TrackData[] metadata = {
+                new TrackData(input, "Artist", Component.literal("Album")),
+                new TrackData("https://fixture.bandcamp.com/track/one", "Artist", Component.literal("One")),
+                new TrackData("https://fixture.bandcamp.com/track/two", "Guest", Component.literal("Two"))
+        };
+        EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
+                (uri, proxy, cancellation) -> {
+                    helper.assertTrue(uri.toString().equals(input), "Metadata lost the submitted album URL");
+                    helper.assertTrue(proxy == expectedProxy, "Metadata lost the configured server proxy");
+                    helper.assertFalse(cancellation.isCancelled(), "Open menu started retired metadata");
+                    return CompletableFuture.completedFuture(metadata);
+                });
+        player.containerMenu = menu;
+        menu.setUrl(input);
+        menu.getSlot(0).set(new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get()));
+        helper.succeedWhen(() -> {
+            ItemStack result = menu.getSlot(2).getItem();
+            helper.assertTrue(result.is(EtchedItems.ETCHED_MUSIC_DISC.get()), "Open menu has no metadata result yet");
+            var album = PlayableRecord.getStackAlbum(result).orElseThrow();
+            var tracks = PlayableRecord.getStackMusic(result).orElseThrow();
+            helper.assertTrue(album.url().equals(input) && album.title().getString().equals("Album"),
+                    "Etching lost the album descriptor");
+            helper.assertTrue(tracks.length == 2 && tracks[0].title().getString().equals("One")
+                    && tracks[1].title().getString().equals("Two") && tracks[1].artist().equals("Guest"),
+                    "Etching lost metadata track order or artist");
+            helper.assertTrue(metadata[0].title().getString().equals("Album"), "Etching mutated worker metadata");
         });
     }
 

@@ -1,7 +1,6 @@
 package gg.moonflower.etched.api.sound.download;
 
 import gg.moonflower.etched.api.record.AlbumCover;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.junit.jupiter.api.Test;
@@ -105,8 +104,5 @@ class SoundSourceManagerCoverTest {
 
         @Override public boolean isValidUrl(String url) { return input.equals(url); }
         @Override public String getApiName() { return "Fixture provider"; }
-        @Override public List<TrackData> resolveTracks(String url, DownloadProgressListener listener, Proxy proxy) {
-            throw new AssertionError("Cover resolution reached track lookup");
-        }
     }
 }

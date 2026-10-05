@@ -1,25 +1,17 @@
 package gg.moonflower.etched.api.sound.download;
 
 import gg.moonflower.etched.api.record.AlbumCover;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.client.AlbumCoverCache;
-import gg.moonflower.etched.common.audio.provider.LegacyTrackMetadataRequests;
 import gg.moonflower.etched.common.audio.provider.LegacyProviderResults;
 import gg.moonflower.etched.common.audio.provider.CancellationProgressListener;
-import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
-import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
-import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
-import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
 import java.net.Proxy;
-import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -48,33 +40,6 @@ public final class SoundSourceManager {
 
     private static synchronized List<SoundDownloadSource> sources() {
         return List.copyOf(SOURCES);
-    }
-
-    /**
-     * Resolves the author and title of a track from an external source.
-     *
-     * @param url      The URL to get the track info from
-     * @param listener The listener for events
-     * @param proxy    The connection proxy
-     * @return The track information found or nothing
-     * @throws IOException If any error occurs when connecting to the sources
-     */
-    public static CompletableFuture<TrackData[]> resolveTracks(String url, @Nullable DownloadProgressListener listener, Proxy proxy) throws IOException {
-        URI input = LegacyProviderResults.remote(url);
-        boolean bandcamp = BandcampPageReader.supports(input);
-        boolean soundcloud = SoundCloudPageReader.supports(input);
-        if (bandcamp || soundcloud) {
-            return LegacyTrackMetadataRequests.submitCancellable(cancellation -> {
-                if (listener != null && !cancellation.isCancelled()) {
-                    listener.progressStartRequest(SoundDownloadSource.RESOLVING_TRACKS);
-                }
-                return bandcamp ? new BandcampMetadataResolver(proxy).resolveTracks(input, cancellation)
-                        : new SoundCloudMetadataResolver(proxy).resolveTracks(input, cancellation);
-            }, false);
-        }
-        SoundDownloadSource source = sources().stream().filter(s -> s.isValidUrl(url)).findFirst().orElseThrow(() -> new IOException("Unknown source for: " + url));
-        return LegacyTrackMetadataRequests.submitCancellable(cancellation -> source.resolveTracks(url,
-                listener == null ? null : new CancellationProgressListener(listener, cancellation::isCancelled), proxy), true);
     }
 
     /**
@@ -118,13 +83,4 @@ public final class SoundSourceManager {
         return sources().stream().filter(source -> source.isValidUrl(url)).findFirst().flatMap(s -> s.getBrandText(url));
     }
 
-    /**
-     * Validates the URL is for an external source.
-     *
-     * @param url The URL to check
-     * @return Whether that URL refers to an external source
-     */
-    public static boolean isValidUrl(String url) {
-        return sources().stream().anyMatch(s -> s.isValidUrl(url));
-    }
 }

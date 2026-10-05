@@ -1,7 +1,5 @@
 package gg.moonflower.etched.common.sound.download;
 
-import com.google.gson.JsonParseException;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.sound.download.SoundDownloadSource;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.common.audio.AudioCancellation;
@@ -16,7 +14,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.URI;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
@@ -34,13 +31,6 @@ public class BandcampSource implements SoundDownloadSource {
 
     BandcampSource(Function<Proxy, BandcampMetadataResolver> resolvers) {
         this.resolvers = Objects.requireNonNull(resolvers, "resolvers");
-    }
-
-    @Override
-    public List<TrackData> resolveTracks(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException, JsonParseException {
-        URI input = input(url);
-        this.startRequest(progressListener);
-        return this.resolvers.apply(proxy).resolveTracks(input, new AudioCancellation());
     }
 
     @Override

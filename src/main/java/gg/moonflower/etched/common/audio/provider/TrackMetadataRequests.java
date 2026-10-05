@@ -2,56 +2,73 @@ package gg.moonflower.etched.common.audio.provider;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioCancellation;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.io.IOException;
+import java.net.Proxy;
+import java.net.URI;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
-/** Request-owned compatibility metadata. The old provider API cannot interrupt its own I/O. */
-public final class LegacyTrackMetadataRequests {
+/** Bounded, request-owned metadata for built-in services; no legacy provider registry or shared futures. */
+@ApiStatus.Internal
+public final class TrackMetadataRequests {
 
     private static final ThreadPoolExecutor WORKERS = new ThreadPoolExecutor(2, 2,
-            0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32), task -> {
-        Thread thread = new Thread(task, "Etched compatibility track metadata");
-        thread.setDaemon(true);
-        return thread;
-    }, new ThreadPoolExecutor.AbortPolicy());
-    private static final ThreadPoolExecutor FIRST_PARTY = new ThreadPoolExecutor(2, 2,
             0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32), task -> {
         Thread thread = new Thread(task, "Etched provider track metadata");
         thread.setDaemon(true);
         return thread;
     }, new ThreadPoolExecutor.AbortPolicy());
 
-    private LegacyTrackMetadataRequests() {
+    private TrackMetadataRequests() {
     }
 
-    public static CompletableFuture<TrackData[]> submit(MetadataLookup lookup) {
-        return submit(lookup, WORKERS);
+    public static boolean supports(URI input) {
+        return BandcampPageReader.supports(input) || SoundCloudPageReader.supports(input);
+    }
+
+    public static CompletableFuture<TrackData[]> resolve(URI input, Proxy proxy, AudioCancellation cancellation) {
+        return resolve(input, proxy, cancellation, BandcampMetadataResolver::new, SoundCloudMetadataResolver::new);
+    }
+
+    static CompletableFuture<TrackData[]> resolve(URI input, Proxy proxy, AudioCancellation cancellation,
+                                                 Function<Proxy, BandcampMetadataResolver> bandcamp,
+                                                 Function<Proxy, SoundCloudMetadataResolver> soundcloud) {
+        return submitCancellable(token -> {
+            if (BandcampPageReader.supports(input)) {
+                return bandcamp.apply(proxy).resolveTracks(input, token);
+            }
+            if (SoundCloudPageReader.supports(input)) {
+                return soundcloud.apply(proxy).resolveTracks(input, token);
+            }
+            throw new IOException("Unknown metadata service: " + input);
+        }, cancellation);
     }
 
     static CompletableFuture<TrackData[]> submit(MetadataLookup lookup, ThreadPoolExecutor workers) {
-        return submitCancellable(cancellation -> lookup.resolve(), workers);
+        return submitCancellable(cancellation -> lookup.resolve(), new AudioCancellation(), workers);
     }
 
-    public static CompletableFuture<TrackData[]> submitCancellable(CancellableMetadataLookup lookup, boolean compatibility) {
-        return submitCancellable(lookup, compatibility ? WORKERS : FIRST_PARTY);
+    static CompletableFuture<TrackData[]> submitCancellable(CancellableMetadataLookup lookup, AudioCancellation cancellation) {
+        return submitCancellable(lookup, cancellation, WORKERS);
     }
 
-    private static CompletableFuture<TrackData[]> submitCancellable(CancellableMetadataLookup lookup, ThreadPoolExecutor workers) {
+    static CompletableFuture<TrackData[]> submitCancellable(CancellableMetadataLookup lookup,
+                                                          AudioCancellation cancellation, ThreadPoolExecutor workers) {
         CompletableFuture<TrackData[]> result = new CompletableFuture<>();
-        AudioCancellation cancellation = new AudioCancellation();
         Runnable task = () -> {
-            if (result.isDone()) {
+            if (result.isDone() || cancellation.isCancelled()) {
                 return;
             }
             try {
                 List<TrackData> tracks = lookup.resolve(cancellation);
-                if (!result.isDone()) {
+                if (!result.isDone() && !cancellation.isCancelled()) {
                     result.complete(LegacyProviderResults.tracks(tracks));
                 }
             } catch (Throwable failure) {
@@ -65,6 +82,13 @@ public final class LegacyTrackMetadataRequests {
                 workers.remove(task);
             }
         });
+        cancellation.onCancel(() -> {
+            result.cancel(false);
+            workers.remove(task);
+        });
+        if (result.isDone()) {
+            return result;
+        }
         try {
             workers.execute(task);
             if (result.isCancelled()) {
@@ -83,17 +107,17 @@ public final class LegacyTrackMetadataRequests {
         cancellation.onCancel(() -> pending.cancel(false));
         TrackData[] tracks = pending.join();
         cancellation.throwIfCancelled();
-        // Menus replace entries while applying label artist fallbacks; never expose a provider's array.
+        // Temporary TrackData boundary until disc persistence migrates; never expose a worker's array.
         return LegacyProviderResults.tracks(java.util.Arrays.asList(tracks));
     }
 
     @FunctionalInterface
-    public interface MetadataLookup {
+    interface MetadataLookup {
         List<TrackData> resolve() throws IOException;
     }
 
     @FunctionalInterface
-    public interface CancellableMetadataLookup {
+    interface CancellableMetadataLookup {
         List<TrackData> resolve(AudioCancellation cancellation) throws IOException;
     }
 

@@ -35,7 +35,7 @@ class SoundCloudSourceTest {
             """;
 
     @Test
-    void retainedMetadataEntrypointsUseFreshCommonScopesAndPreserveProxyResultsAndProgress() throws Exception {
+    void retainedCoverEntrypointPreservesProxyOwnershipAndProgress() throws Exception {
         AtomicInteger opened = new AtomicInteger();
         AtomicInteger closed = new AtomicInteger();
         List<AudioCancellation> tokens = new ArrayList<>();
@@ -59,16 +59,11 @@ class SoundCloudSourceTest {
             }, uri -> assertEquals(opened.get(), closed.get()), HOME, API, SoundCloudMetadataResolver.Limits.DEFAULT);
         });
         Progress listener = new Progress();
-        var tracks = source.resolveTracks(INPUT, listener, proxy);
-        assertEquals(1, tracks.size());
-        assertEquals(INPUT, tracks.get(0).url());
-        assertEquals("Artist", tracks.get(0).artist());
-        assertEquals("Track", tracks.get(0).title().getString());
         assertEquals("https://images.example/cover.jpg", source.resolveAlbumCover(INPUT, listener, proxy, null).orElseThrow());
-        assertEquals(6, opened.get());
+        assertEquals(3, opened.get());
         assertEquals(opened.get(), closed.get());
-        assertEquals(2, tokens.stream().distinct().count());
-        assertEquals(List.of("sound_source.etched.requesting", "sound_source.etched.requesting"), listener.requests);
+        assertEquals(1, tokens.stream().distinct().count());
+        assertEquals(List.of("sound_source.etched.requesting"), listener.requests);
         assertEquals("SoundCloud", source.getApiName());
         assertTrue(source.getBrandText(INPUT).isPresent());
     }
@@ -81,7 +76,6 @@ class SoundCloudSourceTest {
         for (String url : new String[]{null, "bad url", "file:///etc/passwd", "ftp://soundcloud.com/a",
                 "https://evilsoundcloud.com/a", "https://soundcloud.com.evil.example/a", "https://user@soundcloud.com/a"}) {
             assertFalse(source.isValidUrl(url));
-            assertThrows(IOException.class, () -> source.resolveTracks(url, null, Proxy.NO_PROXY));
             assertThrows(IOException.class, () -> source.resolveAlbumCover(url, null, Proxy.NO_PROXY, null));
         }
         assertTrue(new SoundCloudSource().isValidUrl(INPUT));
@@ -94,8 +88,6 @@ class SoundCloudSourceTest {
         }, uri -> {
             throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false, "blocked", null);
         }, HOME, API, SoundCloudMetadataResolver.Limits.DEFAULT));
-        assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
-                () -> source.resolveTracks(INPUT, null, Proxy.NO_PROXY)).code());
         assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
                 () -> source.resolveAlbumCover(INPUT, null, Proxy.NO_PROXY, null)).code());
     }

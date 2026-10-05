@@ -1,9 +1,6 @@
 package gg.moonflower.etched.api.sound.download;
 
-import com.google.gson.JsonParseException;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.api.util.DownloadProgressListener;
-import gg.moonflower.etched.core.Etched;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.jetbrains.annotations.Nullable;
@@ -19,20 +16,6 @@ import java.util.*;
  * @since 2.0.0
  */
 public interface SoundDownloadSource {
-
-    Component RESOLVING_TRACKS = Component.translatable("record." + Etched.MOD_ID + ".resolvingTracks");
-
-    /**
-     * Resolves the artist and title for the specified track. If the more than one tracks are returned, the first data will be treated as the album data.
-     *
-     * @param url              The URL to the track or album
-     * @param progressListener The listener for net status
-     * @param proxy            The internet proxy
-     * @return The artist and title in a pair
-     * @throws IOException        If any error occurs with requests
-     * @throws JsonParseException If any error occurs when parsing
-     */
-    List<TrackData> resolveTracks(String url, @Nullable DownloadProgressListener progressListener, Proxy proxy) throws IOException, JsonParseException;
 
     /**
      * Resolves the input stream to the cover for the specified album.
