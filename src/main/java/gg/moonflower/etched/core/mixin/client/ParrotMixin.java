@@ -1,6 +1,5 @@
 package gg.moonflower.etched.core.mixin.client;
 
-import gg.moonflower.etched.api.sound.SoundTracker;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.BoomboxClientBridge;
 import gg.moonflower.etched.core.registry.EtchedTags;
@@ -64,8 +63,7 @@ public abstract class ParrotMixin extends Entity {
                     return false;
                 }
 
-                return BoomboxClientBridge.isPlaying(entity)
-                        || SoundTracker.getEntitySound(entity.getId()) != null;
+                return BoomboxClientBridge.isPlaying(entity);
             });
 
             if (!entities.isEmpty()) {

@@ -268,19 +268,6 @@ public class SoundTracker {
     }
 
     /**
-     * Plays a record stack for an entity with a boombox.
-     *
-     * @param entityId The id of the entity to play the record at
-     * @param record   The record to play
-     */
-    public static void playBoombox(int entityId, ItemStack record) {
-        setEntitySound(entityId, null);
-        if (!record.isEmpty()) {
-            playEntityRecord(record, entityId, 0, 8, true);
-        }
-    }
-
-    /**
      * Plays a radio stream.
      *
      * @param url   The URL of the stream
