@@ -106,54 +106,6 @@ public final class SoundCloudMetadataResolver {
         return Optional.of(cover);
     }
 
-    /** Resolves one progressive MP3 destination without downloading audio or accepting HLS. */
-    public List<URI> resolveMediaUrls(URI input, AudioCancellation cancellation) throws IOException {
-        Operation operation = new Operation(cancellation);
-        JsonObject page = this.fetchPage(input, operation);
-        if (!field(page, "kind").equals("track") || !requiredBoolean(page, "streamable")) {
-            throw invalid("SoundCloud media URL must resolve to a streamable track");
-        }
-        JsonObject media = object(page.get("media"), "track media");
-        JsonElement value = media.get("transcodings");
-        if (value == null || !value.isJsonArray()) {
-            throw invalid("SoundCloud transcodings is not an array");
-        }
-        JsonArray entries = value.getAsJsonArray();
-        if (entries.size() > this.limits.maxTracks()) {
-            throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud transcodings exceed the entry limit", null);
-        }
-        URI progressive = null;
-        boolean hls = false;
-        boolean other = false;
-        for (JsonElement entry : entries) {
-            cancellation.throwIfCancelled();
-            JsonObject transcoding = object(entry, "transcoding");
-            JsonObject format = object(transcoding.get("format"), "transcoding format");
-            String protocol = field(format, "protocol");
-            String mime = optionalField(format, "mime_type");
-            if (protocol.equals("progressive") && "audio/mpeg".equalsIgnoreCase(mime)) {
-                if (progressive == null) {
-                    progressive = httpUri(field(transcoding, "url"), "SoundCloud transcoding URL");
-                }
-            } else if (protocol.equals("hls")) {
-                hls = true;
-            } else {
-                other = true;
-            }
-        }
-        if (progressive == null) {
-            if (hls && !other) {
-                throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false, "SoundCloud track is only available as HLS", null);
-            }
-            throw invalid("SoundCloud track has no progressive MP3 transcoding");
-        }
-        JsonObject resolved = this.authenticatedJson(progressive, operation, optionalField(page, "track_authorization"));
-        URI destination = httpUri(field(resolved, "url"), "SoundCloud media URL");
-        this.networkPolicy.check(destination, cancellation);
-        cancellation.throwIfCancelled();
-        return List.of(destination);
-    }
-
     private JsonObject fetchPage(URI input, Operation operation) throws IOException {
         AudioCancellation cancellation = operation.cancellation;
         cancellation.throwIfCancelled();
@@ -168,10 +120,10 @@ public final class SoundCloudMetadataResolver {
 
     private JsonObject resolvePage(URI input, Operation operation) throws IOException {
         URI endpoint = SoundCloudPageReader.appendQuery(this.resolveEndpoint, "url", input.toASCIIString());
-        return this.authenticatedJson(endpoint, operation, null);
+        return this.authenticatedJson(endpoint, operation);
     }
 
-    private JsonObject authenticatedJson(URI endpoint, Operation operation, String authorization) throws IOException {
+    private JsonObject authenticatedJson(URI endpoint, Operation operation) throws IOException {
         if (!SoundCloudPageReader.sameOrigin(endpoint, this.resolveEndpoint)) {
             throw failure(RadioFailure.Code.BLOCKED_ADDRESS, false, "SoundCloud returned an untrusted API endpoint", null);
         }
@@ -181,9 +133,6 @@ public final class SoundCloudMetadataResolver {
         while (true) {
             int rejectedStatus;
             URI request = SoundCloudPageReader.appendQuery(endpoint, "client_id", operation.clientId);
-            if (authorization != null) {
-                request = SoundCloudPageReader.appendQuery(request, "track_authorization", authorization);
-            }
             try (AudioHttpResponse response = operation.execute(request)) {
                 if (!SoundCloudPageReader.sameOrigin(response.uri(), this.resolveEndpoint)) {
                     throw failure(RadioFailure.Code.BLOCKED_ADDRESS, false,
@@ -300,19 +249,6 @@ public final class SoundCloudMetadataResolver {
         String result = value.getAsString();
         requireLength(result);
         return result;
-    }
-
-    private String optionalField(JsonObject object, String key) throws RadioTransportException {
-        JsonElement value = object.get(key);
-        return value == null || value.isJsonNull() ? null : field(object, key);
-    }
-
-    private static URI httpUri(String value, String description) throws RadioTransportException {
-        try {
-            return SoundCloudPageReader.requireHttpUri(URI.create(value), description);
-        } catch (IllegalArgumentException exception) {
-            throw invalid(description + " is invalid");
-        }
     }
 
     private void requireLength(String value) throws RadioTransportException {

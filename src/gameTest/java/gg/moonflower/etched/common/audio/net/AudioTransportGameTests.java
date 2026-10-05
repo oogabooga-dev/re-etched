@@ -39,15 +39,14 @@ public final class AudioTransportGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void soundCloudProgressiveUrlProjectionIsServerSafeAndDoesNotOpenMedia(GameTestHelper helper) throws IOException {
+    public static void soundCloudTrackMetadataValidatesItsDestinationAfterClosingResponses(GameTestHelper helper) throws IOException {
         URI input = URI.create("https://soundcloud.com/artist/track");
-        URI media = URI.create("https://media.example/track.mp3");
         Proxy proxy = helper.getLevel().getServer().getProxy();
         List<FixtureConnection> connections = new ArrayList<>();
         List<URI> checked = new ArrayList<>();
         var transport = new RadioHttpTransportImpl(proxy, destination -> {}, Duration.ofSeconds(1),
                 Duration.ofSeconds(1), 5, (destination, configuredProxy) -> {
-            helper.assertTrue(configuredProxy == proxy, "SoundCloud URL projection lost the server proxy");
+            helper.assertTrue(configuredProxy == proxy, "SoundCloud track metadata lost the server proxy");
             String body;
             if (destination.getHost().equals("soundcloud.com") && destination.getPath().equals("/")) {
                 body = "<script src='/app.js'></script>";
@@ -55,17 +54,10 @@ public final class AudioTransportGameTests {
                 body = "client_id:'server-client'";
             } else if (destination.getHost().equals("api-v2.soundcloud.com") && destination.getPath().equals("/resolve")) {
                 body = """
-                        {"kind":"track","streamable":true,"track_authorization":"server-token","media":{"transcodings":[
-                         {"url":"https://api-v2.soundcloud.com/hls","format":{"protocol":"hls","mime_type":"audio/mpeg"}},
-                         {"url":"https://api-v2.soundcloud.com/transcoding","format":{"protocol":"progressive","mime_type":"audio/mpeg"}}]}}
+                        {"kind":"track","streamable":true,"title":"Track","user":{"username":"Artist"}}
                         """;
             } else {
-                helper.assertTrue(destination.getHost().equals("api-v2.soundcloud.com")
-                        && destination.getPath().equals("/transcoding"), "SoundCloud tried to open audio or HLS");
-                helper.assertTrue(destination.getRawQuery().contains("client_id=server-client")
-                        && destination.getRawQuery().contains("track_authorization=server-token"),
-                        "SoundCloud transcoding lost its operation-owned credentials");
-                body = "{\"url\":\"" + media + "\"}";
+                throw new AssertionError("SoundCloud metadata tried to open audio or another endpoint: " + destination);
             }
             var connection = new FixtureConnection(destination, body.getBytes(StandardCharsets.UTF_8));
             connections.add(connection);
@@ -73,26 +65,26 @@ public final class AudioTransportGameTests {
         });
         AudioNetworkPolicy policy = destination -> {
             helper.assertTrue(connections.stream().allMatch(connection -> connection.disconnected),
-                    "SoundCloud URL validation retained an open response");
+                    "SoundCloud track validation retained an open response");
             checked.add(destination);
         };
         var resolved = new SoundCloudMetadataResolver(transport, policy, URI.create("https://soundcloud.com/"),
                 URI.create("https://api-v2.soundcloud.com/resolve"), SoundCloudMetadataResolver.Limits.DEFAULT)
-                .resolveMediaUrls(input, new AudioCancellation());
-        helper.assertTrue(resolved.equals(List.of(media)), "SoundCloud lost the progressive media URL");
-        helper.assertTrue(checked.equals(List.of(input, media)), "SoundCloud did not validate both destinations");
-        helper.assertTrue(connections.size() == 4, "SoundCloud downloaded media or repeated discovery");
+                .resolveTracks(input, new AudioCancellation());
+        helper.assertTrue(resolved.size() == 1 && resolved.get(0).url().equals(input.toString())
+                && resolved.get(0).title().getString().equals("Track"), "SoundCloud lost track metadata");
+        helper.assertTrue(checked.equals(List.of(input, input)), "SoundCloud did not validate input and stored destination");
+        helper.assertTrue(connections.size() == 3, "SoundCloud downloaded media or repeated discovery");
         helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void bandcampMediaUrlProjectionIsServerSafeAndDoesNotOpenMedia(GameTestHelper helper) throws IOException {
+    public static void bandcampTrackMetadataValidatesEveryDestinationAfterClosingItsPage(GameTestHelper helper) throws IOException {
         URI input = URI.create("https://artist.bandcamp.com/album/test");
         byte[] html = """
-                <div data-tralbum='{"current":{"type":"album"},"trackinfo":[
-                {"file":{"mp3-128":"https://media.example/one.mp3"}},
-                {"file":null},
-                {"file":{"mp3-128":"https://media.example/two.mp3"}}]}'></div>
+                <div data-tralbum='{"artist":"Artist","current":{"type":"album","title":"Album"},"trackinfo":[
+                {"title":"One","title_link":"/track/one"},
+                {"title":"Two","title_link":"/track/two"}]}'></div>
                 """.getBytes(StandardCharsets.UTF_8);
         FixtureConnection connection = new FixtureConnection(input, html);
         List<URI> opened = new ArrayList<>();
@@ -100,20 +92,22 @@ public final class AudioTransportGameTests {
         Proxy proxy = helper.getLevel().getServer().getProxy();
         var transport = new RadioHttpTransportImpl(proxy, destination -> {}, Duration.ofSeconds(1),
                 Duration.ofSeconds(1), 5, (destination, configuredProxy) -> {
-            helper.assertTrue(destination.equals(input), "Bandcamp URL projection tried to open audio");
-            helper.assertTrue(configuredProxy == proxy, "Bandcamp URL projection lost the server proxy");
+            helper.assertTrue(destination.equals(input), "Bandcamp metadata tried to open audio");
+            helper.assertTrue(configuredProxy == proxy, "Bandcamp metadata lost the server proxy");
             opened.add(destination);
             return connection;
         });
         AudioNetworkPolicy policy = destination -> {
-            helper.assertTrue(connection.disconnected, "Bandcamp page remained open during media URL checks");
+            helper.assertTrue(connection.disconnected, "Bandcamp page remained open during stored destination checks");
             checked.add(destination);
         };
-        var media = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT)
-                .resolveMediaUrls(input, new AudioCancellation());
-        helper.assertTrue(media.equals(List.of(URI.create("https://media.example/one.mp3"),
-                URI.create("https://media.example/two.mp3"))), "Bandcamp lost playable media order");
-        helper.assertTrue(checked.equals(media), "Bandcamp did not validate every media destination");
+        var tracks = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveTracks(input, new AudioCancellation());
+        List<URI> expected = List.of(input, URI.create("https://artist.bandcamp.com/track/one"),
+                URI.create("https://artist.bandcamp.com/track/two"));
+        helper.assertTrue(tracks.stream().map(track -> URI.create(track.url())).toList().equals(expected),
+                "Bandcamp lost ordered metadata destinations");
+        helper.assertTrue(checked.equals(expected), "Bandcamp did not validate every stored destination");
         helper.assertTrue(opened.equals(List.of(input)), "Bandcamp opened unexpected responses");
         helper.succeed();
     }
