@@ -4,7 +4,6 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import gg.moonflower.etched.api.record.AlbumCover;
 import gg.moonflower.etched.client.RecordCoverRequests;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.core.Etched;
@@ -289,7 +288,7 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
     @ApiStatus.Internal
     public interface ModelData {
 
-        static Optional<ModelData> of(AlbumCover cover) {
+        static Optional<ModelData> of(CoverDescriptor cover) {
             if (cover instanceof ModelAlbumCover) {
                 return Optional.of(new BakedModelData(((ModelAlbumCover) cover).model()));
             }

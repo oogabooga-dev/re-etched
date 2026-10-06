@@ -1,9 +1,6 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.PlayableRecordItem;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioNbtCodec;
-import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.nbt.CompoundTag;
@@ -12,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
@@ -25,7 +23,7 @@ import java.util.Optional;
 /**
  * @author Ocelot
  */
-public class EtchedMusicDiscItem extends PlayableRecordItem {
+public class EtchedMusicDiscItem extends Item {
 
     public static final String CONTENT_TAG = "AudioContent";
 
@@ -43,11 +41,6 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
         readContent(stack).ifPresent(content -> lines.addAll(RecordPresentation.tooltip(content)));
     }
 
-    @Override
-    public Optional<TrackData[]> getMusic(ItemStack stack) {
-        return readMusic(stack);
-    }
-
     /** Only the versioned audio envelope is accepted; legacy disc data is intentionally not migrated. */
     public static Optional<RecordContent> readContent(ItemStack stack) {
         CompoundTag nbt = stack.getTag();
@@ -55,39 +48,6 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
             return Optional.empty();
         }
         return AudioNbtCodec.readRecordContent(content).result();
-    }
-
-    static Optional<TrackData[]> readMusic(ItemStack stack) {
-        // Temporary presentation projection for the still-live metadata/UI consumers.
-        return readContent(stack).map(content -> content.program().tracks().stream()
-                .map(track -> presentation(track.source(), track.artist(), track.title())).toArray(TrackData[]::new));
-    }
-
-    @Override
-    public Optional<TrackData> getAlbum(ItemStack stack) {
-        return readAlbum(stack);
-    }
-
-    static Optional<TrackData> readAlbum(ItemStack stack) {
-        return readContent(stack).map(content -> content.album()
-                .map(album -> presentation(album.source(), album.artist(), album.title()))
-                .orElseGet(() -> {
-                    AudioTrack first = content.program().tracks().get(0);
-                    return presentation(first.source(), first.artist(), first.title());
-                }));
-    }
-
-    private static TrackData presentation(String source, String artist, String title) {
-        return new TrackData(source, artist, Component.literal(title));
-    }
-
-    @Override
-    public int getTrackCount(ItemStack stack) {
-        return countTracks(stack);
-    }
-
-    static int countTracks(ItemStack stack) {
-        return readContent(stack).map(content -> content.program().tracks().size()).orElse(0);
     }
 
     /**

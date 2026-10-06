@@ -1,23 +1,24 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.PlayableRecordItem;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegisterEvent;
 
-import java.util.Optional;
+import java.util.List;
 
-/** GameTest-only legacy implementer: insertion/resolution must never call its metadata API. */
+/** GameTest-only unsupported item: first-party presentation must never call its tooltip. */
 @Mod.EventBusSubscriber(modid = Etched.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
-public final class UnsupportedInsertionRecord extends PlayableRecordItem {
+public final class UnsupportedInsertionRecord extends Item {
 
     static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "gametest_unsupported_record");
     static final ResourceLocation RECORD_ID = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "gametest_foreign_disc");
@@ -35,17 +36,7 @@ public final class UnsupportedInsertionRecord extends PlayableRecordItem {
     }
 
     @Override
-    public Optional<TrackData[]> getMusic(ItemStack stack) {
-        throw new AssertionError("Unsupported insertion reached the legacy music API");
-    }
-
-    @Override
-    public Optional<TrackData> getAlbum(ItemStack stack) {
-        throw new AssertionError("Unsupported insertion reached the legacy album API");
-    }
-
-    @Override
-    public int getTrackCount(ItemStack stack) {
-        throw new AssertionError("Unsupported insertion reached the legacy track count API");
+    public void appendHoverText(ItemStack stack, Level level, List<Component> lines, TooltipFlag flag) {
+        throw new AssertionError("Unsupported item reached first-party tooltip dispatch");
     }
 }

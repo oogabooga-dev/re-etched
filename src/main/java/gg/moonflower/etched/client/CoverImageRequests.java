@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import gg.moonflower.etched.api.record.AlbumCover;
+import gg.moonflower.etched.client.render.item.CoverDescriptor;
 import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.cache.ClientMediaCache;
 import gg.moonflower.etched.client.cache.ProviderCoverCacheLoader;
@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Request-owned built-in cover loading, backed by the v5 namespaced secure cache. */
 @ApiStatus.Internal
-public final class AlbumCoverCache {
+public final class CoverImageRequests {
 
     private static final Logger LOGGER = LogManager.getLogger();
     private static final ThreadPoolExecutor WORKERS = workers("Etched cover cache");
@@ -38,7 +38,7 @@ public final class AlbumCoverCache {
         }, new ThreadPoolExecutor.AbortPolicy());
     }
 
-    private AlbumCoverCache() {
+    private CoverImageRequests() {
     }
 
     public static boolean supportsProvider(String url) {
@@ -49,37 +49,37 @@ public final class AlbumCoverCache {
         }
     }
 
-    public static CompletableFuture<AlbumCover> requestProviderResource(String url, Proxy proxy) {
+    public static CompletableFuture<CoverDescriptor> requestProviderResource(String url, Proxy proxy) {
         if (!supportsProvider(url)) {
-            return CompletableFuture.completedFuture(AlbumCover.EMPTY);
+            return CompletableFuture.completedFuture(CoverDescriptor.EMPTY);
         }
         return request(cancellation -> ProviderCoverCacheLoader.open(ClientMediaCache.get(), URI.create(url), cancellation,
                 token -> AudioResolveContext.createDefault(proxy, token)));
     }
 
-    static CompletableFuture<AlbumCover> request(CoverOperation operation) {
+    static CompletableFuture<CoverDescriptor> request(CoverOperation operation) {
         return request(operation, WORKERS);
     }
 
-    private static CompletableFuture<AlbumCover> request(CoverOperation operation, ThreadPoolExecutor workers) {
+    private static CompletableFuture<CoverDescriptor> request(CoverOperation operation, ThreadPoolExecutor workers) {
         return request(operation, workers, cover -> AlbumImageProcessor.applyOwnedOverlay(
                 NativeImage.read(cover.body()), AlbumCoverItemRenderer::copyOverlayImage));
     }
 
-    static CompletableFuture<AlbumCover> request(CoverOperation operation, CoverImageFactory images) {
+    static CompletableFuture<CoverDescriptor> request(CoverOperation operation, CoverImageFactory images) {
         return request(operation, WORKERS, images);
     }
 
-    static CompletableFuture<AlbumCover> request(CoverOperation operation, ThreadPoolExecutor workers,
+    static CompletableFuture<CoverDescriptor> request(CoverOperation operation, ThreadPoolExecutor workers,
                                                 CoverImageFactory images) {
         AudioCancellation cancellation = new AudioCancellation();
-        CompletableFuture<AlbumCover> result = new CompletableFuture<>();
+        CompletableFuture<CoverDescriptor> result = new CompletableFuture<>();
         Runnable task = () -> {
             try {
                 cancellation.throwIfCancelled();
                 Optional<BoundedMediaCache.Lease> resolved = operation.open(cancellation);
                 if (resolved.isEmpty()) {
-                    result.complete(AlbumCover.EMPTY);
+                    result.complete(CoverDescriptor.EMPTY);
                     return;
                 }
                 try (BoundedMediaCache.Lease cover = resolved.get()) {
@@ -87,7 +87,7 @@ public final class AlbumCoverCache {
                     NativeImage image = java.util.Objects.requireNonNull(images.create(cover), "processed cover image");
                     boolean delivered = false;
                     try {
-                        delivered = result.complete(AlbumCover.of(image));
+                        delivered = result.complete(CoverDescriptor.of(image));
                     } finally {
                         if (!delivered) {
                             image.close();
@@ -101,7 +101,7 @@ public final class AlbumCoverCache {
                 if (failure instanceof Error) {
                     result.completeExceptionally(failure);
                 } else {
-                    result.complete(AlbumCover.EMPTY);
+                    result.complete(CoverDescriptor.EMPTY);
                 }
             }
         };
@@ -117,7 +117,7 @@ public final class AlbumCoverCache {
                 workers.remove(task);
             }
         } catch (RejectedExecutionException exception) {
-            result.complete(AlbumCover.EMPTY);
+            result.complete(CoverDescriptor.EMPTY);
         }
         return result;
     }

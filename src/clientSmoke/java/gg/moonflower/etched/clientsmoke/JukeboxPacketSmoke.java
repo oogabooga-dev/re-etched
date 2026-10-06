@@ -332,8 +332,8 @@ final class JukeboxPacketSmoke {
         if (step == 12 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
             if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
-                Item record = ForgeRegistries.ITEMS.getValue(LegacySmokeRecord.ID);
-                if (!(record instanceof LegacySmokeRecord)
+                Item record = ForgeRegistries.ITEMS.getValue(UnsupportedSmokeRecord.ID);
+                if (!(record instanceof UnsupportedSmokeRecord)
                         || RecordContentResolver.resolve(new ItemStack(record)).isPresent()) {
                     throw new AssertionError("Client smoke unsupported record was not registered as a third-party item");
                 }
@@ -355,7 +355,7 @@ final class JukeboxPacketSmoke {
         if (step == 13 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
-                    && BoomboxItem.getRecord(client.player.getOffhandItem()).getItem() instanceof LegacySmokeRecord
+                    && BoomboxItem.getRecord(client.player.getOffhandItem()).getItem() instanceof UnsupportedSmokeRecord
                     && !BoomboxItem.isPaused(client.player.getOffhandItem())) {
                 if (BoomboxPlayback.getInstance().isPlaying(client.player)
                         || AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {

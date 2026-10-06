@@ -1,6 +1,5 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioNbtCodec;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
@@ -42,21 +41,21 @@ public final class RecordPresentationGameTests {
 
     @GameTest(template = "empty")
     public static void versionedDiscsRoundTripAndLegacyOrInvalidDiscsAreNotInsertionSources(GameTestHelper helper) {
-        var descriptor = new TrackData("minecraft:music_disc.blocks", "Minecraft", Component.literal("Blocks"));
+        var descriptor = new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.blocks", "Minecraft", "Blocks");
         ItemStack valid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         EtchedMusicDiscItem.setContent(valid, content(null, descriptor));
         ItemStack restored = ItemStack.of(valid.save(new CompoundTag()));
         helper.assertTrue(AlbumCoverMenu.isValid(restored), "Versioned disc was not accepted for album insertion");
         helper.assertTrue(RecordContentResolver.resolve(restored).orElseThrow().program().tracks().get(0).source()
-                .equals(descriptor.url()), "Versioned disc lost its local source during stack persistence");
+                .equals(descriptor.source()), "Versioned disc lost its local source during stack persistence");
         helper.assertTrue(restored.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getInt("SchemaVersion")
                 == AudioNbtCodec.SCHEMA_VERSION, "Stack persistence lost the audio version");
 
         ItemStack old = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         CompoundTag legacy = new CompoundTag();
-        legacy.putString("Url", descriptor.url());
+        legacy.putString("Url", descriptor.source());
         legacy.putString("Author", descriptor.artist());
-        legacy.putString("Title", Component.Serializer.toJson(descriptor.title()));
+        legacy.putString("Title", Component.Serializer.toJson(Component.literal(descriptor.title())));
         old.getOrCreateTag().put("Music", legacy);
         ItemStack invalid = valid.copy();
         invalid.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getCompound("Program")
@@ -84,17 +83,21 @@ public final class RecordPresentationGameTests {
             for (int albumTracks : new int[]{0, 1, 2}) {
                 boolean album = albumTracks > 0;
                 ItemStack stack = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-                var descriptor = new TrackData(source, "Artist", Component.literal("Title"));
+                var descriptor = new AudioTrack(source.startsWith("minecraft:") ? AudioTrack.SourceType.SOUND_EVENT
+                        : AudioTrack.SourceType.REMOTE, source, "Artist", "Title");
                 if (album) {
+                    var one = new AudioTrack(descriptor.sourceType(), source, "Artist", "One");
+                    var two = new AudioTrack(descriptor.sourceType(), source, "Artist", "Two");
                     EtchedMusicDiscItem.setContent(stack, content(descriptor, albumTracks == 1
-                            ? new TrackData[]{descriptor.withTitle(Component.literal("One"))}
-                            : new TrackData[]{descriptor.withTitle(Component.literal("One")), descriptor.withTitle(Component.literal("Two"))}));
+                            ? new AudioTrack[]{one} : new AudioTrack[]{one, two}));
                 } else {
                     EtchedMusicDiscItem.setContent(stack, content(null, descriptor));
                 }
                 var tooltip = new ArrayList<Component>();
                 stack.getItem().appendHoverText(stack, helper.getLevel(), tooltip, TooltipFlag.Default.NORMAL);
-                helper.assertTrue(tooltip.get(0).getString().equals(descriptor.getDisplayName().getString()),
+                helper.assertTrue(tooltip.get(0).getContents() instanceof TranslatableContents display
+                        && display.getKey().equals("sound_source.etched.info") && display.getArgs()[0].equals("Artist")
+                        && ((Component) display.getArgs()[1]).getString().equals("Title"),
                         "Tooltip lost the artist/title");
                 boolean branded = source.contains("bandcamp.com") || source.contains("soundcloud.com");
                 helper.assertTrue(tooltip.size() == (album || branded ? 2 : 1), "Tooltip has missing or extra lines");
@@ -118,7 +121,7 @@ public final class RecordPresentationGameTests {
     }
 
     @GameTest(template = "empty")
-    public static void storedUnsupportedRecordsNeverReachLegacyTooltipMetadata(GameTestHelper helper) {
+    public static void storedUnsupportedRecordsNeverReachThirdPartyTooltips(GameTestHelper helper) {
         ItemStack unsupported = new ItemStack(ForgeRegistries.ITEMS.getValue(UnsupportedInsertionRecord.ID));
         ItemStack foreign = new ItemStack(ForgeRegistries.ITEMS.getValue(UnsupportedInsertionRecord.RECORD_ID));
         ItemStack invalid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
@@ -136,7 +139,8 @@ public final class RecordPresentationGameTests {
                     && hint.getKey().equals("item.etched.boombox.pause"), "Boombox tooltip published unsupported record metadata");
         }
         ItemStack valid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setContent(valid, content(null, new TrackData("minecraft:music_disc.cat", "Artist", Component.literal("Title"))));
+        EtchedMusicDiscItem.setContent(valid, content(null, new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
+                "minecraft:music_disc.cat", "Artist", "Title")));
         ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(album, List.of(unsupported, valid, new ItemStack(Items.MUSIC_DISC_CAT)));
         var lines = new ArrayList<Component>();
@@ -150,12 +154,9 @@ public final class RecordPresentationGameTests {
         helper.succeed();
     }
 
-    private static RecordContent content(TrackData album, TrackData... tracks) {
-        var program = new AudioProgram(AudioProgram.Kind.FINITE, java.util.Arrays.stream(tracks)
-                .map(track -> new AudioTrack(TrackData.isLocalSound(track.url()) ? AudioTrack.SourceType.SOUND_EVENT
-                        : AudioTrack.SourceType.REMOTE, track.url(), track.artist(), track.title().getString())).toList());
+    private static RecordContent content(AudioTrack album, AudioTrack... tracks) {
+        var program = new AudioProgram(AudioProgram.Kind.FINITE, List.of(tracks));
         return new RecordContent(program, java.util.Optional.ofNullable(album).map(data -> new RecordContent.AlbumMetadata(
-                TrackData.isLocalSound(data.url()) ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
-                data.url(), data.artist(), data.title().getString())));
+                data.sourceType(), data.source(), data.artist(), data.title())));
     }
 }

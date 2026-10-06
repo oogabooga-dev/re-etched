@@ -5,7 +5,6 @@ import gg.moonflower.etched.common.audio.AudioNbtCodec;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
-import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
@@ -93,8 +92,8 @@ public final class EtchingMenuGameTests {
             if (replace) {
                 var result = menu.getSlot(2).getItem();
                 helper.assertTrue(result.is(EtchedItems.ETCHED_MUSIC_DISC.get()), "Replacement has no etching result yet");
-                var tracks = PlayableRecord.getStackMusic(result).orElseThrow();
-                helper.assertTrue(tracks.length == 1 && tracks[0].url().equals("minecraft:music_disc.blocks"),
+                var tracks = EtchedMusicDiscItem.readContent(result).orElseThrow().program().tracks();
+                helper.assertTrue(tracks.size() == 1 && tracks.get(0).source().equals("minecraft:music_disc.blocks"),
                         "Late metadata replaced the fresh local result");
             } else {
                 helper.assertTrue(menu.getSlot(2).getItem().isEmpty(), "Closed menu published retired metadata");
@@ -125,20 +124,20 @@ public final class EtchingMenuGameTests {
         helper.succeedWhen(() -> {
             ItemStack result = menu.getSlot(2).getItem();
             helper.assertTrue(result.is(EtchedItems.ETCHED_MUSIC_DISC.get()), "Open menu has no metadata result yet");
-            var album = PlayableRecord.getStackAlbum(result).orElseThrow();
-            var tracks = PlayableRecord.getStackMusic(result).orElseThrow();
-            helper.assertTrue(album.url().equals(input) && album.title().getString().equals("Album"),
+            var content = RecordContentResolver.resolve(result).orElseThrow();
+            var album = content.album().orElseThrow();
+            var tracks = content.program().tracks();
+            helper.assertTrue(album.source().equals(input) && album.title().equals("Album"),
                     "Etching lost the album descriptor");
-            helper.assertTrue(tracks.length == 2 && tracks[0].title().getString().equals("One")
-                    && tracks[1].title().getString().equals("Two") && tracks[1].artist().equals("Guest"),
+            helper.assertTrue(tracks.size() == 2 && tracks.get(0).title().equals("One")
+                    && tracks.get(1).title().equals("Two") && tracks.get(1).artist().equals("Guest"),
                     "Etching lost metadata track order or artist");
             helper.assertTrue(metadata.album().orElseThrow().title().equals("Album"), "Etching mutated worker metadata");
             helper.assertFalse(result.getTag().contains("Music") || result.getTag().contains("Album"),
                     "Etching wrote obsolete audio fields");
             helper.assertTrue(result.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getInt("SchemaVersion")
                     == AudioNbtCodec.SCHEMA_VERSION, "Etching omitted the schema version");
-            var content = RecordContentResolver.resolve(result).orElseThrow();
-            helper.assertTrue(content.program().tracks().size() == 2 && content.album().orElseThrow().source().equals(input),
+            helper.assertTrue(content.equals(metadata),
                     "Managed playback cannot read the etched versioned album");
         });
     }
@@ -205,8 +204,8 @@ public final class EtchingMenuGameTests {
         helper.succeedWhen(() -> {
             ItemStack result = menu.getSlot(2).getItem();
             helper.assertTrue(result.is(EtchedItems.ETCHED_MUSIC_DISC.get()), "Open menu has no etching result yet");
-            var tracks = PlayableRecord.getStackMusic(result).orElseThrow();
-            helper.assertTrue(tracks.length == 1 && tracks[0].url().equals("minecraft:music_disc.blocks"),
+            var tracks = EtchedMusicDiscItem.readContent(result).orElseThrow().program().tracks();
+            helper.assertTrue(tracks.size() == 1 && tracks.get(0).source().equals("minecraft:music_disc.blocks"),
                     "Etching lost the submitted local sound");
         });
     }

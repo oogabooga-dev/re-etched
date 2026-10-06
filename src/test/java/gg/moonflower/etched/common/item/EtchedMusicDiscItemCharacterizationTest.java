@@ -1,6 +1,5 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.common.audio.AudioNbtCodec;
 import gg.moonflower.etched.common.audio.AudioProgram;
@@ -17,7 +16,6 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,9 +27,9 @@ class EtchedMusicDiscItemCharacterizationTest {
         MinecraftTestBootstrap.bootStrap();
     }
 
-    private static final TrackData ALBUM = track("album");
-    private static final TrackData FIRST = track("first");
-    private static final TrackData SECOND = track("second");
+    private static final AudioTrack ALBUM = track("album");
+    private static final AudioTrack FIRST = track("first");
+    private static final AudioTrack SECOND = track("second");
 
     @Test
     void singleTrackRoundTripsThroughVersionedContentWithPresentationAlbumFallback() {
@@ -39,9 +37,10 @@ class EtchedMusicDiscItemCharacterizationTest {
 
         EtchedMusicDiscItem.setContent(stack, content(null, FIRST));
 
-        assertArrayEquals(new TrackData[]{FIRST}, EtchedMusicDiscItem.readMusic(stack).orElseThrow());
-        assertEquals(FIRST, EtchedMusicDiscItem.readAlbum(stack).orElseThrow());
-        assertEquals(1, EtchedMusicDiscItem.countTracks(stack));
+        var content = EtchedMusicDiscItem.readContent(stack).orElseThrow();
+        assertEquals(List.of(FIRST), content.program().tracks());
+        assertTrue(content.album().isEmpty());
+        assertEquals(FIRST.source(), RecordPresentation.source(content));
         assertFalse(stack.getOrCreateTag().contains("Album"));
         assertFalse(stack.getOrCreateTag().contains("Music"));
         var encoded = stack.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG);
@@ -56,12 +55,10 @@ class EtchedMusicDiscItemCharacterizationTest {
     void albumMetadataIsSeparateAndTrackOrderIsPreserved() {
         ItemStack stack = new ItemStack(Items.PAPER);
         EtchedMusicDiscItem.setContent(stack, content(ALBUM, FIRST, SECOND));
-        assertArrayEquals(new TrackData[]{FIRST, SECOND}, EtchedMusicDiscItem.readMusic(stack).orElseThrow());
-        assertEquals(ALBUM, EtchedMusicDiscItem.readAlbum(stack).orElseThrow());
-        assertEquals(2, EtchedMusicDiscItem.countTracks(stack));
         var content = EtchedMusicDiscItem.readContent(stack).orElseThrow();
-        assertEquals(ALBUM.url(), content.album().orElseThrow().source());
-        assertEquals(List.of(FIRST.url(), SECOND.url()), content.program().tracks().stream().map(AudioTrack::source).toList());
+        assertEquals(List.of(FIRST, SECOND), content.program().tracks());
+        assertEquals(ALBUM.source(), content.album().orElseThrow().source());
+        assertEquals(ALBUM.source(), RecordPresentation.source(content));
         assertFalse(stack.getTag().contains("Music"));
         assertFalse(stack.getTag().contains("Album"));
     }
@@ -76,9 +73,7 @@ class EtchedMusicDiscItemCharacterizationTest {
 
         EtchedMusicDiscItem.clearContent(stack);
 
-        assertTrue(EtchedMusicDiscItem.readMusic(stack).isEmpty());
-        assertTrue(EtchedMusicDiscItem.readAlbum(stack).isEmpty());
-        assertEquals(0, EtchedMusicDiscItem.countTracks(stack));
+        assertTrue(EtchedMusicDiscItem.readContent(stack).isEmpty());
         assertFalse(stack.getOrCreateTag().contains("Music"));
         assertFalse(stack.getOrCreateTag().contains("Album"));
         assertFalse(stack.getOrCreateTag().contains(EtchedMusicDiscItem.CONTENT_TAG));
@@ -153,14 +148,17 @@ class EtchedMusicDiscItemCharacterizationTest {
         ItemStack stack = new ItemStack(Items.PAPER);
         EtchedMusicDiscItem.setContent(stack, content(null, FIRST));
         CompoundTag before = stack.getTag().copy();
-        for (TrackData invalid : List.of(FIRST.withArtist("x".repeat(129)), FIRST.withTitle("x".repeat(129)),
-                FIRST.withUrl("file:///unsafe"), FIRST.withUrl("https://user@audio.example/track"))) {
-            assertThrows(IllegalArgumentException.class, () -> EtchedMusicDiscItem.setContent(stack, content(null, invalid)));
+        for (java.util.function.Supplier<AudioTrack> invalid : List.<java.util.function.Supplier<AudioTrack>>of(
+                () -> new AudioTrack(FIRST.sourceType(), FIRST.source(), "x".repeat(129), FIRST.title()),
+                () -> new AudioTrack(FIRST.sourceType(), FIRST.source(), FIRST.artist(), "x".repeat(129)),
+                () -> new AudioTrack(FIRST.sourceType(), "file:///unsafe", FIRST.artist(), FIRST.title()),
+                () -> new AudioTrack(FIRST.sourceType(), "https://user@audio.example/track", FIRST.artist(), FIRST.title()))) {
+            assertThrows(IllegalArgumentException.class, () -> EtchedMusicDiscItem.setContent(stack, content(null, invalid.get())));
             assertEquals(before, stack.getTag());
         }
         assertThrows(IllegalArgumentException.class, () -> EtchedMusicDiscItem.setContent(stack,
                 new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, java.util.Collections.nCopies(
-                        AudioProgram.MAX_TRACKS + 1, new AudioTrack(AudioTrack.SourceType.REMOTE, FIRST.url(), "Artist", "First"))))));
+                        AudioProgram.MAX_TRACKS + 1, new AudioTrack(AudioTrack.SourceType.REMOTE, FIRST.source(), "Artist", "First"))))));
         assertEquals(before, stack.getTag());
     }
 
@@ -171,11 +169,11 @@ class EtchedMusicDiscItemCharacterizationTest {
                 new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "test:music/track", "Artist", "Track"))));
         EtchedMusicDiscItem.setContent(stack, content);
         assertEquals(content, EtchedMusicDiscItem.readContent(stack).orElseThrow());
-        TrackData[] projection = EtchedMusicDiscItem.readMusic(stack).orElseThrow();
-        projection[0].title().getSiblings().add(Component.literal(" changed"));
-        projection[0] = FIRST;
+        var snapshot = EtchedMusicDiscItem.readContent(stack).orElseThrow();
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.program().tracks().clear());
+        RecordPresentation.displayName(snapshot).getSiblings().add(Component.literal(" changed"));
         assertEquals(content, EtchedMusicDiscItem.readContent(stack).orElseThrow());
-        assertEquals("Track", EtchedMusicDiscItem.readAlbum(stack).orElseThrow().title().getString());
+        assertEquals("Track", snapshot.program().tracks().get(0).title());
         stack.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getCompound("Program")
                 .getList("Tracks", Tag.TAG_COMPOUND).getCompound(0).putString("Title", "Changed NBT");
         assertEquals("Track", content.program().tracks().get(0).title());
@@ -192,15 +190,12 @@ class EtchedMusicDiscItemCharacterizationTest {
         assertFalse(stack.getTag().contains("Music"));
         assertFalse(stack.getTag().contains("Album"));
         assertEquals("retained", stack.getTag().getString("Marker"));
-        assertEquals(SECOND, EtchedMusicDiscItem.readAlbum(stack).orElseThrow());
+        assertEquals(List.of(SECOND), EtchedMusicDiscItem.readContent(stack).orElseThrow().program().tracks());
     }
 
     private static void assertRejected(ItemStack stack) {
         assertTrue(EtchedMusicDiscItem.readContent(stack).isEmpty());
-        assertTrue(EtchedMusicDiscItem.readMusic(stack).isEmpty());
-        assertTrue(EtchedMusicDiscItem.readAlbum(stack).isEmpty());
         assertTrue(RecordContentResolver.fromDisc(stack).isEmpty());
-        assertEquals(0, EtchedMusicDiscItem.countTracks(stack));
     }
 
     @Test
@@ -225,23 +220,22 @@ class EtchedMusicDiscItemCharacterizationTest {
         assertEquals(EtchedMusicDiscItem.LabelPattern.FLAT, EtchedMusicDiscItem.getPattern(stack));
     }
 
-    private static TrackData track(String name) {
-        return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
+    private static AudioTrack track(String name) {
+        return new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/" + name + ".mp3", "Artist", name);
     }
 
-    private static RecordContent content(TrackData album, TrackData... tracks) {
-        var program = new AudioProgram(AudioProgram.Kind.FINITE, java.util.Arrays.stream(tracks)
-                .map(track -> new AudioTrack(AudioTrack.SourceType.REMOTE, track.url(), track.artist(), track.title().getString())).toList());
+    private static RecordContent content(AudioTrack album, AudioTrack... tracks) {
+        var program = new AudioProgram(AudioProgram.Kind.FINITE, List.of(tracks));
         return new RecordContent(program, Optional.ofNullable(album).map(data -> new RecordContent.AlbumMetadata(
-                AudioTrack.SourceType.REMOTE, data.url(), data.artist(), data.title().getString())));
+                data.sourceType(), data.source(), data.artist(), data.title())));
     }
 
     /** Golden pre-v5 payload, used only to prove rejection; production has no legacy codec. */
-    private static CompoundTag legacyTrack(TrackData data) {
+    private static CompoundTag legacyTrack(AudioTrack data) {
         CompoundTag tag = new CompoundTag();
-        tag.putString("Url", data.url());
+        tag.putString("Url", data.source());
         tag.putString("Author", data.artist());
-        tag.putString("Title", Component.Serializer.toJson(data.title()));
+        tag.putString("Title", Component.Serializer.toJson(Component.literal(data.title())));
         return tag;
     }
 }

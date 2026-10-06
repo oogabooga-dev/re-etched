@@ -1,12 +1,10 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.RecordItem;
@@ -15,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,65 +69,28 @@ class AlbumCoverItemCharacterizationTest {
     }
 
     @Test
-    void aggregatesPlayableRecordsWithoutChangingTrackOrder() {
-        TrackData first = track("first");
-        TrackData second = track("second");
-        TrackData third = track("third");
-        TrackData[] tracks = AlbumCoverItem.flattenPrograms(List.of(
-                new TrackData[]{first, second},
-                new TrackData[0],
-                new TrackData[]{third}));
-
-        assertArrayEquals(new TrackData[]{first, second, third}, tracks);
-    }
-
-    @Test
-    void aggregatesSerializedEtchedDiscProgramsWhileSkippingEmptyRecords() {
-        TrackData album = track("album");
-        TrackData first = track("first");
-        TrackData second = track("second");
-        TrackData third = track("third");
-
-        ItemStack multiTrack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setContent(multiTrack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
-                new AudioTrack(AudioTrack.SourceType.REMOTE, first.url(), first.artist(), first.title().getString()),
-                new AudioTrack(AudioTrack.SourceType.REMOTE, second.url(), second.artist(), second.title().getString()))),
+    void nestedRecordPersistenceKeepsTypedContentSeparateFromItsAlbumMetadata() {
+        var content = new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/first", "Artist", "First"),
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/second", "Guest", "Second"))),
                 java.util.Optional.of(new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE,
-                        album.url(), album.artist(), album.title().getString()))));
-        ItemStack empty = new ItemStack(Items.PAPER);
-        ItemStack malformed = new ItemStack(Items.PAPER);
-        malformed.getOrCreateTag().put("Music", new CompoundTag());
-        ItemStack singleTrack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setContent(singleTrack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE,
-                List.of(new AudioTrack(AudioTrack.SourceType.REMOTE, third.url(), third.artist(), third.title().getString())))));
-
-        TrackData[] tracks = AlbumCoverItem.flattenPrograms(List.of(
-                EtchedMusicDiscItem.readMusic(multiTrack).orElseThrow(),
-                EtchedMusicDiscItem.readMusic(empty).orElseGet(() -> new TrackData[0]),
-                EtchedMusicDiscItem.readMusic(malformed).orElseGet(() -> new TrackData[0]),
-                EtchedMusicDiscItem.readMusic(singleTrack).orElseThrow()));
-
-        assertArrayEquals(new TrackData[]{first, second, third}, tracks);
-        assertEquals(2, EtchedMusicDiscItem.countTracks(multiTrack));
-        assertEquals(0, EtchedMusicDiscItem.countTracks(empty));
-        assertEquals(0, EtchedMusicDiscItem.countTracks(malformed));
-        assertEquals(1, EtchedMusicDiscItem.countTracks(singleTrack));
-        assertEquals(tracks.length,
-                EtchedMusicDiscItem.countTracks(multiTrack) + EtchedMusicDiscItem.countTracks(singleTrack));
+                        "https://audio.example/album", "Artist", "Album")));
+        ItemStack disc = new ItemStack(Items.PAPER);
+        EtchedMusicDiscItem.setContent(disc, content);
+        ItemStack container = new ItemStack(Items.BUNDLE);
+        AlbumCoverItem.writeRecords(container, List.of(disc));
+        var restored = AlbumCoverItem.readRecords(container).get(0);
+        assertEquals(content, EtchedMusicDiscItem.readContent(restored).orElseThrow());
+        disc.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).putInt("SchemaVersion", 999);
+        assertEquals(content, EtchedMusicDiscItem.readContent(restored).orElseThrow());
     }
 
     @Test
-    void vanillaDiscLegacyMetadataIsAvailableWithoutPlayableRecordMixin() {
+    void vanillaDiscAdmissionAndManagedSoundRemainAvailableWithoutAnItemApiMixin() {
         RecordItem vanilla = (RecordItem) Items.MUSIC_DISC_CAT;
-        TrackData[] expected = VanillaRecordAdapter.music(vanilla);
-
-        assertEquals(1, expected.length);
-        assertEquals(vanilla.getSound().getLocation().toString(), expected[0].url());
-        assertArrayEquals(expected, AlbumCoverItem.flattenMusic(List.of(
-                new ItemStack(Items.PAPER), new ItemStack(vanilla))));
-    }
-
-    private static TrackData track(String name) {
-        return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
+        assertTrue(VanillaRecordAdapter.isVanilla(vanilla));
+        var program = RecordContentResolver.resolve(new ItemStack(vanilla)).orElseThrow().program();
+        assertEquals(1, program.tracks().size());
+        assertEquals(vanilla.getSound().getLocation().toString(), program.tracks().get(0).source());
     }
 }

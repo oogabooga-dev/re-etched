@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client;
 
-import gg.moonflower.etched.api.record.AlbumCover;
+import gg.moonflower.etched.client.render.item.CoverDescriptor;
 import gg.moonflower.etched.client.render.item.AlbumCoverItemRenderer;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.RecordPresentation;
@@ -22,14 +22,14 @@ public final class RecordCoverRequests {
     private RecordCoverRequests() {
     }
 
-    public static CompletableFuture<AlbumCover> request(ItemStack stack, Proxy proxy, ResourceManager resources) {
-        return request(stack, proxy, resources, AlbumCoverCache::requestProviderResource);
+    public static CompletableFuture<CoverDescriptor> request(ItemStack stack, Proxy proxy, ResourceManager resources) {
+        return request(stack, proxy, resources, CoverImageRequests::requestProviderResource);
     }
 
-    static CompletableFuture<AlbumCover> request(ItemStack stack, Proxy proxy, ResourceManager resources,
+    static CompletableFuture<CoverDescriptor> request(ItemStack stack, Proxy proxy, ResourceManager resources,
                                                 ProviderRequest providers) {
         if (stack.isEmpty()) {
-            return CompletableFuture.completedFuture(AlbumCover.EMPTY);
+            return CompletableFuture.completedFuture(CoverDescriptor.EMPTY);
         }
         if (stack.getItem() instanceof EtchedMusicDiscItem) {
             return requestDisc(stack, proxy, providers);
@@ -39,21 +39,21 @@ public final class RecordCoverRequests {
             ResourceLocation model = ResourceLocation.fromNamespaceAndPath(key.getNamespace(),
                     AlbumCoverItemRenderer.FOLDER_NAME + "/" + key.getPath());
             ResourceLocation file = ResourceLocation.fromNamespaceAndPath(model.getNamespace(), "models/item/" + model.getPath() + ".json");
-            return CompletableFuture.completedFuture(resources.getResource(file).isPresent() ? AlbumCover.of(model) : AlbumCover.EMPTY);
+            return CompletableFuture.completedFuture(resources.getResource(file).isPresent() ? CoverDescriptor.of(model) : CoverDescriptor.EMPTY);
         }
-        return CompletableFuture.completedFuture(AlbumCover.EMPTY);
+        return CompletableFuture.completedFuture(CoverDescriptor.EMPTY);
     }
 
-    static CompletableFuture<AlbumCover> requestDisc(ItemStack stack, Proxy proxy, ProviderRequest providers) {
+    static CompletableFuture<CoverDescriptor> requestDisc(ItemStack stack, Proxy proxy, ProviderRequest providers) {
         return EtchedMusicDiscItem.readContent(stack).map(RecordPresentation::source)
-                .filter(AlbumCoverCache::supportsProvider)
+                .filter(CoverImageRequests::supportsProvider)
                 // Return the worker's future directly: cancellation and image handoff keep their owner.
                 .map(source -> providers.request(source, proxy))
-                .orElseGet(() -> CompletableFuture.completedFuture(AlbumCover.EMPTY));
+                .orElseGet(() -> CompletableFuture.completedFuture(CoverDescriptor.EMPTY));
     }
 
     @FunctionalInterface
     interface ProviderRequest {
-        CompletableFuture<AlbumCover> request(String source, Proxy proxy);
+        CompletableFuture<CoverDescriptor> request(String source, Proxy proxy);
     }
 }

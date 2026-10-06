@@ -1,7 +1,5 @@
 package gg.moonflower.etched.common.audio.net;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.AudioContentProbe;
 import gg.moonflower.etched.common.audio.RadioFailure;
@@ -186,11 +184,13 @@ public final class AudioTransportGameTests {
                 SoundCloudMetadataResolver.Limits.DEFAULT).resolveTracks(input, new AudioCancellation());
         ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         EtchedMusicDiscItem.setContent(disc, tracks);
-        helper.assertTrue(PlayableRecord.getStackAlbum(disc).orElseThrow().url().equals(input.toString()),
+        var restored = EtchedMusicDiscItem.readContent(disc).orElseThrow();
+        helper.assertTrue(restored.album().orElseThrow().source().equals(input.toString()),
                 "SoundCloud metadata lost the album descriptor");
-        TrackData[] music = PlayableRecord.getStackMusic(disc).orElseThrow();
-        helper.assertTrue(music.length == 2 && music[0].title().getString().equals("One")
-                && music[1].title().getString().equals("Two"), "SoundCloud metadata lost disc track order");
+        var music = restored.program().tracks();
+        helper.assertTrue(music.size() == 2 && music.get(0).title().equals("One")
+                && music.get(1).title().equals("Two"), "SoundCloud metadata lost disc track order");
+        helper.assertTrue(restored.equals(tracks), "SoundCloud metadata changed during typed disc persistence");
         helper.assertTrue(connections.size() == 3 && connections.stream().allMatch(connection -> connection.disconnected),
                 "SoundCloud discovery or metadata leaked an HTTP response");
         helper.succeed();
@@ -217,11 +217,13 @@ public final class AudioTransportGameTests {
                 .resolveTracks(uri, new AudioCancellation());
         ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         EtchedMusicDiscItem.setContent(disc, tracks);
-        helper.assertTrue(PlayableRecord.getStackAlbum(disc).orElseThrow().title().getString().equals("Album"),
+        var restored = EtchedMusicDiscItem.readContent(disc).orElseThrow();
+        helper.assertTrue(restored.album().orElseThrow().title().equals("Album"),
                 "Bandcamp metadata lost the album descriptor");
-        TrackData[] music = PlayableRecord.getStackMusic(disc).orElseThrow();
-        helper.assertTrue(music.length == 2 && music[0].title().getString().equals("One")
-                && music[1].title().getString().equals("Two"), "Bandcamp metadata lost disc track order");
+        var music = restored.program().tracks();
+        helper.assertTrue(music.size() == 2 && music.get(0).title().equals("One")
+                && music.get(1).title().equals("Two"), "Bandcamp metadata lost disc track order");
+        helper.assertTrue(restored.equals(tracks), "Bandcamp metadata changed during typed disc persistence");
         helper.assertTrue(connection.disconnected, "Bandcamp metadata leaked its page response");
         helper.succeed();
     }

@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client;
 
-import gg.moonflower.etched.api.record.AlbumCover;
+import gg.moonflower.etched.client.render.item.CoverDescriptor;
 import gg.moonflower.etched.client.render.item.ModelAlbumCover;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
@@ -26,6 +26,14 @@ public final class RecordCoverDispatchSmoke {
     }
 
     public static void verify(Minecraft client) {
+        for (String type : List.of("gg.moonflower.etched.api.record.AlbumCover", "gg.moonflower.etched.api.record.PlayableRecord",
+                "gg.moonflower.etched.api.record.PlayableRecordItem", "gg.moonflower.etched.api.record.TrackData",
+                "gg.moonflower.etched.core.mixin.RecordItemMixin", "gg.moonflower.etched.client.AlbumCoverCache")) {
+            // Do not attempt class loading inside Mixin's protected package, even for deleted classes.
+            if (RecordCoverDispatchSmoke.class.getClassLoader().getResource(type.replace('.', '/') + ".class") != null) {
+                throw new AssertionError("Retired class remains in the transformed client: " + type);
+            }
+        }
         var resources = client.getResourceManager();
         var noProviders = (RecordCoverRequests.ProviderRequest) (source, proxy) -> {
             throw new AssertionError("Unexpected provider lookup: " + source);
@@ -38,16 +46,16 @@ public final class RecordCoverDispatchSmoke {
         ItemStack invalid = disc("https://artist.bandcamp.com/track/test", Optional.empty());
         invalid.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).putInt("SchemaVersion", 999);
         ItemStack unsupported = new ItemStack(ForgeRegistries.ITEMS.getValue(
-                ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "client_smoke_legacy_record")));
+                ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "client_smoke_unsupported_record")));
         for (ItemStack stack : List.of(unsupported, invalid, new ItemStack(EtchedItems.ALBUM_COVER.get()),
                 disc("minecraft:music_disc.cat", Optional.empty()), disc("https://audio.example/test.mp3", Optional.empty()))) {
-            if (RecordCoverRequests.request(stack, Proxy.NO_PROXY, resources, noProviders).join() != AlbumCover.EMPTY) {
+            if (RecordCoverRequests.request(stack, Proxy.NO_PROXY, resources, noProviders).join() != CoverDescriptor.EMPTY) {
                 throw new AssertionError("Unsupported/local/direct/invalid cover route produced a cover");
             }
         }
         for (boolean album : new boolean[]{false, true}) {
             String expected = album ? "https://artist.bandcamp.com/album/test" : "https://soundcloud.com/a/track";
-            var pending = new CompletableFuture<AlbumCover>();
+            var pending = new CompletableFuture<CoverDescriptor>();
             ItemStack stack = disc("https://soundcloud.com/a/track", album ? Optional.of(expected) : Optional.empty());
             var result = RecordCoverRequests.request(stack, client.getProxy(), resources, (source, proxy) -> {
                 if (!source.equals(expected) || proxy != client.getProxy()) {

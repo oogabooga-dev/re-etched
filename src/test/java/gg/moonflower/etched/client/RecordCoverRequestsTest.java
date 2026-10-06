@@ -1,6 +1,6 @@
 package gg.moonflower.etched.client;
 
-import gg.moonflower.etched.api.record.AlbumCover;
+import gg.moonflower.etched.client.render.item.CoverDescriptor;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.client.render.item.ModelAlbumCover;
 import gg.moonflower.etched.common.audio.AudioProgram;
@@ -41,7 +41,7 @@ class RecordCoverRequestsTest {
         var model = assertInstanceOf(ModelAlbumCover.class, cover).model();
         assertEquals("minecraft:etched_album_cover/music_disc_cat#inventory", model.toString());
         assertEquals(1, requests.get());
-        assertSame(AlbumCover.EMPTY, RecordCoverRequests.request(new ItemStack(Items.MUSIC_DISC_CAT), Proxy.NO_PROXY,
+        assertSame(CoverDescriptor.EMPTY, RecordCoverRequests.request(new ItemStack(Items.MUSIC_DISC_CAT), Proxy.NO_PROXY,
                 resources(path -> false), noProviders()).join());
     }
 
@@ -49,7 +49,7 @@ class RecordCoverRequestsTest {
     void providerDispatchUsesExplicitAlbumSourceProxyAndTheOriginalOwnedFuture() {
         ItemStack disc = disc("https://audio.example/track", Optional.of("https://artist.bandcamp.com/album/test"));
         Proxy proxy = new Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.example", 8080));
-        var pending = new CompletableFuture<AlbumCover>();
+        var pending = new CompletableFuture<CoverDescriptor>();
         var result = RecordCoverRequests.requestDisc(disc, proxy, (source, actualProxy) -> {
             assertEquals("https://artist.bandcamp.com/album/test", source);
             assertSame(proxy, actualProxy);
@@ -59,19 +59,19 @@ class RecordCoverRequestsTest {
         disc.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getCompound("AlbumMetadata").putString("Source", "changed");
         result.cancel(false);
         assertTrue(pending.isCancelled());
-        assertFalse(pending.complete(AlbumCover.EMPTY));
+        assertFalse(pending.complete(CoverDescriptor.EMPTY));
     }
 
     @Test
     void singleTrackProviderFallbackReturnsItsOwnedFutureWithoutRevokingADeliveredCover() {
-        var delivered = CompletableFuture.completedFuture(AlbumCover.EMPTY);
+        var delivered = CompletableFuture.completedFuture(CoverDescriptor.EMPTY);
         assertSame(delivered, RecordCoverRequests.requestDisc(disc("https://soundcloud.com/a/track", Optional.empty()),
                 Proxy.NO_PROXY, (source, proxy) -> {
                     assertEquals("https://soundcloud.com/a/track", source);
                     return delivered;
                 }));
         assertFalse(delivered.cancel(false));
-        assertSame(AlbumCover.EMPTY, delivered.join());
+        assertSame(CoverDescriptor.EMPTY, delivered.join());
     }
 
     @Test
@@ -81,11 +81,11 @@ class RecordCoverRequestsTest {
         for (ItemStack stack : List.of(ItemStack.EMPTY, new ItemStack(Items.PAPER), invalid,
                 disc("minecraft:music_disc.cat", Optional.empty()), disc("https://audio.example/a.mp3", Optional.empty()),
                 disc("https://artist.bandcamp.com.evil.example/track/test", Optional.empty()))) {
-            assertSame(AlbumCover.EMPTY, RecordCoverRequests.request(stack, Proxy.NO_PROXY, noResources(), noProviders()).join());
-            assertSame(AlbumCover.EMPTY, RecordCoverRequests.requestDisc(stack, Proxy.NO_PROXY, noProviders()).join());
+            assertSame(CoverDescriptor.EMPTY, RecordCoverRequests.request(stack, Proxy.NO_PROXY, noResources(), noProviders()).join());
+            assertSame(CoverDescriptor.EMPTY, RecordCoverRequests.requestDisc(stack, Proxy.NO_PROXY, noProviders()).join());
         }
         // A valid AudioContent tag on an unrelated item must not turn it into a first-party cover source.
-        assertSame(AlbumCover.EMPTY, RecordCoverRequests.request(disc("https://artist.bandcamp.com/album/test", Optional.empty()),
+        assertSame(CoverDescriptor.EMPTY, RecordCoverRequests.request(disc("https://artist.bandcamp.com/album/test", Optional.empty()),
                 Proxy.NO_PROXY, noResources(), noProviders()).join());
     }
 

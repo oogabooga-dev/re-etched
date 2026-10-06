@@ -1,7 +1,7 @@
 package gg.moonflower.etched.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import gg.moonflower.etched.api.record.AlbumCover;
+import gg.moonflower.etched.client.render.item.CoverDescriptor;
 import gg.moonflower.etched.client.cache.BoundedMediaCache;
 import gg.moonflower.etched.client.cache.CoverCacheLoader;
 import gg.moonflower.etched.client.cache.MediaValidators;
@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class AlbumCoverCacheTest {
+class CoverImageRequestsTest {
 
     @TempDir Path temporary;
 
@@ -59,7 +59,7 @@ class AlbumCoverCacheTest {
                     release.countDown();
                 }
             };
-            var pending = AlbumCoverCache.request(cancellation -> ProviderCoverCacheLoader.open(cache,
+            var pending = CoverImageRequests.request(cancellation -> ProviderCoverCacheLoader.open(cache,
                     URI.create(source), cancellation, token -> {
                         assertSame(cancellation, token);
                         return new AudioResolveContext((request, responseToken) -> {
@@ -108,7 +108,7 @@ class AlbumCoverCacheTest {
                 release.countDown();
             }
         };
-        var request = AlbumCoverCache.request(cancellation -> Optional.of(CoverCacheLoader.open(cache,
+        var request = CoverImageRequests.request(cancellation -> Optional.of(CoverCacheLoader.open(cache,
                 URI.create("https://image.example/cover"), cancellation,
                 token -> new AudioResolveContext((httpRequest, responseToken) -> TestAudioHttpResponse.owned(
                         httpRequest.uri(), 200, Map.of(), body, responseToken), uri -> {}, token, AudioResolveLimits.DEFAULT))));
@@ -128,7 +128,7 @@ class AlbumCoverCacheTest {
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch retired = new CountDownLatch(1);
         AtomicReference<AudioCancellation> token = new AtomicReference<>();
-        var request = AlbumCoverCache.request(cancellation -> {
+        var request = CoverImageRequests.request(cancellation -> {
             token.set(cancellation);
             started.countDown();
             try {
@@ -160,7 +160,7 @@ class AlbumCoverCacheTest {
     void queuedCancellationDoesNotBeginProviderWork() throws Exception {
         CountDownLatch started = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
-        AlbumCoverCache.CoverOperation blocker = cancellation -> {
+        CoverImageRequests.CoverOperation blocker = cancellation -> {
             started.countDown();
             try {
                 if (!release.await(3, TimeUnit.SECONDS)) {
@@ -172,20 +172,20 @@ class AlbumCoverCacheTest {
                 throw new IOException(exception);
             }
         };
-        var first = AlbumCoverCache.request(blocker);
-        var second = AlbumCoverCache.request(blocker);
+        var first = CoverImageRequests.request(blocker);
+        var second = CoverImageRequests.request(blocker);
         AtomicBoolean opened = new AtomicBoolean();
         try {
             assertTrue(started.await(2, TimeUnit.SECONDS));
-            var queued = AlbumCoverCache.request(cancellation -> {
+            var queued = CoverImageRequests.request(cancellation -> {
                 opened.set(true);
                 return Optional.empty();
             });
             assertTrue(queued.cancel(false));
             release.countDown();
-            assertSame(AlbumCover.EMPTY, first.get(2, TimeUnit.SECONDS));
-            assertSame(AlbumCover.EMPTY, second.get(2, TimeUnit.SECONDS));
-            AlbumCoverCache.request(cancellation -> Optional.empty()).get(2, TimeUnit.SECONDS);
+            assertSame(CoverDescriptor.EMPTY, first.get(2, TimeUnit.SECONDS));
+            assertSame(CoverDescriptor.EMPTY, second.get(2, TimeUnit.SECONDS));
+            CoverImageRequests.request(cancellation -> Optional.empty()).get(2, TimeUnit.SECONDS);
             assertFalse(opened.get());
         } finally {
             release.countDown();
@@ -194,15 +194,15 @@ class AlbumCoverCacheTest {
 
     @Test
     void unsupportedSourcesReturnEmptyImmediatelyWithoutImageOrCacheInitialization() {
-        assertTrue(AlbumCoverCache.supportsProvider("https://artist.bandcamp.com/album/test"));
-        assertTrue(AlbumCoverCache.supportsProvider("https://soundcloud.com/artist/track"));
+        assertTrue(CoverImageRequests.supportsProvider("https://artist.bandcamp.com/album/test"));
+        assertTrue(CoverImageRequests.supportsProvider("https://soundcloud.com/artist/track"));
         for (String url : new String[]{null, "minecraft:music_disc.13", "https://images.example/cover.png",
                 "https://notbandcamp.com/test", "https://evilsoundcloud.com/test", "https://user@soundcloud.com/test",
                 "bad url", "ftp://soundcloud.com/artist/track", "https://soundcloud.com.evil.example/test"}) {
-            assertFalse(AlbumCoverCache.supportsProvider(url));
-            var result = AlbumCoverCache.requestProviderResource(url, Proxy.NO_PROXY);
+            assertFalse(CoverImageRequests.supportsProvider(url));
+            var result = CoverImageRequests.requestProviderResource(url, Proxy.NO_PROXY);
             assertTrue(result.isDone());
-            assertSame(AlbumCover.EMPTY, result.join());
+            assertSame(CoverDescriptor.EMPTY, result.join());
         }
     }
 
@@ -214,7 +214,7 @@ class AlbumCoverCacheTest {
         AtomicReference<NativeImage> lateImage = new AtomicReference<>();
         var worker = new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
                 new java.util.concurrent.ArrayBlockingQueue<>(2));
-        var pending = AlbumCoverCache.request(cancellation -> Optional.of(coverLease(cache, cancellation)), worker, lease -> {
+        var pending = CoverImageRequests.request(cancellation -> Optional.of(coverLease(cache, cancellation)), worker, lease -> {
             NativeImage image = new NativeImage(1, 1, true);
             lateImage.set(image);
             processing.countDown();
@@ -244,7 +244,7 @@ class AlbumCoverCacheTest {
     @Test
     void nativeImagePublicationTransfersOwnershipWithoutClosingConsumersImage() throws Exception {
         var cache = new BoundedMediaCache(temporary.resolve("native-success"));
-        var pending = AlbumCoverCache.request(cancellation -> Optional.of(coverLease(cache, cancellation)),
+        var pending = CoverImageRequests.request(cancellation -> Optional.of(coverLease(cache, cancellation)),
                 lease -> new NativeImage(1, 1, true));
         ImageAlbumCover cover = assertInstanceOf(ImageAlbumCover.class, pending.get(2, TimeUnit.SECONDS));
         try (NativeImage image = cover.image()) {
@@ -258,11 +258,11 @@ class AlbumCoverCacheTest {
     void nativeImageFactoryErrorsAndProviderLinkageErrorsCompleteWaitersExceptionally() throws Exception {
         var cache = new BoundedMediaCache(temporary.resolve("native-error"));
         LinkageError failure = new LinkageError("fixture native image failure");
-        var pending = AlbumCoverCache.request(cancellation -> Optional.of(coverLease(cache, cancellation)),
+        var pending = CoverImageRequests.request(cancellation -> Optional.of(coverLease(cache, cancellation)),
                 lease -> { throw failure; });
         assertSame(failure, assertThrows(java.util.concurrent.ExecutionException.class,
                 () -> pending.get(2, TimeUnit.SECONDS)).getCause());
-        var provider = AlbumCoverCache.request(cancellation -> { throw failure; });
+        var provider = CoverImageRequests.request(cancellation -> { throw failure; });
         assertSame(failure, assertThrows(java.util.concurrent.ExecutionException.class,
                 () -> provider.get(2, TimeUnit.SECONDS)).getCause());
     }

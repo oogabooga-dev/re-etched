@@ -1,8 +1,5 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.PlayableRecordItem;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.render.item.AlbumCoverItemRenderer;
 import gg.moonflower.etched.common.menu.AlbumCoverMenu;
 import gg.moonflower.etched.core.Etched;
@@ -26,6 +23,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickAction;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.item.ItemUtils;
@@ -38,7 +36,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.function.Consumer;
 
-public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem {
+public class AlbumCoverItem extends Item implements ContainerItem {
 
     public static final int MAX_RECORDS = 9;
 
@@ -224,22 +222,6 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
     }
 
     @Override
-    public Optional<TrackData[]> getMusic(ItemStack stack) {
-        List<ItemStack> records = getRecords(stack);
-        return records.isEmpty() ? Optional.empty() : Optional.of(flattenMusic(records));
-    }
-
-    @Override
-    public Optional<TrackData> getAlbum(ItemStack stack) {
-        return Optional.empty();
-    }
-
-    @Override
-    public int getTrackCount(ItemStack stack) {
-        return getRecords(stack).stream().mapToInt(AlbumCoverItem::recordTrackCount).sum();
-    }
-
-    @Override
     public boolean canGrindstoneRepair(ItemStack stack) {
         return getCoverStack(stack).isPresent();
     }
@@ -338,36 +320,4 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
         nbt.put("Records", recordsNbt);
     }
 
-    static TrackData[] flattenMusic(Collection<ItemStack> records) {
-        return flattenPrograms(records.stream()
-                .map(AlbumCoverItem::recordMusic)
-                .toList());
-    }
-
-    private static TrackData[] recordMusic(ItemStack stack) {
-        if (stack.getItem() instanceof EtchedMusicDiscItem) {
-            return EtchedMusicDiscItem.readMusic(stack).orElseGet(() -> new TrackData[0]);
-        }
-        if (stack.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record)) {
-            return VanillaRecordAdapter.music(record);
-        }
-        return stack.getItem() instanceof PlayableRecord record
-                ? record.getMusic(stack).orElseGet(() -> new TrackData[0]) : new TrackData[0];
-    }
-
-    private static int recordTrackCount(ItemStack stack) {
-        if (stack.getItem() instanceof EtchedMusicDiscItem) {
-            return EtchedMusicDiscItem.countTracks(stack);
-        }
-        if (stack.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record)) {
-            return 1;
-        }
-        return stack.getItem() instanceof PlayableRecord record ? record.getTrackCount(stack) : 0;
-    }
-
-    static TrackData[] flattenPrograms(Collection<TrackData[]> programs) {
-        return programs.stream()
-                .flatMap(Arrays::stream)
-                .toArray(TrackData[]::new);
-    }
 }
