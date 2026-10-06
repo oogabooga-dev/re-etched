@@ -300,6 +300,9 @@ final class JukeboxPacketSmoke {
             if (!NativeJukeboxRevisionSmoke.tick(client, pos, B)) {
                 return;
             }
+            if (!JukeboxTrackingSmoke.tick(client, pos)) {
+                return;
+            }
             step = 5;
             ticks = 0;
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());

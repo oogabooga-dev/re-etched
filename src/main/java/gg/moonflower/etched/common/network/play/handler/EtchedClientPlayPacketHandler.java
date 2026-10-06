@@ -33,13 +33,14 @@ public class EtchedClientPlayPacketHandler {
 
     public static void handlePlayMusicPacket(ClientboundPlayMusicPacket pkt, NetworkEvent.Context ctx) {
         Minecraft client = Minecraft.getInstance();
-        ClientLevel level = client.level;
-        if (level == null || !level.dimension().equals(pkt.dimension())) {
-            return;
-        }
-
+        ClientLevel capturedLevel = client.level;
         ctx.enqueueWork(() -> {
-            if (client.level != level) {
+            var connection = client.getConnection();
+            ClientLevel level = client.level;
+            // Evaluate after the preceding vanilla chunk/dimension/event packets on this connection.
+            if (connection == null || connection.getConnection() != ctx.getNetworkManager()
+                    || level == null || !level.dimension().equals(pkt.dimension())
+                    || capturedLevel != null && capturedLevel.dimension().equals(pkt.dimension()) && capturedLevel != level) {
                 return;
             }
             boolean expected = JukeboxPlayback.acceptPacket(pkt, JukeboxPlayback.hasRecord(level.getBlockState(pkt.pos())));

@@ -7,6 +7,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.JukeboxBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -16,6 +18,7 @@ public final class JukeboxPlayback {
 
     private static final JukeboxStartGate STARTS = new JukeboxStartGate();
     private static final JukeboxRevisionGate REVISIONS = new JukeboxRevisionGate();
+    private static final JukeboxSessionOwners SESSIONS = new JukeboxSessionOwners();
 
     private JukeboxPlayback() {
     }
@@ -56,15 +59,24 @@ public final class JukeboxPlayback {
 
     /** Called only after ticket/revision admission, including disabled unsupported replacements and stops. */
     public static void applyPacket(ClientboundPlayMusicPacket packet) {
-        applyPacket(AudioPlaybackManager.getInstance(), packet);
+        var manager = AudioPlaybackManager.getInstance();
+        boolean applied = applyPacket(manager, packet);
+        var key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
+        var state = manager.getPlaybackState(key);
+        if (applied && !packet.isStop() && packet.program().isPresent() && state.isPresent()
+                && state.orElseThrow().equals(packet.state())) {
+            SESSIONS.remember(key, state.orElseThrow());
+        } else {
+            SESSIONS.forget(key);
+        }
     }
 
-    static void applyPacket(AudioPlaybackManager manager, ClientboundPlayMusicPacket packet) {
+    static boolean applyPacket(AudioPlaybackManager manager, ClientboundPlayMusicPacket packet) {
         PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
         if (!packet.isStop() && packet.program().isPresent()) {
-            manager.update(key, packet.state());
+            return manager.update(key, packet.state());
         } else {
-            manager.remove(key);
+            return manager.remove(key);
         }
     }
 
@@ -72,13 +84,42 @@ public final class JukeboxPlayback {
     public static void clearPendingStarts() {
         STARTS.clearAll();
         REVISIONS.clearAll();
+        SESSIONS.clearAll();
     }
 
     public static void stop(BlockPos pos) {
         var level = Minecraft.getInstance().level;
         if (level != null) {
-            AudioPlaybackManager.getInstance().remove(PlaybackOwnerKey.block(level.dimension(), pos));
+            var key = PlaybackOwnerKey.block(level.dimension(), pos);
+            SESSIONS.forget(key);
+            AudioPlaybackManager.getInstance().remove(key);
         }
+    }
+
+    /** Untracking releases sessions and invalidates pending starts, but does not forget revision watermarks. */
+    public static void unloadChunk(ResourceKey<Level> dimension, ChunkPos pos) {
+        unloadChunk(AudioPlaybackManager.getInstance(), STARTS, SESSIONS, dimension, pos);
+    }
+
+    static void unloadChunk(AudioPlaybackManager manager, JukeboxStartGate starts, JukeboxSessionOwners sessions,
+                            ResourceKey<Level> dimension, ChunkPos pos) {
+        starts.unloadChunk(dimension, pos);
+        sessions.prune(manager, key -> !key.dimension().equals(dimension) || !new ChunkPos(key.pos()).equals(pos));
+    }
+
+    /** ClientChunkCache can move its center without posting Unload for out-of-range slots. */
+    public static void prune() {
+        var level = Minecraft.getInstance().level;
+        SESSIONS.prune(AudioPlaybackManager.getInstance(), key -> {
+            var pos = key.pos();
+            boolean valid = level != null && level.dimension().equals(key.dimension())
+                    && level.getChunkSource().getChunk(pos.getX() >> 4, pos.getZ() >> 4, ChunkStatus.FULL, false) != null
+                    && hasRecord(level.getBlockState(pos));
+            if (!valid) {
+                STARTS.stop(key); // Keep watermark and send-order slots even when local resources are gone.
+            }
+            return valid;
+        });
     }
 
 }

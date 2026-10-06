@@ -1,5 +1,9 @@
 package gg.moonflower.etched.client.radio;
 
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
@@ -61,6 +65,14 @@ final class JukeboxStartGate {
 
     void clearAll() {
         this.owners.clear();
+    }
+
+    void unloadChunk(ResourceKey<Level> dimension, ChunkPos pos) {
+        this.owners.forEach((key, pending) -> {
+            if (key.dimension().equals(dimension) && new ChunkPos(key.pos()).equals(pos)) {
+                pending.tickets.forEach(ticket -> ticket.valid = false);
+            }
+        }); // Preserve send-order slots until the matching packets arrive.
     }
 
     private static final class Pending {

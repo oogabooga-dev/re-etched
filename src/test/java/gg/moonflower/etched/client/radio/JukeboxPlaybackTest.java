@@ -9,6 +9,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.JukeboxBlock;
 import org.junit.jupiter.api.Test;
@@ -174,6 +175,75 @@ class JukeboxPlaybackTest {
     private static ClientboundPlayMusicPacket packet(long revision, String name) {
         return new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 42, revision,
                 Optional.of(program(remote(name)).program()));
+    }
+
+    @Test
+    void chunkUntrackingRemovesOnlyMatchingSessionsAndInvalidatesPendingTicketsWithoutForgettingRevisions() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        var sessions = new JukeboxSessionOwners();
+        var record = new ItemStack(Items.MUSIC_DISC_CAT);
+        var adjacent = PlaybackOwnerKey.block(Level.OVERWORLD, new BlockPos(-1, 0, 0));
+        var foreign = PlaybackOwnerKey.block(Level.NETHER, BlockPos.ZERO);
+        for (var key : List.of(KEY, adjacent, foreign)) {
+            var packet = ClientboundPlayMusicPacket.fromRecord(key.dimension(), key.pos(), 10L, record);
+            starts.start(key, packet.itemId(), true);
+            assertTrue(deliver(manager, starts, revisions, packet));
+            sessions.remember(key, manager.getPlaybackState(key).orElseThrow());
+        }
+        var pending = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, new BlockPos(15, 64, 15), 100L, record);
+        var pendingKey = PlaybackOwnerKey.block(pending.dimension(), pending.pos());
+        starts.start(pendingKey, pending.itemId(), true);
+        JukeboxPlayback.unloadChunk(manager, starts, sessions, Level.OVERWORLD, new ChunkPos(0, 0));
+        assertTrue(manager.getPlaybackState(KEY).isEmpty());
+        assertTrue(manager.getPlaybackState(adjacent).isPresent());
+        assertTrue(manager.getPlaybackState(foreign).isPresent());
+        assertFalse(deliver(manager, starts, revisions, pending));
+        var old = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 10L, record);
+        starts.start(KEY, old.itemId(), true);
+        assertFalse(deliver(manager, starts, revisions, old));
+        var snapshot = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 11L, record);
+        starts.start(KEY, snapshot.itemId(), true);
+        assertTrue(deliver(manager, starts, revisions, snapshot));
+    }
+
+    @Test
+    void directedTrackingSnapshotUsesTheSameAdmissionAndSupersedesLocalRemoval() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        var record = new ItemStack(Items.MUSIC_DISC_CAT);
+        var original = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 10L, record);
+        var snapshot = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 12L, record);
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, original.itemId(), true);
+        assertTrue(deliver(manager, starts, revisions, original));
+        manager.remove(KEY); // Local cleanup during untracking does not allocate playback intent.
+        assertFalse(deliver(manager, starts, revisions, snapshot)); // Snapshot cannot bypass its event ticket.
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, snapshot.itemId(), true);
+        assertTrue(deliver(manager, starts, revisions, snapshot));
+        assertEquals(snapshot.state(), manager.getPlaybackState(KEY).orElseThrow());
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, original.itemId(), true);
+        assertFalse(deliver(manager, starts, revisions, original));
+        assertTrue(deliver(manager, starts, revisions, ClientboundPlayMusicPacket.stopped(Level.OVERWORLD, BlockPos.ZERO, 13L)));
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, snapshot.itemId(), true);
+        assertFalse(deliver(manager, starts, revisions, snapshot));
+        assertTrue(manager.getPlaybackState(KEY).isEmpty());
+    }
+
+    @Test
+    void snapshotTicketInvalidatedByNativeReplacementCannotPoisonWatermarks() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        var snapshot = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 100L, new ItemStack(Items.MUSIC_DISC_CAT));
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, snapshot.itemId(), true);
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1011, BlockPos.ZERO, 0, true);
+        assertFalse(deliver(manager, starts, revisions, snapshot));
+        var current = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 1L, new ItemStack(Items.MUSIC_DISC_CAT));
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, current.itemId(), true);
+        assertTrue(deliver(manager, starts, revisions, current));
+        assertEquals(1L, manager.getPlaybackState(KEY).orElseThrow().revision());
     }
 
     private static boolean deliver(AudioPlaybackManager manager, JukeboxStartGate starts,

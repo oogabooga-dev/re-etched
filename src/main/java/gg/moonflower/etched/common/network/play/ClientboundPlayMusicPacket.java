@@ -19,7 +19,7 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Revisioned first-party jukebox start/stop payload. Tracking/restore and the final v5 freeze remain provisional. */
+/** Revisioned first-party jukebox start/stop and directed snapshot payload. The final v5 freeze remains provisional. */
 @ApiStatus.Internal
 public record ClientboundPlayMusicPacket(ResourceKey<Level> dimension, BlockPos pos, int itemId, long revision,
                                          Optional<AudioProgram> program) implements EtchedPacket {
