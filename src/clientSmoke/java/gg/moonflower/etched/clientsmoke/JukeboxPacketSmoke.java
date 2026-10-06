@@ -71,8 +71,8 @@ import java.util.function.Function;
 final class JukeboxPacketSmoke {
 
     private static final String WORLD = "etched-jukebox-smoke-" + UUID.randomUUID();
-    // Includes entity retracking and two additional dimension loads, not just the original one-way transfer.
-    private static final long DEADLINE = System.nanoTime() + 240_000_000_000L;
+    // Includes retracking, dimension round-trip and an actual integrated save/close/reopen.
+    private static final long DEADLINE = System.nanoTime() + 360_000_000_000L;
     private static final ItemStack A = disc("minecraft:music_disc.blocks", "A");
     private static final ItemStack B = disc("minecraft:music_disc.cat", "B");
     private static final ITeleporter SMOKE_TELEPORTER = new ITeleporter() {
@@ -777,44 +777,55 @@ final class JukeboxPacketSmoke {
                 if (++stableTicks < 20) {
                     return;
                 }
-                step = 21;
-                var oldPlayer = client.player;
-                var server = client.getSingleplayerServer();
-                client.tell(() -> {
-                    client.level.disconnect();
-                    client.clearLevel(new TitleScreen());
-                    if (client.level != null || !server.isShutdown()
-                            || AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
-                            || AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isPresent()
-                            || BoomboxPlayback.getInstance().isPlaying(oldPlayer)) {
-                        throw new AssertionError("Disconnect left boombox or jukebox playback behind");
-                    }
-                    assertPlayingModel(client, oldPlayer, oldPlayer.getOffhandItem(), 0.0F);
-                    try {
-                        Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
-                    } catch (IOException exception) {
-                        throw new IllegalStateException("Could not record jukebox smoke result", exception);
-                    }
-                    System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
-                    System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
-                    System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
-                    System.out.println("ETCHED UNSUPPORTED BOOMBOX RECORD AND REPLACEMENT SMOKE PASSED");
-                    System.out.println("ETCHED UNSUPPORTED JUKEBOX PACKET REPLACEMENT SMOKE PASSED");
-                    System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
-                    System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
-                    System.out.println("ETCHED INTEGRATED DISCONNECT CLEANUP SMOKE PASSED");
-                    step = 22;
-                    client.stop();
-                });
+                step = 23;
+                ticks = 0;
             } else if (++ticks >= 100) {
                 throw new AssertionError("Client did not enter the Nether after the player transfer");
             }
         }
+        // Reopen must keep progressing while level/player are null and the title/loading screen is active.
+        if (step == 23 && WorldReopenSmoke.tick(client, WORLD)) {
+            finish(client);
+        }
+    }
+
+    private static void finish(Minecraft client) {
+        step = 21;
+        var oldPlayer = client.player;
+        var newKey = PlaybackOwnerKey.entity(client.level.dimension(), oldPlayer.getUUID());
+        var jukeboxKey = PlaybackOwnerKey.block(Level.OVERWORLD, pos);
+        var server = client.getSingleplayerServer();
+        client.tell(() -> {
+            client.level.disconnect();
+            client.clearLevel(new TitleScreen());
+            if (client.level != null || !server.isShutdown()
+                    || AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
+                    || AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isPresent()
+                    || BoomboxPlayback.getInstance().isPlaying(oldPlayer)) {
+                throw new AssertionError("Disconnect left boombox or jukebox playback behind");
+            }
+            assertPlayingModel(client, oldPlayer, oldPlayer.getOffhandItem(), 0.0F);
+            try {
+                Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
+            } catch (IOException exception) {
+                throw new IllegalStateException("Could not record jukebox smoke result", exception);
+            }
+            System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
+            System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
+            System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
+            System.out.println("ETCHED UNSUPPORTED BOOMBOX RECORD AND REPLACEMENT SMOKE PASSED");
+            System.out.println("ETCHED UNSUPPORTED JUKEBOX PACKET REPLACEMENT SMOKE PASSED");
+            System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
+            System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
+            System.out.println("ETCHED INTEGRATED DISCONNECT CLEANUP SMOKE PASSED");
+            step = 22;
+            client.stop();
+        });
     }
 
     private static UUID spawnStand(ServerLevel level, ServerPlayer player) {
