@@ -10,13 +10,16 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -33,6 +36,11 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
     @Override
     public InteractionResult useOn(UseOnContext context) {
         return JukeboxRecordSupport.useOn(context);
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> lines, TooltipFlag flag) {
+        readContent(stack).ifPresent(content -> lines.addAll(RecordPresentation.tooltip(content)));
     }
 
     @Override

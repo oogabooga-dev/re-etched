@@ -39,7 +39,7 @@ public final class LegacySmokeRecord extends Item implements PlayableRecord {
 
     @Override
     public CompletableFuture<AlbumCover> getAlbumCover(ItemStack stack, Proxy proxy, ResourceManager resources) {
-        return CompletableFuture.completedFuture(AlbumCover.EMPTY);
+        throw new AssertionError("Unsupported legacy record reached getAlbumCover");
     }
 
     @Override

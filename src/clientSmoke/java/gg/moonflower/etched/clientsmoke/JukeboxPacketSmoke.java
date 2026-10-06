@@ -95,6 +95,7 @@ final class JukeboxPacketSmoke {
             throw new AssertionError("Jukebox packet smoke timed out at step " + step);
         }
         if (step == 0 && client.screen instanceof TitleScreen) {
+            gg.moonflower.etched.client.RecordCoverDispatchSmoke.verify(client);
             step = 1;
             // Limit chunks to save when the opt-in test leaves its integrated world.
             client.options.renderDistance().set(2);

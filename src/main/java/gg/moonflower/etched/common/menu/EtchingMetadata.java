@@ -3,6 +3,7 @@ package gg.moonflower.etched.common.menu;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
+import gg.moonflower.etched.common.item.RecordPresentation;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
@@ -32,8 +33,7 @@ public final class EtchingMetadata {
     }
 
     public static String source(RecordContent content) {
-        return content.album().map(RecordContent.AlbumMetadata::source)
-                .orElseGet(() -> content.program().tracks().get(0).source());
+        return RecordPresentation.source(content);
     }
 
     static RecordContent direct(String source, Optional<RecordContent> previous, boolean hasLabel,

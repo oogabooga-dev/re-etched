@@ -131,6 +131,9 @@ public class BoomboxItem extends Item implements ContainerItem {
         tooltipComponents.add(PAUSE);
         if (hasRecord(stack)) {
             ItemStack record = getRecord(stack);
+            if (RecordContentResolver.resolve(record).isEmpty()) {
+                return;
+            }
             List<Component> records = new LinkedList<>();
             record.getItem().appendHoverText(record, level, records, isAdvanced);
 

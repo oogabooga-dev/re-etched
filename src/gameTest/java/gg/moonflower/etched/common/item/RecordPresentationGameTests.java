@@ -19,6 +19,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Blocks;
@@ -27,6 +28,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,12 +81,14 @@ public final class RecordPresentationGameTests {
     public static void builtInAndUnbrandedRecordTooltipsRetainAlbumPresentationWithoutProviderRegistration(GameTestHelper helper) {
         for (String source : List.of("https://artist.bandcamp.com/album/test", "https://soundcloud.com/artist/sets/test",
                 "https://audio.example/track.mp3", "minecraft:music_disc.blocks")) {
-            for (boolean album : new boolean[]{false, true}) {
+            for (int albumTracks : new int[]{0, 1, 2}) {
+                boolean album = albumTracks > 0;
                 ItemStack stack = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
                 var descriptor = new TrackData(source, "Artist", Component.literal("Title"));
                 if (album) {
-                    EtchedMusicDiscItem.setContent(stack, content(descriptor, descriptor.withTitle(Component.literal("One")),
-                            descriptor.withTitle(Component.literal("Two"))));
+                    EtchedMusicDiscItem.setContent(stack, content(descriptor, albumTracks == 1
+                            ? new TrackData[]{descriptor.withTitle(Component.literal("One"))}
+                            : new TrackData[]{descriptor.withTitle(Component.literal("One")), descriptor.withTitle(Component.literal("Two"))}));
                 } else {
                     EtchedMusicDiscItem.setContent(stack, content(null, descriptor));
                 }
@@ -110,6 +114,39 @@ public final class RecordPresentationGameTests {
                 }
             }
         }
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty")
+    public static void storedUnsupportedRecordsNeverReachLegacyTooltipMetadata(GameTestHelper helper) {
+        ItemStack unsupported = new ItemStack(ForgeRegistries.ITEMS.getValue(UnsupportedInsertionRecord.ID));
+        ItemStack foreign = new ItemStack(ForgeRegistries.ITEMS.getValue(UnsupportedInsertionRecord.RECORD_ID));
+        ItemStack invalid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        invalid.getOrCreateTag().put("Music", new CompoundTag());
+        for (ItemStack record : List.of(unsupported, foreign, invalid)) {
+            ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
+            AlbumCoverItem.setRecords(album, List.of(record));
+            var lines = new ArrayList<Component>();
+            album.getItem().appendHoverText(album, helper.getLevel(), lines, TooltipFlag.Default.NORMAL);
+            helper.assertTrue(lines.isEmpty(), "Album tooltip dispatched unsupported/invalid metadata");
+            ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+            BoomboxItem.setRecord(boombox, record);
+            boombox.getItem().appendHoverText(boombox, helper.getLevel(), lines, TooltipFlag.Default.NORMAL);
+            helper.assertTrue(lines.size() == 1 && lines.get(0).getContents() instanceof TranslatableContents hint
+                    && hint.getKey().equals("item.etched.boombox.pause"), "Boombox tooltip published unsupported record metadata");
+        }
+        ItemStack valid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setContent(valid, content(null, new TrackData("minecraft:music_disc.cat", "Artist", Component.literal("Title"))));
+        ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
+        AlbumCoverItem.setRecords(album, List.of(unsupported, valid, new ItemStack(Items.MUSIC_DISC_CAT)));
+        var lines = new ArrayList<Component>();
+        album.getItem().appendHoverText(album, helper.getLevel(), lines, TooltipFlag.Default.NORMAL);
+        helper.assertTrue(lines.size() == 2 && lines.get(0).equals(RecordPresentation.tooltip(
+                        EtchedMusicDiscItem.readContent(valid).orElseThrow()).get(0)),
+                "Album inventory tooltip lost supported entries next to an unsupported stored item");
+        var vanilla = new ArrayList<Component>();
+        Items.MUSIC_DISC_CAT.appendHoverText(new ItemStack(Items.MUSIC_DISC_CAT), helper.getLevel(), vanilla, TooltipFlag.Default.NORMAL);
+        helper.assertTrue(lines.get(1).equals(vanilla.get(0)), "Album inventory tooltip changed vanilla presentation");
         helper.succeed();
     }
 

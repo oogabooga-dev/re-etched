@@ -133,8 +133,8 @@ public class AlbumCoverItem extends PlayableRecordItem implements ContainerItem 
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> list, TooltipFlag tooltipFlag) {
         for (ItemStack record : getRecords(stack)) {
-            if (record.getItem() instanceof EtchedMusicDiscItem || record.getItem() instanceof RecordItem
-                    || record.getItem() instanceof PlayableRecord) {
+            if (record.getItem() instanceof EtchedMusicDiscItem
+                    || (record.getItem() instanceof RecordItem disc && VanillaRecordAdapter.isVanilla(disc))) {
                 record.getItem().appendHoverText(record, level, list, tooltipFlag);
             }
         }
