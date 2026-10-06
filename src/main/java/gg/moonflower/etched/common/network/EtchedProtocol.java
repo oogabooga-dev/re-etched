@@ -7,8 +7,9 @@ import net.minecraftforge.fml.IExtensionPoint;
 import net.minecraftforge.network.NetworkDirection;
 
 /**
- * The protocol boundary for incompatible 5.x development builds.
- * Packet IDs and playback payloads remain provisional until authoritative owner migration is complete.
+ * Frozen protocol-5 channel contract; see NETWORK_PROTOCOL.md and EtchedWireContractTest.
+ * Incompatible changes to IDs, directions, payloads or field limits require a new protocol epoch.
+ * Pre-freeze development builds are not compatibility targets even if they advertised "5".
  */
 public final class EtchedProtocol {
 
@@ -19,7 +20,7 @@ public final class EtchedProtocol {
     public static final int MAX_URL_LENGTH = 8_192;
     static final PacketContract<ClientboundEtchingUrlErrorPacket> CLIENTBOUND_ETCHING_URL_ERROR =
             new PacketContract<>(0, ClientboundEtchingUrlErrorPacket.class, NetworkDirection.PLAY_TO_CLIENT);
-    // ID 1 belonged to the retired legacy entity sound packet. Do not reuse it before the final v5 freeze.
+    // ID 1 belonged to the retired legacy entity sound packet. Reserved and unregistered throughout epoch 5.
     static final PacketContract<ClientboundPlayMusicPacket> CLIENTBOUND_PLAY_MUSIC =
             new PacketContract<>(2, ClientboundPlayMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
     static final PacketContract<ClientboundRadioMenuInitPacket> CLIENTBOUND_RADIO_MENU_INIT =

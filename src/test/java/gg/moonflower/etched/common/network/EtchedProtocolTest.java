@@ -49,6 +49,16 @@ class EtchedProtocolTest {
     }
 
     @Test
+    void frozenEpochRejectsSemanticVersionsAlternateSpellingsAndFutureEpochs() {
+        for (String version : new String[]{"", "05", "5 ", " 5", "5.0.0", "5.1", "6", "3.0.4"}) {
+            assertFalse(EtchedProtocol.accepts(version), version);
+            var display = EtchedProtocol.displayTest();
+            assertFalse(display.remoteVersionTest().test(version, true), version);
+            assertFalse(display.remoteVersionTest().test(version, false), version);
+        }
+    }
+
+    @Test
     void displayTestUsesTheNetworkProtocolEpoch() {
         IExtensionPoint.DisplayTest displayTest = EtchedProtocol.displayTest();
 

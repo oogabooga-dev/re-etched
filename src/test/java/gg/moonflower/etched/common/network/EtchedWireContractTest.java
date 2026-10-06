@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Candidate v5 wire regressions, not a freeze claim: owner reopen runtime verification is still pending. */
+/** Frozen protocol-5 literal wire contract; actual registration is checked in transformed Forge GameTests. */
 class EtchedWireContractTest {
 
     @BeforeAll
@@ -41,7 +41,7 @@ class EtchedWireContractTest {
     }
 
     @Test
-    void literalFixturesCoverEveryCurrentDeclaredIdTypeAndDirection() {
+    void literalFixturesCoverEveryFrozenIdTypeAndDirection() {
         assertEquals(Set.of(0, 2, 3, 4, 5, 6, 7), fixtures().stream().map(Fixture::id).collect(Collectors.toSet()));
         for (var fixture : fixtures()) {
             var contract = contract(fixture.id());
@@ -62,7 +62,7 @@ class EtchedWireContractTest {
     }
 
     @Test
-    void everyTruncatedCandidatePayloadIsRejectedByItsPacketDecoder() {
+    void everyTruncatedFrozenPayloadIsRejectedByItsPacketDecoder() {
         for (var fixture : fixtures()) {
             byte[] frame = ByteBufUtil.decodeHexDump(fixture.frame());
             Function<FriendlyByteBuf, ?> decoder = decoder(fixture.id());
@@ -80,7 +80,7 @@ class EtchedWireContractTest {
     }
 
     @Test
-    void candidateFieldLimitsAreLiteralRatherThanFollowingChangedProductionConstants() {
+    void frozenFieldLimitsAreLiteralRatherThanFollowingChangedProductionConstants() {
         assertEquals(100, EtchedProtocol.MAX_MENU_CONTAINER_ID);
         assertEquals(8_192, EtchedProtocol.MAX_URL_LENGTH);
         assertEquals(8_192, ClientboundRadioMenuInitPacket.MAX_URL_LENGTH);
@@ -121,7 +121,7 @@ class EtchedWireContractTest {
     }
 
     @Test
-    void decodersRejectFieldsOneCharacterOverTheCandidateLimits() {
+    void decodersRejectFieldsOneCharacterOverTheFrozenLimits() {
         reject(0, buffer -> buffer.writeVarInt(0).writeUtf("e".repeat(1_025)), DecoderException.class);
         for (int id : List.of(3, 4, 6)) {
             reject(id, buffer -> buffer.writeVarInt(0).writeUtf("u".repeat(8_193)), DecoderException.class);
@@ -146,6 +146,48 @@ class EtchedWireContractTest {
             }, DecoderException.class);
         }
         reject(7, buffer -> buffer.writeVarInt(1).writeVarInt(128), DecoderException.class);
+    }
+
+    @Test
+    void frozenOwnerPacketsRejectEveryUndefinedFlagByte() {
+        byte[] finite = ByteBufUtil.decodeHexDump("0001000e6d696e6563726166743a746573740000");
+        for (int flag = 0; flag <= 255; flag++) {
+            int value = flag;
+            byte[] entity = write(buffer -> {
+                buffer.writeUtf("minecraft:overworld").writeVarInt(0).writeUUID(new UUID(0, 0));
+                buffer.writeLong(1L).writeByte(value);
+                if ((value & 1) != 0) {
+                    buffer.writeBytes(finite);
+                }
+            });
+            if (value == 0 || value == 3) {
+                var decoded = (ClientboundBoomboxStatePacket) decode(7, entity);
+                assertEquals(value == 3, decoded.state().enabled());
+                assertEquals(value == 3, decoded.state().program().isPresent());
+            } else {
+                reject(7, buffer -> buffer.writeBytes(entity), DecoderException.class);
+            }
+            if (value > 1) {
+                reject(2, buffer -> {
+                    buffer.writeUtf("minecraft:overworld").writeBlockPos(BlockPos.ZERO).writeVarInt(300);
+                    buffer.writeLong(1L).writeByte(value).writeBytes(finite);
+                }, DecoderException.class);
+            }
+        }
+    }
+
+    @Test
+    void frozenOwnerPacketsRejectLiteralLivePrograms() {
+        // Shared codecs support LIVE=1, but neither finite owner packet may admit it.
+        byte[] live = ByteBufUtil.decodeHexDump("0101010c68747470733a2f2f612e636f0000");
+        reject(2, buffer -> {
+            buffer.writeUtf("minecraft:overworld").writeBlockPos(BlockPos.ZERO).writeVarInt(300);
+            buffer.writeLong(1L).writeByte(1).writeBytes(live);
+        }, DecoderException.class);
+        reject(7, buffer -> {
+            buffer.writeUtf("minecraft:overworld").writeVarInt(0).writeUUID(new UUID(0, 0));
+            buffer.writeLong(1L).writeByte(3).writeBytes(live);
+        }, DecoderException.class);
     }
 
     private static List<Fixture> fixtures() {
@@ -197,7 +239,7 @@ class EtchedWireContractTest {
             case 5 -> EtchedProtocol.SERVERBOUND_EDIT_MUSIC_LABEL;
             case 6 -> EtchedProtocol.SERVERBOUND_SET_RADIO_URL;
             case 7 -> EtchedProtocol.CLIENTBOUND_BOOMBOX_STATE;
-            default -> throw new AssertionError("No candidate packet " + id);
+            default -> throw new AssertionError("No frozen packet " + id);
         };
     }
 
@@ -210,7 +252,7 @@ class EtchedWireContractTest {
             case 5 -> ServerboundEditMusicLabelPacket::new;
             case 6 -> ServerboundSetRadioUrlPacket::new;
             case 7 -> ClientboundBoomboxStatePacket::new;
-            default -> throw new AssertionError("No candidate decoder " + id);
+            default -> throw new AssertionError("No frozen decoder " + id);
         };
     }
 

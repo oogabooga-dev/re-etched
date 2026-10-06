@@ -36,7 +36,7 @@ public final class NetworkRegistrationGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void actualChannelRegistersOnlyCandidateV5PacketsWithCorrectCodecsAndDirections(GameTestHelper helper)
+    public static void actualChannelRegistersOnlyFrozenV5PacketsWithCorrectCodecsAndDirections(GameTestHelper helper)
             throws ReflectiveOperationException, IOException {
         // The mod entrypoint has already initialized this channel. Do not re-register or build a substitute channel.
         // Forge 47.4.10 exposes encoding but not its registered decoder/direction metadata.
@@ -45,7 +45,7 @@ public final class NetworkRegistrationGameTests {
         var types = (Map<?, ?>) field(codec, "types");
         var samples = samples();
         helper.assertTrue(ids.keySet().equals(Set.of((short) 0, (short) 2, (short) 3, (short) 4, (short) 5, (short) 6, (short) 7)),
-                "Actual channel changed candidate IDs or registered the retired entity ID");
+                "Actual channel changed frozen IDs or registered the retired entity ID");
         helper.assertTrue(types.keySet().equals(samples.stream().map(sample -> sample.packet().getClass()).collect(Collectors.toSet())),
                 "Actual channel contains missing or additional packet classes");
         for (var sample : samples) {

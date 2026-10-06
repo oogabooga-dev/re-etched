@@ -69,6 +69,10 @@ Re-Etched 5.x keeps the `etched:play` channel name but uses protocol version
 `5`. Its strict network and display checks reject Etched 3.x, Re-Etched 4.x,
 vanilla peers, and peers without the mod before packet decoding.
 
+The frozen protocol-5 IDs, directions, payloads and limits are documented in
+[NETWORK_PROTOCOL.md](NETWORK_PROTOCOL.md). Pre-freeze development builds are not
+compatibility targets, even if they advertised protocol `5`; use matched builds.
+
 On the 4.x line, existing `Url` values are read by Re-Etched and `StoredUrl` is
 used to retain a manually stopped station. Back up before migration and do not
 assume that downgrading to the original mod will preserve this new stopped-state

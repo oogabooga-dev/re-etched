@@ -14,7 +14,7 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Provisional bounded entity-owned finite state; never an entity sound/provider API packet. */
+/** Frozen protocol-5 bounded entity-owned finite state; never an entity sound/provider API packet. */
 public record ClientboundBoomboxStatePacket(ResourceKey<Level> dimension, int entityId, UUID owner, PlaybackState state)
         implements EtchedPacket {
 
