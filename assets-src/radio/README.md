@@ -1,25 +1,33 @@
-# Radio visual source — Stage 9, slice 1
+# Ordinary radio visual source — Stage 9
 
-These Radio and Portal Radio **block/item** visuals are a new AI-assisted
-procedural design for Re-Etched. They are not hand-drawn maintainer artwork.
-The source is `scripts/generate-radio-assets.py`, using only Python's standard
-library. No inherited image, mesh, texture UV map or third-party art is read by
-the generation path. Numeric rectangles, a perforation grid, a tuner scale and
-a circular knob produce the textures; seven newly specified cuboids produce
-the geometry. This is not a claim of legal clearance for the whole repository.
+> **Not accepted for release:** the maintainer subsequently specified that
+> AI-generated images cannot be used. All three remaining procedural PNGs
+> must be replaced with hand-drawn work. This document describes the earlier
+> implementation, not its acceptance. The pixel generator has been removed;
+> the model-only generator never writes PNGs. Authorship/provenance must be
+> reviewed when hand-drawn images are integrated. Model acceptance and Modrinth's
+> AI-code/assets disclosures are separate questions.
+
+The ordinary Radio **block/item** visuals are an AI-assisted procedural design
+for Re-Etched. They are not hand-drawn maintainer artwork. The remaining geometry
+source is `scripts/generate-radio-models.py`, using only Python's standard library.
+Seven cuboids define the geometry, without inherited mesh or UV-map inputs. The
+three current PNGs are unchanged temporary artwork from commit `26804ef`; their
+pixel-generation source remains in Git history only. This is not a claim of legal
+clearance or publication eligibility for the whole repository.
 
 The compact desk receiver has a raised control housing, two short feet, an
-offset speaker panel and a separate tuner and knob. The finishes are slate with
-copper accents and chalk with violet accents. Both use the same new geometry.
-Item sprites are separately constructed transparent 16x16 silhouettes, not crops
-of upstream item textures. The 32x32 block atlas uses four 16x16 tiles. Particle
-textures use the newly generated shell tile.
+offset speaker panel and a separate tuner and knob. The temporary finish is slate
+with copper accents. Its item sprite is a transparent 16x16 silhouette, not a crop
+of upstream art. The 32x32 block atlas uses four 16x16 tiles; the 16x16 particle
+texture uses its shell tile. The maintainer can independently draw one item icon
+and one block atlas, then mechanically crop a particle tile from their own art.
 
 ## Inputs and stable technical constraints
 
-- `RadioBlock`: rotation `0..15`, portal boolean, powered state and existing
-  collision envelopes. The new visual envelope fits the existing shapes; Java
-  geometry/gameplay is not changed.
+- `RadioBlock`: rotation `0..15`, powered state and existing collision envelopes.
+  The visual envelope fits the existing shapes. The removed easter egg adds no
+  state property, registered item, alternate appearance, loot or conversion path.
 - Existing resource paths/IDs and the Minecraft JSON model format. The old
   blockstate mapping was inspected to establish orientation, **not** used as
   model/art input. Rotation zero faces south, advancing clockwise by 22.5°.
@@ -35,20 +43,20 @@ keys because it changes playback eligibility, not appearance.
 ## Reproduction and audit
 
 ```sh
-python3 scripts/generate-radio-assets.py
-python3 scripts/generate-radio-assets.py --check
+python3 scripts/generate-radio-models.py --check
+python3 scripts/generate-radio-models.py --write-models
 ```
 
-Generation overwrites **only** the 17 declared radio block/item resources and
-`assets-src/radio/manifest.json`. Check mode never writes. The manifest lists exact
-resource paths and SHA-256 hashes. PNGs have deterministic stored DEFLATE blocks,
-no metadata, external tools, random values or version-dependent compression.
-`RadioAssetsTest` checks hashes, all 64 block states, model parsing and references,
+Write mode overwrites **only** six JSON resources and `assets-src/radio/manifest.json`.
+Neither mode writes image files. Check mode never writes any files. The manifest
+lists nine retained resource paths/hashes: six JSONs and three existing PNGs. It
+reads PNGs to hash them; hashing does not establish human authorship or approval.
+`RadioAssetsTest` checks hashes, all 32 block states, model parsing and references,
 legal rotations, bounds, UVs and image dimensions/transparency. Reproduction
 checking is an explicit Python command, not a dependency of Gradle/JUnit.
 `RadioAssetSmoke` additionally checks the actual transformed Forge baked models
-for all 64 states, seven six-faced cuboids, particle/surface atlas sprites and
-both generated item meshes. This verifies baking, not subjective visual quality.
+for all 32 states, seven six-faced cuboids, particle/surface atlas sprites and
+the item mesh. This verifies baking, not subjective visual quality.
 
 The generator and these newly authored outputs follow GPL-3.0-only, like the
 repository's code. Historical `LICENSE` terms and upstream credit remain intact.

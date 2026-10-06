@@ -1,131 +1,67 @@
 {
   "variants": {
-    "portal=false,rotation=0": {
+    "rotation=0": {
       "model": "etched:block/radio",
       "y": 180
     },
-    "portal=false,rotation=1": {
+    "rotation=1": {
       "model": "etched:block/radio_675",
       "y": 180
     },
-    "portal=false,rotation=2": {
+    "rotation=2": {
       "model": "etched:block/radio_45",
       "y": 270
     },
-    "portal=false,rotation=3": {
+    "rotation=3": {
       "model": "etched:block/radio_225",
       "y": 270
     },
-    "portal=false,rotation=4": {
+    "rotation=4": {
       "model": "etched:block/radio",
       "y": 270
     },
-    "portal=false,rotation=5": {
+    "rotation=5": {
       "model": "etched:block/radio_675",
       "y": 270
     },
-    "portal=false,rotation=6": {
+    "rotation=6": {
       "model": "etched:block/radio_45",
       "y": 0
     },
-    "portal=false,rotation=7": {
+    "rotation=7": {
       "model": "etched:block/radio_225",
       "y": 0
     },
-    "portal=false,rotation=8": {
+    "rotation=8": {
       "model": "etched:block/radio",
       "y": 0
     },
-    "portal=false,rotation=9": {
+    "rotation=9": {
       "model": "etched:block/radio_675",
       "y": 0
     },
-    "portal=false,rotation=10": {
+    "rotation=10": {
       "model": "etched:block/radio_45",
       "y": 90
     },
-    "portal=false,rotation=11": {
+    "rotation=11": {
       "model": "etched:block/radio_225",
       "y": 90
     },
-    "portal=false,rotation=12": {
+    "rotation=12": {
       "model": "etched:block/radio",
       "y": 90
     },
-    "portal=false,rotation=13": {
+    "rotation=13": {
       "model": "etched:block/radio_675",
       "y": 90
     },
-    "portal=false,rotation=14": {
+    "rotation=14": {
       "model": "etched:block/radio_45",
       "y": 180
     },
-    "portal=false,rotation=15": {
+    "rotation=15": {
       "model": "etched:block/radio_225",
-      "y": 180
-    },
-    "portal=true,rotation=0": {
-      "model": "etched:block/portal_radio",
-      "y": 180
-    },
-    "portal=true,rotation=1": {
-      "model": "etched:block/portal_radio_675",
-      "y": 180
-    },
-    "portal=true,rotation=2": {
-      "model": "etched:block/portal_radio_45",
-      "y": 270
-    },
-    "portal=true,rotation=3": {
-      "model": "etched:block/portal_radio_225",
-      "y": 270
-    },
-    "portal=true,rotation=4": {
-      "model": "etched:block/portal_radio",
-      "y": 270
-    },
-    "portal=true,rotation=5": {
-      "model": "etched:block/portal_radio_675",
-      "y": 270
-    },
-    "portal=true,rotation=6": {
-      "model": "etched:block/portal_radio_45",
-      "y": 0
-    },
-    "portal=true,rotation=7": {
-      "model": "etched:block/portal_radio_225",
-      "y": 0
-    },
-    "portal=true,rotation=8": {
-      "model": "etched:block/portal_radio",
-      "y": 0
-    },
-    "portal=true,rotation=9": {
-      "model": "etched:block/portal_radio_675",
-      "y": 0
-    },
-    "portal=true,rotation=10": {
-      "model": "etched:block/portal_radio_45",
-      "y": 90
-    },
-    "portal=true,rotation=11": {
-      "model": "etched:block/portal_radio_225",
-      "y": 90
-    },
-    "portal=true,rotation=12": {
-      "model": "etched:block/portal_radio",
-      "y": 90
-    },
-    "portal=true,rotation=13": {
-      "model": "etched:block/portal_radio_675",
-      "y": 90
-    },
-    "portal=true,rotation=14": {
-      "model": "etched:block/portal_radio_45",
-      "y": 180
-    },
-    "portal=true,rotation=15": {
-      "model": "etched:block/portal_radio_225",
       "y": 180
     }
   }

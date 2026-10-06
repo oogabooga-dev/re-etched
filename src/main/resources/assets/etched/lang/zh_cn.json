@@ -15,7 +15,6 @@
   "item.etched.etched_music_disc": "已蚀刻唱片",
   "item.etched.etched_music_disc.album": "（专辑）",
   "item.etched.music_label": "音乐标签",
-  "item.etched.portal_radio": "便携收音机",
   "record.etched.downloadFail": "下载失败：%s",
   "record.etched.downloadProgress": "正在下载(%s MB / %s MB)：%s",
   "record.etched.loading": "正在加载 %s",

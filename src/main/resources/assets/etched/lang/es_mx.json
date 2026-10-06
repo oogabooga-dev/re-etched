@@ -15,7 +15,6 @@
   "item.etched.etched_music_disc": "Disco de música grabado",
   "item.etched.etched_music_disc.album": "(Álbum)",
   "item.etched.music_label": "Sello musical",
-  "item.etched.portal_radio": "Portal de radio",
   "record.etched.downloadFail": "No se pudo descargar %s",
   "record.etched.downloadProgress": "Descargando (%s MB / %s MB): %s",
   "record.etched.loading": "Cargando %s",

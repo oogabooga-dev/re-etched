@@ -42,7 +42,6 @@ public class RadioBlock extends BaseEntityBlock {
 
     public static final IntegerProperty ROTATION = BlockStateProperties.ROTATION_16;
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
-    public static final BooleanProperty PORTAL = BooleanProperty.create("portal");
     private static final VoxelShape X_SHAPE = Block.box(5.0D, 0.0D, 2.0D, 11.0D, 8.0D, 14.0D);
     private static final VoxelShape Z_SHAPE = Block.box(2.0D, 0.0D, 5.0D, 14.0D, 8.0D, 11.0D);
     private static final VoxelShape ROTATED_SHAPE = Block.box(3.0D, 0.0D, 3.0D, 13.0D, 8.0D, 13.0D);
@@ -50,21 +49,13 @@ public class RadioBlock extends BaseEntityBlock {
 
     public RadioBlock(Properties properties) {
         super(properties);
-        this.registerDefaultState(this.stateDefinition.any().setValue(ROTATION, 0).setValue(POWERED, false).setValue(PORTAL, false));
+        this.registerDefaultState(this.stateDefinition.any().setValue(ROTATION, 0).setValue(POWERED, false));
     }
 
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand interactionHand, BlockHitResult blockHitResult) {
         if (level.isClientSide()) {
             RadioClientBridge.openMenu(level, pos);
-            return InteractionResult.SUCCESS;
-        }
-        ItemStack stack = player.getItemInHand(interactionHand);
-        if (stack.getItem() == Items.CAKE && !state.getValue(PORTAL)) {
-            if (!player.isCreative()) {
-                stack.shrink(1);
-            }
-            level.setBlock(pos, state.setValue(PORTAL, true), 3);
             return InteractionResult.SUCCESS;
         }
         player.openMenu(state.getMenuProvider(level, pos)).ifPresent(containerId -> {
@@ -154,7 +145,7 @@ public class RadioBlock extends BaseEntityBlock {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(ROTATION, POWERED, PORTAL);
+        builder.add(ROTATION, POWERED);
     }
 
     @Override
@@ -164,7 +155,7 @@ public class RadioBlock extends BaseEntityBlock {
 
     @Override
     public ItemStack getCloneItemStack(BlockGetter level, BlockPos pos, BlockState state) {
-        return new ItemStack(state.getValue(PORTAL) ? EtchedBlocks.PORTAL_RADIO_ITEM.get() : EtchedBlocks.RADIO.get());
+        return new ItemStack(EtchedBlocks.RADIO.get());
     }
 
     @Override

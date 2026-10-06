@@ -23,14 +23,16 @@ inherited models, textures, sounds, translations, and data files as
 reserved while their status is clarified. Re-Etched does not claim ownership
 of them, and this notice does not grant additional rights to them.
 
-Stage 9 independently replaces resources in bounded slices. The Radio and Portal
-Radio block/item visuals listed in `assets-src/radio/manifest.json` are new
+Stage 9 independently replaces resources in bounded slices. The ordinary Radio
+block/item visuals listed in `assets-src/radio/manifest.json` are new
 AI-assisted procedural designs generated from numeric primitives, not edits of
 upstream art. Their generator, design notes and exact current hashes are in
-`scripts/generate-radio-assets.py` and `assets-src/radio/`. Those newly authored
+`scripts/generate-radio-models.py` and `assets-src/radio/`. Those newly authored
 outputs follow GPL-3.0-only. This exception applies only to the manifest's current
 files/hashes, not earlier versions, radio GUI/data/translations or other inherited
 resources. The replacement-resource audit and publication gate remain open.
+The maintainer has not accepted the remaining procedural PNGs for release and is
+preparing hand-drawn replacements. The current generator never writes image files.
 
 The Re-Etched logo and icon are original fork branding and are not inherited
 from Etched. They were drawn manually in GIMP by the Re-Etched maintainer,

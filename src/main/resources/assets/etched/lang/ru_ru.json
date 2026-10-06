@@ -15,7 +15,6 @@
   "item.etched.etched_music_disc": "Гравированная пластинка",
   "item.etched.etched_music_disc.album": "(Альбом)",
   "item.etched.music_label": "Ярлык",
-  "item.etched.portal_radio": "Радио Portal",
   "record.etched.downloadFail": "Не удалось загрузить %s",
   "record.etched.downloadProgress": "Загружается (%s MB / %s MB): %s",
   "record.etched.loading": "Загрузка %s",

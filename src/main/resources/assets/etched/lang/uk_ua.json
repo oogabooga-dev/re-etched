@@ -15,7 +15,6 @@
   "item.etched.etched_music_disc": "Гравійована платівка",
   "item.etched.etched_music_disc.album": "(Альбом)",
   "item.etched.music_label": "Музична етикетка",
-  "item.etched.portal_radio": "Портальне радіо",
   "record.etched.downloadFail": "Помилка завантеження %s",
   "record.etched.downloadProgress": "Завантаження (%s МБ / %s МБ): %s",
   "record.etched.loading": "Завантаження %s",

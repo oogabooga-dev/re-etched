@@ -16,14 +16,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.GrindstoneEvent;
-import net.minecraftforge.event.entity.EntityTravelToDimensionEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
@@ -70,7 +67,6 @@ public class Etched {
         context.registerConfig(ModConfig.Type.SERVER, serverSpec);
 
         MinecraftForge.EVENT_BUS.addListener(Etched::onGrindstoneChange);
-        MinecraftForge.EVENT_BUS.addListener(Etched::onItemChangedDimension);
     }
 
     private static void init(FMLCommonSetupEvent event) {
@@ -141,21 +137,6 @@ public class Etched {
             result.setCount(1);
             AlbumCoverItem.setCover(result, ItemStack.EMPTY);
             event.setOutput(result);
-        }
-    }
-
-    private static void onItemChangedDimension(EntityTravelToDimensionEvent event) {
-        if (event.getEntity() instanceof ItemEntity entity) {
-            if (event.getDimension() == Level.NETHER) {
-                ItemStack oldStack = entity.getItem();
-                if (oldStack.getItem() != EtchedBlocks.RADIO.get().asItem()) {
-                    return;
-                }
-
-                ItemStack newStack = new ItemStack(EtchedBlocks.PORTAL_RADIO_ITEM.get(), oldStack.getCount());
-                newStack.setTag(oldStack.getTag());
-                entity.setItem(newStack);
-            }
         }
     }
 }

@@ -15,7 +15,6 @@
   "item.etched.etched_music_disc": "Disco musicale inciso",
   "item.etched.etched_music_disc.album": "(Album)",
   "item.etched.music_label": "Etichetta musicale",
-  "item.etched.portal_radio": "Radio Portale",
   "record.etched.downloadFail": "Impossibile scaricare %s",
   "record.etched.downloadProgress": "Scaricando (%s MB / %s MB): %s",
   "record.etched.resolvingTracks": "Risolvendo i brani...",

@@ -22,21 +22,36 @@ class RadioAssetsTest {
     private static final Set<String> DIRECTIONS = Set.of("down", "up", "north", "south", "west", "east");
 
     @Test
-    void provenancePinsExactlyTheSeventeenReplacedResources() throws Exception {
+    void ordinaryRadioLootHasNoConditionalReplacement() throws IOException {
+        var loot = json(Path.of("src/main/resources/data/etched/loot_tables/blocks/radio.json"));
+        var pools = loot.getAsJsonArray("pools");
+        assertEquals(1, pools.size());
+        var pool = pools.get(0).getAsJsonObject();
+        assertEquals(1, pool.get("rolls").getAsInt());
+        var entries = pool.getAsJsonArray("entries");
+        assertEquals(1, entries.size());
+        var entry = entries.get(0).getAsJsonObject();
+        assertEquals(Set.of("type", "name"), entry.keySet());
+        assertEquals("minecraft:item", entry.get("type").getAsString());
+        assertEquals("etched:radio", entry.get("name").getAsString());
+        assertEquals("minecraft:survives_explosion", pool.getAsJsonArray("conditions").get(0)
+                .getAsJsonObject().get("condition").getAsString());
+    }
+
+    @Test
+    void provenancePinsExactlyTheNineRetainedResources() throws Exception {
         var manifest = json(Path.of("assets-src/radio/manifest.json"));
         assertEquals(1, manifest.get("schema").getAsInt());
         assertEquals("GPL-3.0-only", manifest.get("license").getAsString());
         Set<String> expected = new HashSet<>();
         expected.add(ASSETS.resolve("blockstates/radio.json").toString());
-        for (String name : new String[]{"radio", "portal_radio"}) {
-            for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
-                expected.add(ASSETS.resolve("models/block/" + name + suffix + ".json").toString());
-            }
-            expected.add(ASSETS.resolve("models/item/" + name + ".json").toString());
-            expected.add(ASSETS.resolve("textures/item/" + name + ".png").toString());
-            expected.add(ASSETS.resolve("textures/block/" + name + ".png").toString());
-            expected.add(ASSETS.resolve("textures/block/" + name + "_particle.png").toString());
+        for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
+            expected.add(ASSETS.resolve("models/block/radio" + suffix + ".json").toString());
         }
+        expected.add(ASSETS.resolve("models/item/radio.json").toString());
+        expected.add(ASSETS.resolve("textures/item/radio.png").toString());
+        expected.add(ASSETS.resolve("textures/block/radio.png").toString());
+        expected.add(ASSETS.resolve("textures/block/radio_particle.png").toString());
         Set<String> actual = new HashSet<>();
         for (var entry : manifest.getAsJsonArray("files")) {
             var file = entry.getAsJsonObject();
@@ -45,40 +60,37 @@ class RadioAssetsTest {
             String sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(Path.of(path))));
             assertEquals(file.get("sha256").getAsString(), sha, path);
         }
-        assertEquals(17, actual.size());
+        assertEquals(9, actual.size());
         assertEquals(expected, actual);
     }
 
     @Test
-    void allPortalRotationAndPoweredStatesResolveToTheCorrectHeading() throws IOException {
+    void allRotationAndPoweredStatesResolveToTheCorrectHeading() throws IOException {
         var variants = json(ASSETS.resolve("blockstates/radio.json")).getAsJsonObject("variants");
-        assertEquals(32, variants.size());
-        for (boolean portal : new boolean[]{false, true}) {
-            for (int rotation = 0; rotation < 16; rotation++) {
-                for (boolean powered : new boolean[]{false, true}) {
-                    var state = java.util.Map.of("portal", String.valueOf(portal),
-                            "rotation", String.valueOf(rotation), "powered", String.valueOf(powered));
-                    var matches = variants.entrySet().stream().filter(entry -> {
-                        for (String property : entry.getKey().split(",")) {
-                            String[] pair = property.split("=");
-                            if (!pair[1].equals(state.get(pair[0]))) {
-                                return false;
-                            }
+        assertEquals(16, variants.size());
+        for (int rotation = 0; rotation < 16; rotation++) {
+            for (boolean powered : new boolean[]{false, true}) {
+                var state = java.util.Map.of("rotation", String.valueOf(rotation), "powered", String.valueOf(powered));
+                var matches = variants.entrySet().stream().filter(entry -> {
+                    for (String property : entry.getKey().split(",")) {
+                        String[] pair = property.split("=");
+                        if (!pair[1].equals(state.get(pair[0]))) {
+                            return false;
                         }
-                        return true;
-                    }).toList();
-                    assertEquals(1, matches.size(), state.toString());
-                    var variant = matches.get(0).getValue().getAsJsonObject();
-                    String id = variant.get("model").getAsString();
-                    assertTrue(id.startsWith("etched:block/" + (portal ? "portal_radio" : "radio")));
-                    int y = variant.get("y").getAsInt();
-                    assertTrue(Set.of(0, 90, 180, 270).contains(y));
-                    var model = json(ASSETS.resolve("models/" + id.substring("etched:".length()) + ".json"));
-                    for (var value : model.getAsJsonArray("elements")) {
-                        var element = value.getAsJsonObject();
-                        double angle = element.has("rotation") ? element.getAsJsonObject("rotation").get("angle").getAsDouble() : 0;
-                        assertEquals((180 + rotation * 22.5) % 360, (y - angle + 360) % 360, 0.001);
                     }
+                    return true;
+                }).toList();
+                assertEquals(1, matches.size(), state.toString());
+                var variant = matches.get(0).getValue().getAsJsonObject();
+                String id = variant.get("model").getAsString();
+                assertTrue(id.startsWith("etched:block/radio"));
+                int y = variant.get("y").getAsInt();
+                assertTrue(Set.of(0, 90, 180, 270).contains(y));
+                var model = json(ASSETS.resolve("models/" + id.substring("etched:".length()) + ".json"));
+                for (var value : model.getAsJsonArray("elements")) {
+                    var element = value.getAsJsonObject();
+                    double angle = element.has("rotation") ? element.getAsJsonObject("rotation").get("angle").getAsDouble() : 0;
+                    assertEquals((180 + rotation * 22.5) % 360, (y - angle + 360) % 360, 0.001);
                 }
             }
         }
@@ -87,28 +99,26 @@ class RadioAssetsTest {
     @Test
     @SuppressWarnings("deprecation") // Inspect the vanilla JSON element list, not a Forge custom geometry loader.
     void minecraftParsesEveryModelAndAllTextureReferencesExist() throws IOException {
-        for (String name : new String[]{"radio", "portal_radio"}) {
-            for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
-                Path path = ASSETS.resolve("models/block/" + name + suffix + ".json");
-                assertEquals(7, BlockModel.fromString(Files.readString(path)).getElements().size());
-                var model = json(path);
-                assertEquals("minecraft:block/block", model.get("parent").getAsString());
-                for (var texture : model.getAsJsonObject("textures").entrySet()) {
-                    String id = texture.getValue().getAsString();
-                    assertTrue(id.startsWith("etched:block/"));
-                    assertTrue(Files.isRegularFile(ASSETS.resolve("textures/" + id.substring(7) + ".png")), id);
-                }
+        for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
+            Path path = ASSETS.resolve("models/block/radio" + suffix + ".json");
+            assertEquals(7, BlockModel.fromString(Files.readString(path)).getElements().size());
+            var model = json(path);
+            assertEquals("minecraft:block/block", model.get("parent").getAsString());
+            for (var texture : model.getAsJsonObject("textures").entrySet()) {
+                String id = texture.getValue().getAsString();
+                assertTrue(id.startsWith("etched:block/"));
+                assertTrue(Files.isRegularFile(ASSETS.resolve("textures/" + id.substring(7) + ".png")), id);
             }
-            var item = json(ASSETS.resolve("models/item/" + name + ".json"));
-            assertNotNull(BlockModel.fromString(item.toString()));
-            assertEquals("minecraft:item/generated", item.get("parent").getAsString());
-            assertEquals("etched:item/" + name, item.getAsJsonObject("textures").get("layer0").getAsString());
         }
+        var item = json(ASSETS.resolve("models/item/radio.json"));
+        assertNotNull(BlockModel.fromString(item.toString()));
+        assertEquals("minecraft:item/generated", item.get("parent").getAsString());
+        assertEquals("etched:item/radio", item.getAsJsonObject("textures").get("layer0").getAsString());
     }
 
     @Test
     void geometryUsesLegalRotationsCompleteFacesAndFitsAllExistingShapeEnvelopes() throws IOException {
-        for (String name : new String[]{"radio", "portal_radio"}) {
+        for (String name : new String[]{"radio"}) {
             for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
                 var model = json(ASSETS.resolve("models/block/" + name + suffix + ".json"));
                 for (var value : model.getAsJsonArray("elements")) {
@@ -159,8 +169,8 @@ class RadioAssetsTest {
     }
 
     @Test
-    void texturesHaveExpectedSizesAndAlphaWithoutReusingTheOtherFinish() throws IOException {
-        for (String name : new String[]{"radio", "portal_radio"}) {
+    void texturesHaveExpectedSizesAndAlpha() throws IOException {
+        for (String name : new String[]{"radio"}) {
             for (String path : new String[]{"block/" + name, "block/" + name + "_particle", "item/" + name}) {
                 var image = ImageIO.read(ASSETS.resolve("textures/" + path + ".png").toFile());
                 assertNotNull(image, path);
@@ -185,8 +195,6 @@ class RadioAssetsTest {
                 assertTrue(colors.size() >= 3);
             }
         }
-        assertFalse(java.util.Arrays.equals(Files.readAllBytes(ASSETS.resolve("textures/block/radio.png")),
-                Files.readAllBytes(ASSETS.resolve("textures/block/portal_radio.png"))));
     }
 
     private static JsonObject json(Path path) throws IOException {

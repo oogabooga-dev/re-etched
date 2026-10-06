@@ -15,7 +15,6 @@
   "item.etched.etched_music_disc": "エッチングされたレコード",
   "item.etched.etched_music_disc.album": "(アルバム)",
   "item.etched.music_label": "レコードラベル",
-  "item.etched.portal_radio": "ポータルラジオ",
   "record.etched.downloadFail": "%s のダウンロードに失敗",
   "record.etched.downloadProgress": "ダウンロード中 (%s MB / %s MB): %s",
   "record.etched.loading": "%s を読込中",
