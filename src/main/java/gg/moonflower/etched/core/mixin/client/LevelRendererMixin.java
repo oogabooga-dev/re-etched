@@ -12,6 +12,7 @@ import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.RecordItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
@@ -56,7 +57,9 @@ public abstract class LevelRendererMixin {
         }
         boolean hasRecord = JukeboxPlayback.hasRecord(this.level.getBlockState(pos));
         JukeboxPlayback.levelEvent(this.level.dimension(), event, pos, data, hasRecord);
-        if (event == 1010 && !hasRecord) {
+        if (event == 1010 && (!hasRecord || !(Item.byId(data) instanceof RecordItem))) {
+            // Custom starts are applied by their authoritative packet, not this unrevisioned sound event.
+            // In particular a duplicate/stale event must not retire the current session before revision admission.
             ci.cancel();
         }
     }

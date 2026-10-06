@@ -1,10 +1,10 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.common.audio.PlaybackRevision;
-import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.item.RecordContentResolver;
+import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
@@ -22,6 +22,7 @@ import java.util.Optional;
 public final class JukeboxPlayback {
 
     private static final JukeboxStartGate STARTS = new JukeboxStartGate();
+    private static final JukeboxRevisionGate REVISIONS = new JukeboxRevisionGate();
 
     private JukeboxPlayback() {
     }
@@ -55,22 +56,40 @@ public final class JukeboxPlayback {
         }
     }
 
-    public static boolean acceptPacket(ResourceKey<Level> dimension, BlockPos pos, int itemId) {
-        return STARTS.consume(PlaybackOwnerKey.block(dimension, pos), itemId);
+    public static boolean acceptPacket(ClientboundPlayMusicPacket packet, boolean hasRecord) {
+        return acceptPacket(STARTS, REVISIONS, packet, hasRecord);
     }
 
-    public static boolean startProgram(BlockPos pos, AudioProgram program) {
-        var level = Minecraft.getInstance().level;
-        if (level == null || !hasRecord(level.getBlockState(pos))) {
+    static boolean acceptPacket(JukeboxStartGate starts, JukeboxRevisionGate revisions,
+                                ClientboundPlayMusicPacket packet, boolean hasRecord) {
+        PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
+        if (!packet.isStop() && (!starts.consume(key, packet.itemId()) || !hasRecord)) {
             return false;
         }
-        return apply(AudioPlaybackManager.getInstance(), PlaybackOwnerKey.block(level.dimension(), pos), new RecordContent(program));
+        return revisions.accept(key, packet.revision());
     }
 
+    /** Called only after ticket/revision admission, including disabled unsupported replacements and stops. */
+    public static void applyPacket(ClientboundPlayMusicPacket packet) {
+        applyPacket(AudioPlaybackManager.getInstance(), packet);
+    }
+
+    static void applyPacket(AudioPlaybackManager manager, ClientboundPlayMusicPacket packet) {
+        PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
+        // Native event playback still uses local revisions until its separate migration.
+        manager.remove(key);
+        if (!packet.isStop() && packet.program().isPresent()) {
+            manager.update(key, packet.state());
+        }
+    }
+
+    /** World/logout cleanup clears both pending event tickets and revision tombstones. */
     public static void clearPendingStarts() {
         STARTS.clearAll();
+        REVISIONS.clearAll();
     }
 
+    /** Native disc events retain their local ordering until the native-owner synchronization slice. */
     static boolean apply(AudioPlaybackManager manager, PlaybackOwnerKey key, RecordContent content) {
         long revision = manager.getPlaybackState(key).map(PlaybackState::revision)
                 .map(PlaybackRevision::next).orElse(0L);

@@ -33,33 +33,45 @@ class ClientboundPlayMusicPacketTest {
     @Test
     void roundTripsDimensionPositionDiscriminatorAndOrderedFiniteContent() {
         var program = new AudioProgram(AudioProgram.Kind.FINITE, List.of(local(), remote("https://audio.example/a.mp3")));
-        var packet = new ClientboundPlayMusicPacket(Level.NETHER, new BlockPos(-12, 64, 345), 42, Optional.of(program));
+        var packet = new ClientboundPlayMusicPacket(Level.NETHER, new BlockPos(-12, 64, 345), 42, 42L, Optional.of(program));
         assertEquals(packet, decode(encode(packet)));
-        assertEquals(new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 0, Optional.empty()),
-                decode(encode(new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 0, Optional.empty()))));
+        for (long revision : List.of(0L, Long.MIN_VALUE, Long.MAX_VALUE)) {
+            var stop = ClientboundPlayMusicPacket.stopped(Level.OVERWORLD, BlockPos.ZERO, revision);
+            assertEquals(stop, decode(encode(stop)));
+            assertTrue(stop.isStop());
+            assertFalse(stop.state().enabled());
+            assertEquals(revision, stop.state().revision());
+        }
+        assertFalse(packet.isStop());
+        assertTrue(packet.state().enabled());
     }
 
     @Test
     void payloadIgnoresInventoryCosmeticAndArbitraryNbtAndSnapshotsMutablePositions() {
         ItemStack disc = new ItemStack(Items.MUSIC_DISC_CAT);
         var pos = new BlockPos.MutableBlockPos(1, 2, 3);
-        var plain = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, disc);
+        var plain = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, 1L, disc);
         disc.getOrCreateTag().putString("Unrelated", "x".repeat(100_000));
-        var decorated = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, disc);
+        var decorated = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, 1L, disc);
         assertArrayEquals(encode(plain), encode(decorated));
         pos.set(4, 5, 6);
         assertEquals(new BlockPos(1, 2, 3), plain.pos());
         assertTrue(encode(decorated).length < 256);
-        assertTrue(ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, new ItemStack(Items.PAPER)).program().isEmpty());
+        var unsupported = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 2L, new ItemStack(Items.PAPER));
+        assertTrue(unsupported.program().isEmpty());
+        assertFalse(unsupported.isStop());
+        assertFalse(unsupported.state().enabled());
     }
 
     @Test
     void modelRejectsLiveProgramsNegativeDiscriminatorsAndOversizeDimensions() {
         var live = new AudioProgram(AudioProgram.Kind.LIVE, List.of(remote("https://radio.example/live")));
-        assertThrows(IllegalArgumentException.class, () -> new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 1, Optional.of(live)));
-        assertThrows(IllegalArgumentException.class, () -> new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, -1, Optional.empty()));
+        assertThrows(IllegalArgumentException.class, () -> new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 1, 1L, Optional.of(live)));
+        assertThrows(IllegalArgumentException.class, () -> new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, -1, 1L, Optional.empty()));
+        assertThrows(IllegalArgumentException.class, () -> new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 0, 1L,
+                Optional.of(new AudioProgram(AudioProgram.Kind.FINITE, List.of(local())))));
         assertThrows(IllegalArgumentException.class, () -> new ClientboundPlayMusicPacket(ResourceKey.create(Registries.DIMENSION,
-                ResourceLocation.parse("test:" + "x".repeat(256))), BlockPos.ZERO, 1, Optional.empty()));
+                ResourceLocation.parse("test:" + "x".repeat(256))), BlockPos.ZERO, 1, 1L, Optional.empty()));
     }
 
     @Test
@@ -69,7 +81,7 @@ class ClientboundPlayMusicPacketTest {
         var maximumText = new AudioProgram(AudioProgram.Kind.FINITE, Collections.nCopies(8,
                 remote("https://audio.example/" + "x".repeat(AudioTrack.MAX_REMOTE_SOURCE_LENGTH - 22))));
         for (AudioProgram program : List.of(maximumCount, maximumText)) {
-            var packet = new ClientboundPlayMusicPacket(dimension, BlockPos.ZERO, Integer.MAX_VALUE, Optional.of(program));
+            var packet = new ClientboundPlayMusicPacket(dimension, BlockPos.ZERO, Integer.MAX_VALUE, 1L, Optional.of(program));
             assertEquals(packet, decode(encode(packet)));
         }
     }
@@ -80,6 +92,10 @@ class ClientboundPlayMusicPacketTest {
         assertRejected(buf -> { buf.writeUtf("test:" + "x".repeat(256)); });
         assertRejected(buf -> header(buf, -1, 0));
         assertRejected(buf -> header(buf, 1, 2));
+        assertRejected(buf -> {
+            header(buf, 0, 1);
+            AudioProgramPacketCodec.write(buf, new AudioProgram(AudioProgram.Kind.FINITE, List.of(local())));
+        });
         assertRejected(buf -> {
             header(buf, 1, 1);
             AudioProgramPacketCodec.write(buf, new AudioProgram(AudioProgram.Kind.LIVE, List.of(remote("https://radio.example/live"))));
@@ -121,7 +137,7 @@ class ClientboundPlayMusicPacketTest {
 
     @Test
     void everyTruncatedPayloadFailsAndLegacyItemNbtLayoutIsNotAccepted() {
-        var packet = new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 1,
+        var packet = new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO, 1, 1L,
                 Optional.of(new AudioProgram(AudioProgram.Kind.FINITE, List.of(local()))));
         byte[] encoded = encode(packet);
         for (int length = 0; length < encoded.length; length++) {
@@ -140,7 +156,7 @@ class ClientboundPlayMusicPacketTest {
     }
 
     private static void header(FriendlyByteBuf buf, int itemId, int present) {
-        buf.writeUtf("minecraft:overworld").writeBlockPos(BlockPos.ZERO).writeVarInt(itemId).writeByte(present);
+        buf.writeUtf("minecraft:overworld").writeBlockPos(BlockPos.ZERO).writeVarInt(itemId).writeLong(1L).writeByte(present);
     }
 
     private static byte[] encode(ClientboundPlayMusicPacket packet) {

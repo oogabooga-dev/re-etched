@@ -1,12 +1,16 @@
 package gg.moonflower.etched.core.mixin;
 
 import gg.moonflower.etched.common.item.JukeboxRecordSupport;
+import gg.moonflower.etched.common.audio.ServerPlaybackClock;
 import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
@@ -22,6 +26,7 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -29,6 +34,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(JukeboxBlockEntity.class)
 public abstract class JukeboxBlockEntityMixin extends BlockEntity implements ContainerSingleItem {
+
+    @Unique
+    private boolean etched$customPlaying;
 
     @Shadow
     @Final
@@ -56,12 +64,48 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
         super(type, pos, blockState);
     }
 
+    @Inject(method = "startPlaying", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;levelEvent(Lnet/minecraft/world/entity/player/Player;ILnet/minecraft/core/BlockPos;I)V"))
+    private void etched$publishCustomBlockState(CallbackInfo ci) {
+        if (!this.getFirstItem().isEmpty() && !(this.getFirstItem().getItem() instanceof RecordItem)
+                && this.level instanceof ServerLevel serverLevel) {
+            BlockPos pos = this.getBlockPos();
+            // Chunk block updates are batched, but 1010 and the program packet are sent immediately.
+            // Preserve HAS_RECORD admission by putting its current state first on the same connection.
+            serverLevel.getServer().getPlayerList().broadcast(null, pos.getX(), pos.getY(), pos.getZ(),
+                    64, serverLevel.dimension(), new ClientboundBlockUpdatePacket(serverLevel, pos));
+        }
+    }
+
     @Inject(method = "startPlaying", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;levelEvent(Lnet/minecraft/world/entity/player/Player;ILnet/minecraft/core/BlockPos;I)V", shift = At.Shift.AFTER))
     public void startPlaying(CallbackInfo ci) {
-        if (!(this.getFirstItem().getItem() instanceof RecordItem)) {
+        this.etched$customPlaying = !this.getFirstItem().isEmpty() && !(this.getFirstItem().getItem() instanceof RecordItem);
+        if (this.etched$customPlaying && this.level instanceof ServerLevel serverLevel) {
             BlockPos pos = this.getBlockPos();
-            EtchedMessages.PLAY.send(PacketDistributor.NEAR.with(() -> new PacketDistributor.TargetPoint(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64, this.level.dimension())), ClientboundPlayMusicPacket.fromRecord(this.level.dimension(), pos, this.getFirstItem()));
+            this.etched$sendState(ClientboundPlayMusicPacket.fromRecord(serverLevel.dimension(), pos,
+                    ServerPlaybackClock.get(serverLevel).next(), this.getFirstItem()));
         }
+    }
+
+    @Inject(method = "stopPlaying", at = @At("TAIL"))
+    private void etched$stopPlaying(CallbackInfo ci) {
+        if (this.etched$customPlaying && this.level instanceof ServerLevel serverLevel) {
+            this.etched$sendState(ClientboundPlayMusicPacket.stopped(serverLevel.dimension(), this.getBlockPos(),
+                    ServerPlaybackClock.get(serverLevel).next()));
+        }
+        this.etched$customPlaying = false;
+    }
+
+    @Inject(method = "load", at = @At("TAIL"))
+    private void etched$restoreCustomPlaying(CompoundTag tag, CallbackInfo ci) {
+        // Removal clears the inventory before stopPlaying. Remember the custom owner across disk restore too.
+        this.etched$customPlaying = this.isRecordPlaying() && !(this.getFirstItem().getItem() instanceof RecordItem);
+    }
+
+    @Unique
+    private void etched$sendState(ClientboundPlayMusicPacket packet) {
+        BlockPos pos = this.getBlockPos();
+        EtchedMessages.PLAY.send(PacketDistributor.NEAR.with(() -> new PacketDistributor.TargetPoint(
+                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64, packet.dimension())), packet);
     }
 
     @Inject(method = "setItem", at = @At("HEAD"), cancellable = true)

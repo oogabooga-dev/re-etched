@@ -28,8 +28,8 @@ public class EtchedClientPlayPacketHandler {
             if (client.level != level) {
                 return;
             }
-            boolean expected = JukeboxPlayback.acceptPacket(pkt.dimension(), pkt.pos(), pkt.itemId());
-            if (!expected || !JukeboxPlayback.hasRecord(level.getBlockState(pkt.pos()))) {
+            boolean expected = JukeboxPlayback.acceptPacket(pkt, JukeboxPlayback.hasRecord(level.getBlockState(pkt.pos())));
+            if (!expected) {
                 return;
             }
             BlockPos pos = pkt.pos();
@@ -42,9 +42,7 @@ public class EtchedClientPlayPacketHandler {
             }
 
             // Unsupported replacements retire the previous owner, never start a second engine.
-            if (!pkt.program().map(program -> JukeboxPlayback.startProgram(pos, program)).orElse(false)) {
-                JukeboxPlayback.stop(pos);
-            }
+            JukeboxPlayback.applyPacket(pkt);
         });
     }
 

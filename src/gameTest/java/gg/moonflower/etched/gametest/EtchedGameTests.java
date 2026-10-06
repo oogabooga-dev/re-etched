@@ -10,6 +10,9 @@ import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
+import gg.moonflower.etched.common.audio.ServerPlaybackClock;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.Level;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedBlocks;
 import gg.moonflower.etched.core.registry.EtchedItems;
@@ -203,7 +206,8 @@ public final class EtchedGameTests {
         JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(jukeboxPos);
         jukebox.setFirstItem(albumCover);
         ClientboundPlayMusicPacket sentPacket =
-                ClientboundPlayMusicPacket.fromRecord(helper.getLevel().dimension(), absoluteJukeboxPos, jukebox.getFirstItem());
+                ClientboundPlayMusicPacket.fromRecord(helper.getLevel().dimension(), absoluteJukeboxPos,
+                        ServerPlaybackClock.get(helper.getLevel()).current(), jukebox.getFirstItem());
 
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
@@ -235,6 +239,55 @@ public final class EtchedGameTests {
         var albumMusic = RecordContentResolver.resolve(album).orElseThrow().program().tracks();
         helper.assertTrue(albumMusic.equals(List.of(vanillaMusic.get(0), custom)),
                 "The mixed Album Cover changed managed metadata or track order");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void customJukeboxStartStopRestoreAndReplacementAdvanceTheServerClock(GameTestHelper helper) {
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        helper.assertTrue(clock == ServerPlaybackClock.get(helper.getLevel().getServer().overworld()),
+                "Playback clocks were not shared with the overworld");
+        var nether = helper.getLevel().getServer().getLevel(Level.NETHER);
+        helper.assertTrue(nether != null && clock == ServerPlaybackClock.get(nether),
+                "Playback clocks were not shared across dimensions");
+        BlockPos pos = BlockPos.ZERO;
+        helper.setBlock(pos, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(pos);
+        ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setContent(disc, content(null, track("server-clock")));
+        long before = clock.current();
+        jukebox.setFirstItem(disc);
+        helper.assertTrue(clock.current() == before + 1L, "Custom start did not allocate exactly one revision");
+
+        CompoundTag saved = jukebox.saveWithoutMetadata();
+        jukebox.removeFirstItem(); // Vanilla clears the inventory before invoking stopPlaying.
+        helper.assertTrue(clock.current() == before + 2L, "Ejection lost the custom owner before allocating its stop");
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 2L, "Repeated empty removal allocated another stop");
+
+        JukeboxBlockEntity restored = new JukeboxBlockEntity(helper.absolutePos(pos), helper.getBlockState(pos));
+        restored.setLevel(helper.getLevel());
+        restored.load(saved);
+        restored.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 3L, "Disk-restored custom owner did not allocate its stop");
+        helper.setBlock(pos, Blocks.AIR);
+        helper.setBlock(pos, Blocks.JUKEBOX);
+        JukeboxBlockEntity replacement = (JukeboxBlockEntity) helper.getBlockEntity(pos);
+        replacement.setFirstItem(disc.copy());
+        helper.assertTrue(clock.current() == before + 4L, "Replacement block entity reset its owner revision");
+        helper.assertTrue(clock.isDirty(), "Playback clock allocations were not marked for persistence");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void nativeJukeboxEventsDoNotAllocateCustomProtocolRevisions(GameTestHelper helper) {
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long before = clock.current();
+        helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(BlockPos.ZERO);
+        jukebox.setFirstItem(new ItemStack(Items.MUSIC_DISC_CAT));
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before, "Native disc events leaked into the custom packet lifecycle");
         helper.succeed();
     }
 

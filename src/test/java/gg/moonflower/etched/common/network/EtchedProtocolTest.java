@@ -177,7 +177,7 @@ class EtchedProtocolTest {
     void roundTripsCurrentBlockMusicCodec() {
         ItemStack record = recordWithCosmetics();
         BlockPos pos = new BlockPos(-12, 64, 345);
-        ClientboundPlayMusicPacket packet = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, record);
+        ClientboundPlayMusicPacket packet = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, 81L, record);
         ClientboundPlayMusicPacket decoded = roundTrip(
                 packet, ClientboundPlayMusicPacket::new);
 
