@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "generator": "scripts/generate-radio-assets.py",
+  "authorship": "AI-assisted procedural design for Re-Etched; no input artwork or model geometry",
+  "license": "GPL-3.0-only",
+  "scope": "Radio/Portal Radio block and item visuals only; GUI, data, language and other resources remain unaudited",
+  "files": [
+    {
+      "path": "src/main/resources/assets/etched/blockstates/radio.json",
+      "sha256": "19c721903f072f2f5bcb494d327a644b619c7789b6319958886429f67db2413a"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/portal_radio.json",
+      "sha256": "8bd678f5c9219377a7d961008ae4191be6c96656fd90f19a23fa01d798d97ef2"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/portal_radio_225.json",
+      "sha256": "169e7a718723f5df4f229817f2560e3dc6fe6e89c3cab36e5929d10e9fac757e"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/portal_radio_45.json",
+      "sha256": "ab63e4ecc14c237aee52d749237af61917281524e6f053e54fc5f2c580e08d22"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/portal_radio_675.json",
+      "sha256": "447b4c80708758b9a67d58f16c8ecb548e40b7f03f03543e3d5e227ab43c15e0"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/radio.json",
+      "sha256": "6887861f7aad1f0cde54fd191ddf713184e21659f1a2d02e987fa85772cc2cbd"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/radio_225.json",
+      "sha256": "81048f30afd096ce76b9c68e22a1e8433974ba08a3c351d5dcb39ebd4ab39a38"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/radio_45.json",
+      "sha256": "8513a903c0041bb57318ef5499b97e5aaa8cf540e862855f8c8cfff6ebb1b349"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/block/radio_675.json",
+      "sha256": "adc848f5bef5d94c0745dd3687b326f28c29f5feec78b0f6be202ca3fae3e10f"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/item/portal_radio.json",
+      "sha256": "fbdbb0e0beeb48eba6e0469ba0c08a5936ff17b032dade6c707218a86021de77"
+    },
+    {
+      "path": "src/main/resources/assets/etched/models/item/radio.json",
+      "sha256": "49853961e2d7d74f355393fccda3368e5b28389234b4105637508f0e68f9d6fe"
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/block/portal_radio.png",
+      "sha256": "78b267a16b5f217f7f38e7aa7c770e6bf02bea167fe8be815660b136af3d6cc0"
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/block/portal_radio_particle.png",
+      "sha256": "b0345ad762081129286e3722ac2e73c65c2f1e7f7622efff733c172beb03dc4d"
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/block/radio.png",
+      "sha256": "b4b70f74cb9d2677e457094349acf4eeeebc45235bd98af517f045509cea3ccb"
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/block/radio_particle.png",
+      "sha256": "c5c307b52f6a4bd0e5a0a7be9c1bab63d32583ccdc95c60a366d63360be16ac4"
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/item/portal_radio.png",
+      "sha256": "cab6c0329697ad0cd54344e142a0d3962878fb896e900538ae2c63dc6bc0c09f"
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/item/radio.png",
+      "sha256": "9fbb9a404c7f718a0ecd6a0bed192ff174425df181f6e17fd62c5c87d68f7393"
+    }
+  ]
+}

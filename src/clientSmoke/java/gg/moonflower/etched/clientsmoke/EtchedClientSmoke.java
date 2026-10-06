@@ -32,6 +32,7 @@ public final class EtchedClientSmoke {
         Minecraft client = Minecraft.getInstance();
         if (!overlayChecked && client.screen instanceof TitleScreen) {
             verifyCoverOverlay();
+            RadioAssetSmoke.verify(client);
             overlayChecked = true;
         }
         if (!PlaybackStopSmoke.tick(client)) {
