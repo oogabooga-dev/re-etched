@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "author": "Re-Etched maintainer",
+  "origin": "hand-drawn in GIMP, as declared by the author",
+  "license": "GPL-3.0-only",
+  "permission": "Maintainer explicitly identified these two files and approved GPL-3.0-only distribution and modification on 2026-10-06",
+  "editable_source": null,
+  "editable_source_status": "Editable GIMP originals have not been supplied in this repository",
+  "files": [
+    {
+      "path": "src/main/resources/re-etched.icon.png",
+      "sha256": "4137359e31501054f5bd49352dc330955902b13a2c4cb7d4abccc1ecb6f807b4",
+      "size": [512, 512]
+    },
+    {
+      "path": "src/main/resources/re-etched.logo.png",
+      "sha256": "1409aa100053e1df702bc9586daab4095102768dd84e062637ce55ac05ad501a",
+      "size": [1024, 256]
+    }
+  ]
+}

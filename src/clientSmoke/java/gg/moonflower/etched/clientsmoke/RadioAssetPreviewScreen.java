@@ -10,6 +10,7 @@ import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 final class RadioAssetPreviewScreen extends Screen {
 
     private int renderedFrames;
+    private final boolean manual = ManualRadioPreviewModels.enabled();
 
     RadioAssetPreviewScreen() {
         super(Component.literal("Manual radio artwork: model preview"));
@@ -31,7 +33,8 @@ final class RadioAssetPreviewScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, this.width, this.height, 0xFF18222C);
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 12, 0xFFFFFF);
-        graphics.drawCenteredString(this.font, "Hand-drawn PNGs / existing AI-assisted geometry", this.width / 2, 26, 0xB9C9D5);
+        graphics.drawCenteredString(this.font, this.manual ? "Maintainer model and textures / technical preview"
+                : "Maintainer model and textures / production radio", this.width / 2, 26, 0xB9C9D5);
         renderModel(graphics, 0, this.width / 4);
         renderModel(graphics, 8, this.width * 3 / 4);
         graphics.drawCenteredString(this.font, "Inventory icon", this.width / 2, this.height - 45, 0xFFFFFF);
@@ -58,8 +61,19 @@ final class RadioAssetPreviewScreen extends Screen {
             pose.mulPose(Axis.YP.rotationDegrees(225));
             pose.translate(-0.5, -0.25, -0.5);
             var state = EtchedBlocks.RADIO.get().defaultBlockState().setValue(RadioBlock.ROTATION, rotation);
-            this.minecraft.getBlockRenderer().renderSingleBlock(state, pose, graphics.bufferSource(),
-                    LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, null);
+            if (this.manual) {
+                // Match production headings 0/8 without changing the authored model coordinates.
+                pose.translate(0.5, 0, 0.5);
+                pose.mulPose(Axis.YP.rotationDegrees(rotation == 0 ? 180 : 0));
+                pose.translate(-0.5, 0, -0.5);
+                this.minecraft.getBlockRenderer().getModelRenderer().renderModel(pose.last(),
+                        graphics.bufferSource().getBuffer(RenderType.solid()), state,
+                        ManualRadioPreviewModels.model(this.minecraft), 1, 1, 1,
+                        LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderType.solid());
+            } else {
+                this.minecraft.getBlockRenderer().renderSingleBlock(state, pose, graphics.bufferSource(),
+                        LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, null);
+            }
             graphics.flush();
         } finally {
             pose.popPose();
@@ -73,7 +87,8 @@ final class RadioAssetPreviewScreen extends Screen {
 
     void capture(Minecraft client) {
         try (NativeImage image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
-            image.writeToFile(Path.of("/tmp/opencode/etched-manual-radio-client-preview.png"));
+            image.writeToFile(Path.of(this.manual ? "/tmp/opencode/etched-maintainer-radio-model-preview.png"
+                    : "/tmp/opencode/etched-maintainer-radio-production-preview.png"));
         } catch (IOException exception) {
             throw new IllegalStateException("Could not save the manual radio model preview", exception);
         }

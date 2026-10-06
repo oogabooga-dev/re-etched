@@ -17,6 +17,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityTravelToDimensionEvent;
 import net.minecraftforge.gametest.GameTestHolder;
@@ -88,6 +89,35 @@ public final class RadioRetirementGameTests {
         helper.assertTrue(entity.getItem() == stack, "A dimension listener replaced the radio stack");
         helper.assertTrue(entity.getItem().save(new net.minecraft.nbt.CompoundTag()).equals(before),
                 "A dimension listener changed radio count or NBT");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty")
+    @SuppressWarnings("deprecation") // Exercise transformed selection and collision hooks on the registered block.
+    public static void manualRadioSelectionAndCollisionPreserveAllPoweredStates(GameTestHelper helper) {
+        var block = EtchedBlocks.RADIO.get();
+        var absolute = helper.absolutePos(new BlockPos(1, 1, 1));
+        for (int rotation = 0; rotation < 16; rotation++) {
+            var state = block.defaultBlockState().setValue(RadioBlock.ROTATION, rotation);
+            var bounds = state.getShape(helper.getLevel(), absolute, CollisionContext.empty()).bounds();
+            helper.assertTrue(bounds.minX >= 0 && bounds.minZ >= 0 && bounds.maxX <= 1 && bounds.maxZ <= 1
+                            && bounds.minY == 0 && bounds.maxY == 6.0 / 16,
+                    "Manual radio selection envelope exceeds its block or has the old height");
+            for (boolean powered : new boolean[]{false, true}) {
+                var poweredState = state.setValue(RadioBlock.POWERED, powered);
+                helper.assertTrue(poweredState.getShape(helper.getLevel(), absolute).bounds().equals(bounds),
+                        "Power state changes the manual radio selection envelope");
+                helper.assertTrue(poweredState.getCollisionShape(helper.getLevel(), absolute).bounds().equals(bounds),
+                        "Manual radio collision differs from selection");
+            }
+        }
+        var south = block.defaultBlockState().setValue(RadioBlock.ROTATION, 0)
+                .getShape(helper.getLevel(), absolute).bounds();
+        var north = block.defaultBlockState().setValue(RadioBlock.ROTATION, 8)
+                .getShape(helper.getLevel(), absolute).bounds();
+        helper.assertTrue(Math.abs(south.maxX - 15.0 / 16) < 0.000001
+                        && Math.abs(north.minX - 1.0 / 16) < 0.000001,
+                "Selection envelope no longer includes the authored side knob at opposite headings");
         helper.succeed();
     }
 }

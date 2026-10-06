@@ -8,10 +8,13 @@ import gg.moonflower.etched.core.registry.EtchedBlocks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraftforge.client.model.data.ModelData;
 
 import java.io.IOException;
@@ -22,6 +25,7 @@ final class RadioAssetSmoke {
     private RadioAssetSmoke() {
     }
 
+    @SuppressWarnings("deprecation") // Compare baked geometry with the runtime block selection hook.
     static void verify(Minecraft client) {
         var block = EtchedBlocks.RADIO.get();
         for (int rotation = 0; rotation < 16; rotation++) {
@@ -34,11 +38,23 @@ final class RadioAssetSmoke {
                         "Wrong/missing particle texture: " + state);
                 require(model.getParticleIcon(ModelData.EMPTY).contents().width() == 16, "Wrong particle width: " + state);
                 var quads = model.getQuads(state, null, RandomSource.create(0), ModelData.EMPTY, null);
-                require(quads.size() == 42, "Expected seven six-faced radio cuboids: " + state);
+                require(quads.size() == 20, "Expected 20 retained faces from four manual radio cuboids: " + state);
+                var bounds = state.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty()).bounds();
                 for (BakedQuad quad : quads) {
                     require(quad.getSprite().contents().name().equals(id("block/radio")),
                             "Wrong/missing atlas surface: " + state);
                     require(quad.getSprite().contents().width() == 32, "Wrong block atlas width: " + state);
+                    var vertices = quad.getVertices();
+                    int stride = vertices.length / 4;
+                    for (int vertex = 0; vertex < 4; vertex++) {
+                        float x = Float.intBitsToFloat(vertices[vertex * stride]);
+                        float y = Float.intBitsToFloat(vertices[vertex * stride + 1]);
+                        float z = Float.intBitsToFloat(vertices[vertex * stride + 2]);
+                        require(x >= bounds.minX - 0.00001 && x <= bounds.maxX + 0.00001
+                                        && y >= bounds.minY - 0.00001 && y <= bounds.maxY + 0.00001
+                                        && z >= bounds.minZ - 0.00001 && z <= bounds.maxZ + 0.00001,
+                                "Baked manual radio vertex outside its selection envelope: " + state);
+                    }
                 }
             }
         }

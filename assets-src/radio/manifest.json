@@ -2,7 +2,8 @@
   "schema": 1,
   "generator": "scripts/generate-radio-models.py",
   "artwork_provenance": "assets-src/radio/artwork.json",
-  "authorship": "Hand-drawn images by Re-Etched maintainer; AI-assisted JSON geometry",
+  "geometry_provenance": "assets-src/radio/geometry.json",
+  "authorship": "Images and Blockbench geometry by Re-Etched maintainer; AI-assisted technical adaptation/tooling",
   "license": "GPL-3.0-only",
   "scope": "Ordinary radio block/item visuals only; other resources and overall publication eligibility remain unaudited",
   "files": [
@@ -12,19 +13,19 @@
     },
     {
       "path": "src/main/resources/assets/etched/models/block/radio.json",
-      "sha256": "6887861f7aad1f0cde54fd191ddf713184e21659f1a2d02e987fa85772cc2cbd"
+      "sha256": "b4e64f7e907f518c2a7ea7629b0896406bea7455f804ca188b2245231795246a"
     },
     {
       "path": "src/main/resources/assets/etched/models/block/radio_225.json",
-      "sha256": "81048f30afd096ce76b9c68e22a1e8433974ba08a3c351d5dcb39ebd4ab39a38"
+      "sha256": "9ad001ba4b9c2c1df603c017fc2818d0660c6ba434fce8869338a7c1a541c63a"
     },
     {
       "path": "src/main/resources/assets/etched/models/block/radio_45.json",
-      "sha256": "8513a903c0041bb57318ef5499b97e5aaa8cf540e862855f8c8cfff6ebb1b349"
+      "sha256": "0c56528d5f30631fa9fabd1ed11d66e51dc79e89725f755324dbe17f20e0b280"
     },
     {
       "path": "src/main/resources/assets/etched/models/block/radio_675.json",
-      "sha256": "adc848f5bef5d94c0745dd3687b326f28c29f5feec78b0f6be202ca3fae3e10f"
+      "sha256": "b39c2983c1020c535ef01c0356cb93bec41a056c1622ce179fa9bd9fcab60bb8"
     },
     {
       "path": "src/main/resources/assets/etched/models/item/radio.json",

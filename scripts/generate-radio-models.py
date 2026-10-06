@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate/check ordinary radio JSON models and provenance, never image pixels.
+"""Adapt/check the maintainer's ordinary radio model and provenance, never pixels.
 
 The hand-drawn PNGs are read only and checked against reviewed artwork provenance.
-This AI-assisted geometry is not a claim of Modrinth publication eligibility.
+Artistic geometry comes from the reviewed Blockbench export, not this tooling.
 """
 
 import argparse
@@ -10,48 +10,39 @@ import hashlib
 import json
 from pathlib import Path
 
+from radio_model_source import load_model
+
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = "src/main/resources/assets/etched/"
 MANIFEST = "assets-src/radio/manifest.json"
 ARTWORK = "assets-src/radio/artwork.json"
+GEOMETRY = "assets-src/radio/geometry.json"
 
 
 def json_bytes(value):
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def element(start, end, tile, angle, front_tile=None):
-    tiles = {"shell": [0, 0, 8, 8], "speaker": [8, 0, 16, 8],
-             "tuner": [0, 8, 8, 16], "knob": [8, 8, 16, 16]}
-    faces = {face: {"uv": tiles[front_tile if face == "north" and front_tile else tile],
-                    "texture": "#surface"}
-             for face in ("down", "up", "north", "south", "west", "east")}
-    result = {"from": start, "to": end, "faces": faces}
+def model(angle):
+    result = load_model(ROOT)
     if angle:
-        result["rotation"] = {"origin": [8, 0, 8], "axis": "y", "angle": angle,
-                              "rescale": False}
+        for element in result["elements"]:
+            element["rotation"] = {"origin": [8, 0, 8], "axis": "y", "angle": angle,
+                                   "rescale": False}
     return result
 
 
-def model(angle):
-    # Unchanged ordinary receiver; dimensions come from RadioBlock's shape envelope.
-    parts = [
-        ([3.5, 1, 6.25], [12.5, 7, 9.75], "shell", None),
-        ([4.5, 7, 6.75], [11.5, 8, 9.25], "shell", None),
-        ([4.25, 0, 6.75], [5.75, 1, 9.25], "shell", None),
-        ([10.25, 0, 6.75], [11.75, 1, 9.25], "shell", None),
-        ([4, 2, 6], [8, 6, 6.25], "shell", "speaker"),
-        ([9, 4.5, 6], [12, 6, 6.25], "shell", "tuner"),
-        ([10, 2, 6], [11.5, 3.5, 6.25], "shell", "knob"),
-    ]
-    return {"parent": "minecraft:block/block", "ambientocclusion": True,
-            "textures": {"particle": "etched:block/radio_particle",
-                         "surface": "etched:block/radio"},
-            "elements": [element(start, end, tile, angle, front) for start, end, tile, front in parts]}
-
-
 def outputs():
+    geometry = json.loads((ROOT / GEOMETRY).read_text(encoding="utf-8"))
+    records = geometry["files"]
+    expected = {"assets-src/radio/manual/radio.bbmodel", "assets-src/radio/manual/radio.json"}
+    if len(records) != 2 or {record["path"] for record in records} != expected:
+        raise ValueError("Geometry provenance must list the reviewed editable project and Java export")
+    for record in records:
+        actual = hashlib.sha256((ROOT / record["path"]).read_bytes()).hexdigest()
+        if actual != record["sha256"]:
+            raise ValueError(f"Model source changed: {record['path']}; review geometry.json before adapting JSON")
     result = {}
     for suffix, angle in (("", 0), ("_225", 22.5), ("_45", 45), ("_675", -22.5)):
         result[ASSETS + f"models/block/radio{suffix}.json"] = json_bytes(model(angle))
@@ -81,7 +72,8 @@ def outputs():
         "schema": 1,
         "generator": "scripts/generate-radio-models.py",
         "artwork_provenance": ARTWORK,
-        "authorship": "Hand-drawn images by Re-Etched maintainer; AI-assisted JSON geometry",
+        "geometry_provenance": GEOMETRY,
+        "authorship": "Images and Blockbench geometry by Re-Etched maintainer; AI-assisted technical adaptation/tooling",
         "license": "GPL-3.0-only",
         "scope": "Ordinary radio block/item visuals only; other resources and overall publication eligibility remain unaudited",
         "files": [{"path": path, "sha256": digest} for path, digest in sorted(files.items())]})

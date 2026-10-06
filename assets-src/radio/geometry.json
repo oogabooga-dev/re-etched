@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "author": "Re-Etched maintainer",
+  "license": "GPL-3.0-only",
+  "permission": "Maintainer explicitly approved GPL-3.0-only distribution and modification of the model and editable project on 2026-10-06",
+  "origin": "manually modeled in Blockbench",
+  "authorship_basis": "Maintainer supplied a new manually assembled model after requesting replacement of the earlier AI-assisted geometry",
+  "editable_source": "assets-src/radio/manual/radio.bbmodel",
+  "java_export": "assets-src/radio/manual/radio.json",
+  "processing": "AI-assisted tooling resolves texture IDs, omits four fully covered unresolved interior faces and mechanically produces the existing rotation variants; authored element coordinates and retained face UVs are unchanged",
+  "removed_faces": ["panel/south", "panel/west", "sound/east", "tune/east"],
+  "files": [
+    {
+      "path": "assets-src/radio/manual/radio.bbmodel",
+      "sha256": "b5d34e23bba7e11622c3e6dca306231ab8051293360072123da195d1625417e2"
+    },
+    {
+      "path": "assets-src/radio/manual/radio.json",
+      "sha256": "e13c7d72b1e75938afdf86c509fde55f0a0a59492e8a2c8ae98cafb077e4ff69"
+    }
+  ]
+}

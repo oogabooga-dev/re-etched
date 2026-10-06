@@ -44,6 +44,7 @@ class RadioAssetsTest {
         assertEquals(1, manifest.get("schema").getAsInt());
         assertEquals("GPL-3.0-only", manifest.get("license").getAsString());
         assertEquals("assets-src/radio/artwork.json", manifest.get("artwork_provenance").getAsString());
+        assertEquals("assets-src/radio/geometry.json", manifest.get("geometry_provenance").getAsString());
         Set<String> expected = new HashSet<>();
         expected.add(ASSETS.resolve("blockstates/radio.json").toString());
         for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
@@ -102,7 +103,7 @@ class RadioAssetsTest {
     void minecraftParsesEveryModelAndAllTextureReferencesExist() throws IOException {
         for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
             Path path = ASSETS.resolve("models/block/radio" + suffix + ".json");
-            assertEquals(7, BlockModel.fromString(Files.readString(path)).getElements().size());
+            assertEquals(4, BlockModel.fromString(Files.readString(path)).getElements().size());
             var model = json(path);
             assertEquals("minecraft:block/block", model.get("parent").getAsString());
             for (var texture : model.getAsJsonObject("textures").entrySet()) {
@@ -118,7 +119,7 @@ class RadioAssetsTest {
     }
 
     @Test
-    void geometryUsesLegalRotationsCompleteFacesAndFitsAllExistingShapeEnvelopes() throws IOException {
+    void geometryUsesLegalRotationsAndValidRetainedFaces() throws IOException {
         for (String name : new String[]{"radio"}) {
             for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
                 var model = json(ASSETS.resolve("models/block/" + name + suffix + ".json"));
@@ -134,35 +135,27 @@ class RadioAssetsTest {
                     if (element.has("rotation")) {
                         var transform = element.getAsJsonObject("rotation");
                         assertEquals("y", transform.get("axis").getAsString());
-                        assertEquals(JsonParser.parseString("[8,0,8]"), transform.get("origin"));
-                        assertFalse(transform.get("rescale").getAsBoolean());
-                        assertTrue(Set.of(-22.5, 22.5, 45.0).contains(transform.get("angle").getAsDouble()));
-                    }
-                    // Cardinal shape: x=2..14,z=5..11; diagonal shape: x/z=3..13.
-                    for (int rotation = 0; rotation < 16; rotation++) {
-                        double angle = Math.toRadians(rotation * 22.5);
-                        double xLimit = rotation % 8 == 0 ? 6 : rotation % 8 == 4 ? 3 : 5;
-                        double zLimit = rotation % 8 == 0 ? 3 : rotation % 8 == 4 ? 6 : 5;
-                        for (double x : new double[]{from.get(0).getAsDouble() - 8, to.get(0).getAsDouble() - 8}) {
-                            for (double z : new double[]{from.get(2).getAsDouble() - 8, to.get(2).getAsDouble() - 8}) {
-                                assertTrue(Math.abs(x * Math.cos(angle) - z * Math.sin(angle)) <= xLimit + 0.001);
-                                assertTrue(Math.abs(x * Math.sin(angle) + z * Math.cos(angle)) <= zLimit + 0.001);
-                            }
+                        double angle = transform.get("angle").getAsDouble();
+                        assertTrue(Set.of(-22.5, 0.0, 22.5, 45.0).contains(angle));
+                        if (angle != 0) {
+                            assertEquals(JsonParser.parseString("[8,0,8]"), transform.get("origin"));
+                            assertFalse(transform.get("rescale").getAsBoolean());
                         }
                     }
                     var faces = element.getAsJsonObject("faces");
-                    assertEquals(DIRECTIONS, faces.keySet());
+                    assertFalse(faces.keySet().isEmpty());
+                    assertTrue(DIRECTIONS.containsAll(faces.keySet()));
                     for (var face : faces.entrySet()) {
                         var data = face.getValue().getAsJsonObject();
-                        assertEquals("#surface", data.get("texture").getAsString());
+                        assertEquals("#0", data.get("texture").getAsString());
                         assertFalse(data.has("cullface"), "Small inset model faces must not be culled against neighbours");
                         var uv = data.getAsJsonArray("uv");
                         assertEquals(4, uv.size());
                         for (var coordinate : uv) {
                             assertTrue(coordinate.getAsDouble() >= 0 && coordinate.getAsDouble() <= 16);
                         }
-                        assertTrue(uv.get(0).getAsDouble() < uv.get(2).getAsDouble());
-                        assertTrue(uv.get(1).getAsDouble() < uv.get(3).getAsDouble());
+                        assertNotEquals(uv.get(0).getAsDouble(), uv.get(2).getAsDouble());
+                        assertNotEquals(uv.get(1).getAsDouble(), uv.get(3).getAsDouble());
                     }
                 }
             }

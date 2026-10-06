@@ -33,6 +33,9 @@ public final class EtchedClientSmoke {
         if (!overlayChecked && client.screen instanceof TitleScreen) {
             verifyCoverOverlay();
             RadioAssetSmoke.verify(client);
+            if (ManualRadioPreviewModels.enabled()) {
+                ManualRadioPreviewModels.verify(client);
+            }
             overlayChecked = true;
         }
         if (!PlaybackStopSmoke.tick(client)) {
@@ -55,7 +58,7 @@ public final class EtchedClientSmoke {
         if (!(client.screen instanceof TitleScreen)) {
             return;
         }
-        if ("1".equals(System.getenv("ETCHED_CLIENT_SMOKE_RADIO_PREVIEW"))) {
+        if ("1".equals(System.getenv("ETCHED_CLIENT_SMOKE_RADIO_PREVIEW")) || ManualRadioPreviewModels.enabled()) {
             client.setScreen(new RadioAssetPreviewScreen());
             return;
         }

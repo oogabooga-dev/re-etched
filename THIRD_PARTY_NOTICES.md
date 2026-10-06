@@ -30,18 +30,28 @@ particle texture is an exact crop of the manual atlas. The maintainer explicitly
 approved GPL-3.0-only distribution and modification on 2026-10-06. Editable
 Aseprite originals have not yet been supplied in the repository.
 
-The radio JSON geometry is separately AI-assisted, generated from numeric
-primitives rather than inherited geometry. Its model-only generator never writes
-PNG files. `assets-src/radio/manifest.json` pins the nine current image/JSON hashes;
-design notes and the generator are in `assets-src/radio/` and
-`scripts/generate-radio-models.py`. These new images and JSONs follow GPL-3.0-only.
+The radio geometry was manually assembled in Blockbench by the maintainer, who
+explicitly approved GPL-3.0-only distribution and modification of the model and
+editable source on 2026-10-06. The unmodified `.bbmodel` and Java export are in
+`assets-src/radio/manual/`, with reviewed hashes in `assets-src/radio/geometry.json`.
+AI-assisted technical tooling resolves texture IDs, removes four fully covered
+unresolved interior faces and creates rotation variants, without redesigning
+authored coordinates or retained UVs. It never writes PNGs. The earlier AI-assisted
+geometry is no longer the current radio model, but remains in Git history.
+`assets-src/radio/manifest.json` pins the nine current image/JSON hashes. Source
+notes and adaptation scripts are in `assets-src/radio/` and `scripts/`.
+These new images and model outputs follow GPL-3.0-only.
 This exception does not cover historical files, radio GUI/data/translations or
 other inherited resources. The replacement-resource audit and publication gate,
-including applicable AI-code/model disclosures and fork review, remain open.
+including applicable AI-code/tooling disclosures and fork review, remain open.
 
 The Re-Etched logo and icon are original fork branding and are not inherited
 from Etched. They were drawn manually in GIMP by the Re-Etched maintainer,
-without generative AI.
+without generative AI. On 2026-10-06 the maintainer explicitly identified
+`src/main/resources/re-etched.icon.png` and `src/main/resources/re-etched.logo.png`
+and approved GPL-3.0-only distribution and modification for both. Their exact
+hashes and dimensions are recorded in `assets-src/branding/manifest.json`.
+Editable GIMP originals have not yet been supplied in this repository.
 
 Original credits retained from Etched:
 

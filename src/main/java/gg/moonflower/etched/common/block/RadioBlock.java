@@ -42,14 +42,47 @@ public class RadioBlock extends BaseEntityBlock {
 
     public static final IntegerProperty ROTATION = BlockStateProperties.ROTATION_16;
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
-    private static final VoxelShape X_SHAPE = Block.box(5.0D, 0.0D, 2.0D, 11.0D, 8.0D, 14.0D);
-    private static final VoxelShape Z_SHAPE = Block.box(2.0D, 0.0D, 5.0D, 14.0D, 8.0D, 11.0D);
-    private static final VoxelShape ROTATED_SHAPE = Block.box(3.0D, 0.0D, 3.0D, 13.0D, 8.0D, 13.0D);
+    private static final VoxelShape[] SHAPES = createShapes();
     private static final Component CONTAINER_TITLE = Component.translatable("container." + Etched.MOD_ID + ".radio");
 
     public RadioBlock(Properties properties) {
         super(properties);
         this.registerDefaultState(this.stateDefinition.any().setValue(ROTATION, 0).setValue(POWERED, false));
+    }
+
+    private static VoxelShape[] createShapes() {
+        // Authored cuboids from assets-src/radio/manual/radio.json, not new geometry.
+        double[][] cuboids = {{2, 0, 5, 14, 6, 9}, {7, 1, 4, 13, 5, 5},
+                {3, 1, 4, 7, 5, 5}, {1, 3, 6, 2, 5, 8}};
+        VoxelShape[] shapes = new VoxelShape[16];
+        for (int rotation = 0; rotation < shapes.length; rotation++) {
+            double angle = Math.toRadians(180 + rotation * 22.5);
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            double minX = Double.POSITIVE_INFINITY;
+            double minY = Double.POSITIVE_INFINITY;
+            double minZ = Double.POSITIVE_INFINITY;
+            double maxX = Double.NEGATIVE_INFINITY;
+            double maxY = Double.NEGATIVE_INFINITY;
+            double maxZ = Double.NEGATIVE_INFINITY;
+            for (double[] cuboid : cuboids) {
+                minY = Math.min(minY, cuboid[1]);
+                maxY = Math.max(maxY, cuboid[4]);
+                for (double x : new double[]{cuboid[0] - 8, cuboid[3] - 8}) {
+                    for (double z : new double[]{cuboid[2] - 8, cuboid[5] - 8}) {
+                        double rotatedX = 8 + x * cos - z * sin;
+                        double rotatedZ = 8 + x * sin + z * cos;
+                        minX = Math.min(minX, rotatedX);
+                        maxX = Math.max(maxX, rotatedX);
+                        minZ = Math.min(minZ, rotatedZ);
+                        maxZ = Math.max(maxZ, rotatedZ);
+                    }
+                }
+            }
+            // Conservative axis-aligned envelope, like the original small block shapes.
+            shapes[rotation] = Block.box(minX, minY, minZ, maxX, maxY, maxZ);
+        }
+        return shapes;
     }
 
     @Override
@@ -108,14 +141,7 @@ public class RadioBlock extends BaseEntityBlock {
 
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext collisionContext) {
-        int rotation = state.getValue(ROTATION);
-        if (rotation % 8 == 0) {
-            return Z_SHAPE;
-        }
-        if (rotation % 8 == 4) {
-            return X_SHAPE;
-        }
-        return ROTATED_SHAPE;
+        return SHAPES[state.getValue(ROTATION)];
     }
 
     @Override
