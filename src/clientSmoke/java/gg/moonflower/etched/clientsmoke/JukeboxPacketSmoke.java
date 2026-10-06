@@ -71,7 +71,8 @@ import java.util.function.Function;
 final class JukeboxPacketSmoke {
 
     private static final String WORLD = "etched-jukebox-smoke-" + UUID.randomUUID();
-    private static final long DEADLINE = System.nanoTime() + 180_000_000_000L;
+    // Includes entity retracking and two additional dimension loads, not just the original one-way transfer.
+    private static final long DEADLINE = System.nanoTime() + 240_000_000_000L;
     private static final ItemStack A = disc("minecraft:music_disc.blocks", "A");
     private static final ItemStack B = disc("minecraft:music_disc.cat", "B");
     private static final ITeleporter SMOKE_TELEPORTER = new ITeleporter() {
@@ -336,6 +337,9 @@ final class JukeboxPacketSmoke {
             if (client.player.getMainHandItem().is(EtchedItems.BOOMBOX.get())
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
                 if (!BoomboxRevisionSmoke.tick(client)) {
+                    return;
+                }
+                if (!OwnerTrackingSmoke.tick(client, pos)) {
                     return;
                 }
                 if (stableHeldState == null) {
