@@ -180,6 +180,28 @@ class TrackMetadataRequestsTest {
     }
 
     @Test
+    void cancellationInsideTheFactoryStillRetiresAPendingFutureWhenItsHookIsRegistered() throws Exception {
+        var scope = new AudioCancellation();
+        // Bound the failure path too: without the late onCancel hook, join must not hang this test forever.
+        var pending = new CompletableFuture<RecordContent>().orTimeout(2, TimeUnit.SECONDS);
+        var calls = new AtomicInteger();
+        try {
+            assertThrows(CancellationException.class, () -> TrackMetadataRequests.await(() -> {
+                calls.incrementAndGet();
+                scope.cancel(); // Deterministically cancel between the initial guard and onCancel registration.
+                return pending;
+            }, scope));
+            assertEquals(1, calls.get());
+            assertTrue(pending.isCancelled());
+            assertFalse(pending.complete(CONTENT));
+            assertEquals(CONTENT, TrackMetadataRequests.await(
+                    () -> CompletableFuture.completedFuture(CONTENT), new AudioCancellation()));
+        } finally {
+            pending.cancel(false);
+        }
+    }
+
+    @Test
     void failureCausesArePreservedAndDoNotPoisonLaterRequests() throws Exception {
         var workers = workers();
         IOException failure = new IOException("fixture provider failure");

@@ -20,14 +20,16 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 import java.io.IOException;
 import java.net.Proxy;
-import java.util.UUID;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @GameTestHolder(Etched.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -212,27 +214,75 @@ public final class EtchingMenuGameTests {
 
     @GameTest(template = "empty", timeoutTicks = 100)
     public static void replacementAndCloseCancelEtchingRequests(GameTestHelper helper) {
+        String firstInput = "https://fixture.bandcamp.com/track/first-" + UUID.randomUUID();
+        String secondInput = "https://fixture.bandcamp.com/track/second-" + UUID.randomUUID();
+        // Bound worker lifetime even if an early GameTest failure stops its delayed cleanup callbacks.
+        var firstMetadata = new CompletableFuture<RecordContent>().orTimeout(10, TimeUnit.SECONDS);
+        var secondMetadata = new CompletableFuture<RecordContent>().orTimeout(10, TimeUnit.SECONDS);
+        var firstStarted = new AtomicInteger();
+        var secondStarted = new AtomicInteger();
+        Proxy expectedProxy = helper.getLevel().getServer().getProxy();
         Player player = helper.makeMockSurvivalPlayer();
-        EtchingMenu menu = new EtchingMenu(1, player.getInventory());
+        EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
+                (uri, proxy, cancellation) -> {
+                    helper.assertTrue(proxy == expectedProxy, "Pending metadata lost the server proxy");
+                    helper.assertFalse(cancellation.isCancelled(), "Metadata started with an already retired token");
+                    if (uri.toString().equals(firstInput)) {
+                        firstStarted.incrementAndGet();
+                        return firstMetadata;
+                    }
+                    helper.assertTrue(uri.toString().equals(secondInput), "Closed menu started unexpected metadata");
+                    secondStarted.incrementAndGet();
+                    return secondMetadata;
+                });
         player.containerMenu = menu;
-        menu.setUrl("minecraft:music_disc.blocks");
+        // The fixture never supplies a successful result before cancellation. Real local resolution can finish
+        // before removed(), in which case an already published result is not evidence of a cancellation failure.
+        menu.setUrl(firstInput);
         menu.getSlot(0).set(new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get()));
         AudioCancellation first = field(menu, "currentCancellation", AudioCancellation.class);
         CompletableFuture<?> firstRequest = field(menu, "currentRequest", CompletableFuture.class);
-
-        menu.setUrl("minecraft:music_disc.cat");
-        helper.assertTrue(first.isCancelled(), "Changing the URL did not cancel the previous request");
-        AudioCancellation second = field(menu, "currentCancellation", AudioCancellation.class);
-        CompletableFuture<?> secondRequest = field(menu, "currentRequest", CompletableFuture.class);
-        helper.assertTrue(second != first && !second.isCancelled(), "Replacement did not get a fresh token");
-
-        menu.removed(player);
-        helper.assertTrue(second.isCancelled(), "Closing the menu did not cancel its request");
-        menu.setUrl("minecraft:music_disc.13");
-        helper.assertTrue(field(menu, "currentCancellation", AudioCancellation.class) == second,
-                "Closed etching menu started another request");
+        var second = new AtomicReference<AudioCancellation>();
+        var secondRequest = new AtomicReference<CompletableFuture<?>>();
+        var replaced = new AtomicBoolean();
+        var closed = new AtomicBoolean();
+        var cleanup = new AtomicBoolean();
+        helper.runAfterDelay(80, () -> {
+            cleanup.set(true); // Cleanup must unblock workers on failure, never make a broken cancellation pass.
+            firstMetadata.cancel(false);
+            secondMetadata.cancel(false);
+            menu.removed(player);
+        });
         helper.succeedWhen(() -> {
-            helper.assertTrue(firstRequest.isDone() && secondRequest.isDone(), "Etching work has not retired yet");
+            helper.assertFalse(cleanup.get(), "Pending metadata fixture expired before cancellation completed");
+            if (!replaced.get()) {
+                helper.assertTrue(firstStarted.get() == 1, "First metadata request has not started exactly once");
+                helper.assertFalse(firstMetadata.isDone() || firstRequest.isDone(), "First request completed before replacement");
+                menu.setUrl(secondInput);
+                helper.assertTrue(first.isCancelled(), "Changing the URL did not cancel the previous request");
+                second.set(field(menu, "currentCancellation", AudioCancellation.class));
+                secondRequest.set(field(menu, "currentRequest", CompletableFuture.class));
+                helper.assertTrue(second.get() != first && !second.get().isCancelled(), "Replacement did not get a fresh token");
+                replaced.set(true);
+            }
+            helper.assertTrue(firstMetadata.isCancelled() && firstRequest.isDone(), "Replacement still waits for retired metadata");
+            helper.assertTrue(secondStarted.get() == 1, "Second metadata request has not started exactly once");
+            if (!closed.get()) {
+                helper.assertFalse(secondMetadata.isDone() || secondRequest.get().isDone(), "Second request completed before close");
+                menu.removed(player);
+                helper.assertTrue(second.get().isCancelled(), "Closing the menu did not cancel its request");
+                menu.setUrl(firstInput);
+                helper.assertTrue(field(menu, "currentCancellation", AudioCancellation.class) == second.get()
+                                && field(menu, "currentRequest", CompletableFuture.class) == secondRequest.get(),
+                        "Closed etching menu started another request");
+                closed.set(true);
+            }
+            helper.assertTrue(secondMetadata.isCancelled() && secondRequest.get().isDone(), "Close still waits for retired metadata");
+            var late = new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                    new AudioTrack(AudioTrack.SourceType.REMOTE, firstInput, "Artist", "Late result"))));
+            helper.assertFalse(firstMetadata.complete(late), "First retired future accepted late metadata");
+            helper.assertFalse(secondMetadata.complete(late), "Second retired future accepted late metadata");
+            helper.assertTrue(firstStarted.get() == 1 && secondStarted.get() == 1, "Closed menu started another metadata lookup");
             helper.assertTrue(menu.getSlot(2).getItem().isEmpty(), "Retired work published an etching result");
         });
     }
