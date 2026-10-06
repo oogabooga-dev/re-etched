@@ -1,11 +1,9 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.RecordContent;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.RecordItem;
@@ -50,8 +48,7 @@ class RecordContentResolverTest {
     @Test
     void malformedDiscContentRejectsTheWholeProgramRatherThanFilteringTracks() {
         ItemStack disc = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(disc, track("https://audio.example/album"),
-                track("https://audio.example/one.mp3"), track("https://audio.example/two.mp3"));
+        EtchedMusicDiscItem.setContent(disc, album());
         disc.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getCompound("Program")
                 .getList("Tracks", net.minecraft.nbt.Tag.TAG_COMPOUND).getCompound(1).putString("Artist", "x".repeat(129));
         assertTrue(RecordContentResolver.fromDisc(disc).isEmpty());
@@ -60,15 +57,18 @@ class RecordContentResolverTest {
     @Test
     void etchedAlbumMetadataDoesNotBecomeAnExtraAudioTrack() {
         ItemStack disc = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(disc, track("https://audio.example/album.mp3"),
-                track("https://audio.example/one.mp3"), track("https://audio.example/two.mp3"));
+        EtchedMusicDiscItem.setContent(disc, album());
 
         var content = RecordContentResolver.fromDisc(disc).orElseThrow();
         assertEquals(2, content.program().tracks().size());
         assertEquals("https://audio.example/album.mp3", content.album().orElseThrow().source());
     }
 
-    private static TrackData track(String url) {
-        return new TrackData(url, "Artist", Component.literal("Title"));
+    private static RecordContent album() {
+        return new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/one.mp3", "Artist", "One"),
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/two.mp3", "Artist", "Two"))),
+                java.util.Optional.of(new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE,
+                        "https://audio.example/album.mp3", "Artist", "Album")));
     }
 }

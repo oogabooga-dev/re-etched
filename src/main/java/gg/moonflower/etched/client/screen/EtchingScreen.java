@@ -1,8 +1,7 @@
 package gg.moonflower.etched.client.screen;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.menu.EtchingMetadata;
 import gg.moonflower.etched.common.item.ComplexMusicLabelItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.MusicLabelItem;
@@ -100,7 +99,7 @@ public class EtchingScreen extends AbstractContainerScreen<EtchingMenu> implemen
             if (this.discStack.isEmpty() && !stack.isEmpty()) {
                 this.url.setValue("");
             }
-            PlayableRecord.getStackAlbum(stack).ifPresent(track -> this.url.setValue(track.url()));
+            EtchedMusicDiscItem.readContent(stack).ifPresent(content -> this.url.setValue(EtchingMetadata.source(content)));
             this.discStack = stack;
         }
 
@@ -140,7 +139,7 @@ public class EtchingScreen extends AbstractContainerScreen<EtchingMenu> implemen
         } else if (!isEtched && this.discStack.isEmpty() && !this.labelStack.isEmpty()) {
             reasonLines.add(CANNOT_CREATE.getVisualOrderText());
             reasonLines.add(CANNOT_CREATE_MISSING_DISC.getVisualOrderText());
-        } else if ((!this.url.getValue().isEmpty() && !TrackData.isValidURL(this.url.getValue())) || !this.invalidReason.isEmpty()) {
+        } else if (!EtchingMenu.isValidUrlSubmission(this.url.getValue()) || !this.invalidReason.isEmpty()) {
             reasonLines.add(INVALID_URL.getVisualOrderText());
             if (!this.invalidReason.isEmpty()) {
                 reasonLines.addAll(this.font.split(Component.literal(this.invalidReason).withStyle(ChatFormatting.GRAY), 200));
@@ -157,7 +156,7 @@ public class EtchingScreen extends AbstractContainerScreen<EtchingMenu> implemen
         this.renderBackground(guiGraphics);
 
         guiGraphics.blit(TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
-        if ((!this.url.getValue().isEmpty() && !TrackData.isValidURL(this.url.getValue())) || !this.invalidReason.isEmpty() || (this.discStack.getItem() != EtchedItems.ETCHED_MUSIC_DISC.get() && ((!this.discStack.isEmpty() && this.labelStack.isEmpty()) || (this.discStack.isEmpty() && !this.labelStack.isEmpty())))) {
+        if (!EtchingMenu.isValidUrlSubmission(this.url.getValue()) || !this.invalidReason.isEmpty() || (this.discStack.getItem() != EtchedItems.ETCHED_MUSIC_DISC.get() && ((!this.discStack.isEmpty() && this.labelStack.isEmpty()) || (this.discStack.isEmpty() && !this.labelStack.isEmpty())))) {
             guiGraphics.blit(TEXTURE, this.leftPos + 83, this.topPos + 44, 0, 226, 27, 17);
         }
 

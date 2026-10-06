@@ -1,13 +1,12 @@
 package gg.moonflower.etched.common.audio.provider;
 
-import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.URI;
-import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
@@ -33,11 +32,11 @@ public final class TrackMetadataRequests {
         return BandcampPageReader.supports(input) || SoundCloudPageReader.supports(input);
     }
 
-    public static CompletableFuture<TrackData[]> resolve(URI input, Proxy proxy, AudioCancellation cancellation) {
+    public static CompletableFuture<RecordContent> resolve(URI input, Proxy proxy, AudioCancellation cancellation) {
         return resolve(input, proxy, cancellation, BandcampMetadataResolver::new, SoundCloudMetadataResolver::new);
     }
 
-    static CompletableFuture<TrackData[]> resolve(URI input, Proxy proxy, AudioCancellation cancellation,
+    static CompletableFuture<RecordContent> resolve(URI input, Proxy proxy, AudioCancellation cancellation,
                                                  Function<Proxy, BandcampMetadataResolver> bandcamp,
                                                  Function<Proxy, SoundCloudMetadataResolver> soundcloud) {
         return submitCancellable(token -> {
@@ -51,25 +50,25 @@ public final class TrackMetadataRequests {
         }, cancellation);
     }
 
-    static CompletableFuture<TrackData[]> submit(MetadataLookup lookup, ThreadPoolExecutor workers) {
+    static CompletableFuture<RecordContent> submit(MetadataLookup lookup, ThreadPoolExecutor workers) {
         return submitCancellable(cancellation -> lookup.resolve(), new AudioCancellation(), workers);
     }
 
-    static CompletableFuture<TrackData[]> submitCancellable(CancellableMetadataLookup lookup, AudioCancellation cancellation) {
+    static CompletableFuture<RecordContent> submitCancellable(CancellableMetadataLookup lookup, AudioCancellation cancellation) {
         return submitCancellable(lookup, cancellation, WORKERS);
     }
 
-    static CompletableFuture<TrackData[]> submitCancellable(CancellableMetadataLookup lookup,
+    static CompletableFuture<RecordContent> submitCancellable(CancellableMetadataLookup lookup,
                                                           AudioCancellation cancellation, ThreadPoolExecutor workers) {
-        CompletableFuture<TrackData[]> result = new CompletableFuture<>();
+        CompletableFuture<RecordContent> result = new CompletableFuture<>();
         Runnable task = () -> {
             if (result.isDone() || cancellation.isCancelled()) {
                 return;
             }
             try {
-                List<TrackData> tracks = lookup.resolve(cancellation);
+                RecordContent content = requireContent(lookup.resolve(cancellation));
                 if (!result.isDone() && !cancellation.isCancelled()) {
-                    result.complete(LegacyProviderResults.tracks(tracks));
+                    result.complete(content);
                 }
             } catch (Throwable failure) {
                 // Match CompletableFuture's exception channel, including provider linkage/errors.
@@ -101,28 +100,34 @@ public final class TrackMetadataRequests {
     }
 
     /** The factory must start a fresh request, not return a shared provider future. */
-    public static TrackData[] await(FutureRequest request, AudioCancellation cancellation) throws IOException {
+    public static RecordContent await(FutureRequest request, AudioCancellation cancellation) throws IOException {
         cancellation.throwIfCancelled();
-        CompletableFuture<TrackData[]> pending = request.start();
+        CompletableFuture<RecordContent> pending = request.start();
         cancellation.onCancel(() -> pending.cancel(false));
-        TrackData[] tracks = pending.join();
+        RecordContent content = pending.join();
         cancellation.throwIfCancelled();
-        // Temporary TrackData boundary until disc persistence migrates; never expose a worker's array.
-        return LegacyProviderResults.tracks(java.util.Arrays.asList(tracks));
+        return requireContent(content);
+    }
+
+    private static RecordContent requireContent(RecordContent content) throws IOException {
+        if (content == null) {
+            throw new IOException("Missing record metadata");
+        }
+        return content; // RecordContent and its program/metadata are already bounded and immutable.
     }
 
     @FunctionalInterface
     interface MetadataLookup {
-        List<TrackData> resolve() throws IOException;
+        RecordContent resolve() throws IOException;
     }
 
     @FunctionalInterface
     interface CancellableMetadataLookup {
-        List<TrackData> resolve(AudioCancellation cancellation) throws IOException;
+        RecordContent resolve(AudioCancellation cancellation) throws IOException;
     }
 
     @FunctionalInterface
     public interface FutureRequest {
-        CompletableFuture<TrackData[]> start() throws IOException;
+        CompletableFuture<RecordContent> start() throws IOException;
     }
 }

@@ -2,6 +2,9 @@ package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.MinecraftTestBootstrap;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -89,12 +92,17 @@ class AlbumCoverItemCharacterizationTest {
         TrackData third = track("third");
 
         ItemStack multiTrack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(multiTrack, album, first, second);
+        EtchedMusicDiscItem.setContent(multiTrack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                new AudioTrack(AudioTrack.SourceType.REMOTE, first.url(), first.artist(), first.title().getString()),
+                new AudioTrack(AudioTrack.SourceType.REMOTE, second.url(), second.artist(), second.title().getString()))),
+                java.util.Optional.of(new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE,
+                        album.url(), album.artist(), album.title().getString()))));
         ItemStack empty = new ItemStack(Items.PAPER);
         ItemStack malformed = new ItemStack(Items.PAPER);
         malformed.getOrCreateTag().put("Music", new CompoundTag());
         ItemStack singleTrack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(singleTrack, third);
+        EtchedMusicDiscItem.setContent(singleTrack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE,
+                List.of(new AudioTrack(AudioTrack.SourceType.REMOTE, third.url(), third.artist(), third.title().getString())))));
 
         TrackData[] tracks = AlbumCoverItem.flattenPrograms(List.of(
                 EtchedMusicDiscItem.readMusic(multiTrack).orElseThrow(),

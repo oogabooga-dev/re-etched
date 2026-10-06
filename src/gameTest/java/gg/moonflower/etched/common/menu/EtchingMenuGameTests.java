@@ -2,15 +2,17 @@ package gg.moonflower.etched.common.menu;
 
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.AudioNbtCodec;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
+import gg.moonflower.etched.common.item.MusicLabelItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.item.ItemStack;
@@ -20,6 +22,8 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import java.io.IOException;
 import java.net.Proxy;
 import java.util.UUID;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
@@ -59,7 +63,8 @@ public final class EtchingMenuGameTests {
                         if (!release.await(10, TimeUnit.SECONDS)) {
                             throw new CompletionException(new IOException("Fixture was not released"));
                         }
-                        return new TrackData[]{new TrackData(input, "Artist", Component.literal("Late metadata"))};
+                        return new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE,
+                                List.of(new AudioTrack(AudioTrack.SourceType.REMOTE, input, "Artist", "Late metadata"))));
                     } catch (InterruptedException exception) {
                         Thread.currentThread().interrupt();
                         throw new CompletionException(exception);
@@ -103,11 +108,10 @@ public final class EtchingMenuGameTests {
         String input = "https://fixture.bandcamp.com/album/ordered";
         Proxy expectedProxy = helper.getLevel().getServer().getProxy();
         Player player = helper.makeMockSurvivalPlayer();
-        TrackData[] metadata = {
-                new TrackData(input, "Artist", Component.literal("Album")),
-                new TrackData("https://fixture.bandcamp.com/track/one", "Artist", Component.literal("One")),
-                new TrackData("https://fixture.bandcamp.com/track/two", "Guest", Component.literal("Two"))
-        };
+        var metadata = new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://fixture.bandcamp.com/track/one", "Artist", "One"),
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://fixture.bandcamp.com/track/two", "Guest", "Two"))),
+                Optional.of(new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE, input, "Artist", "Album")));
         EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
                 (uri, proxy, cancellation) -> {
                     helper.assertTrue(uri.toString().equals(input), "Metadata lost the submitted album URL");
@@ -128,7 +132,7 @@ public final class EtchingMenuGameTests {
             helper.assertTrue(tracks.length == 2 && tracks[0].title().getString().equals("One")
                     && tracks[1].title().getString().equals("Two") && tracks[1].artist().equals("Guest"),
                     "Etching lost metadata track order or artist");
-            helper.assertTrue(metadata[0].title().getString().equals("Album"), "Etching mutated worker metadata");
+            helper.assertTrue(metadata.album().orElseThrow().title().equals("Album"), "Etching mutated worker metadata");
             helper.assertFalse(result.getTag().contains("Music") || result.getTag().contains("Album"),
                     "Etching wrote obsolete audio fields");
             helper.assertTrue(result.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG).getInt("SchemaVersion")
@@ -140,12 +144,45 @@ public final class EtchingMenuGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 100)
+    public static void localAlbumReEtchingRetainsExplicitMetadataAndAllTracks(GameTestHelper helper) {
+        var metadata = new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.blocks", "Artist", "One"),
+                new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.cat", "Guest", "Two"))),
+                Optional.of(new RecordContent.AlbumMetadata(AudioTrack.SourceType.SOUND_EVENT,
+                        "minecraft:music_disc.blocks", "Artist", "Album")));
+        ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setContent(disc, metadata);
+        Player player = helper.makeMockSurvivalPlayer();
+        EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
+                (uri, proxy, cancellation) -> { throw new AssertionError("Local album started provider I/O"); });
+        player.containerMenu = menu;
+        // Configure the new appearance before inserting the input, so unchanged audio still produces a result.
+        menu.clickMenuButton(player, EtchedMusicDiscItem.LabelPattern.CROSS.ordinal());
+        ItemStack label = new ItemStack(EtchedItems.MUSIC_LABEL.get());
+        MusicLabelItem.setTitle(label, "Do not replace album tracks");
+        MusicLabelItem.setAuthor(label, "Label artist");
+        menu.getSlot(1).set(label);
+        menu.getSlot(0).set(disc);
+        helper.succeedWhen(() -> {
+            ItemStack result = menu.getSlot(2).getItem();
+            helper.assertTrue(result.is(EtchedItems.ETCHED_MUSIC_DISC.get()), "Local album has no re-etching result");
+            helper.assertTrue(RecordContentResolver.resolve(result).orElseThrow().equals(metadata),
+                    "Re-etching promoted a track to album metadata, lost a track or changed its source");
+            helper.assertTrue(EtchedMusicDiscItem.getPattern(result) == EtchedMusicDiscItem.LabelPattern.CROSS,
+                    "Re-etching lost the chosen physical label pattern");
+            helper.assertTrue(EtchedMusicDiscItem.readContent(disc).orElseThrow().equals(metadata),
+                    "Re-etching mutated the input program");
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 100)
     public static void oversizeMetadataCannotPublishAnEtchedDisc(GameTestHelper helper) {
         String input = "https://fixture.bandcamp.com/track/oversize";
         Player player = helper.makeMockSurvivalPlayer();
         EtchingMenu menu = new EtchingMenu(1, player.getInventory(), ContainerLevelAccess.NULL,
-                (uri, proxy, cancellation) -> CompletableFuture.completedFuture(new TrackData[]{
-                        new TrackData(input, "Artist", Component.literal("x".repeat(129)))}));
+                (uri, proxy, cancellation) -> CompletableFuture.completedFuture(new RecordContent(
+                        new AudioProgram(AudioProgram.Kind.FINITE, List.of(
+                                new AudioTrack(AudioTrack.SourceType.REMOTE, input, "Artist", "x".repeat(129)))))));
         player.containerMenu = menu;
         menu.setUrl(input);
         menu.getSlot(0).set(new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get()));

@@ -1,12 +1,12 @@
 package gg.moonflower.etched.clientsmoke;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
@@ -682,7 +682,8 @@ final class JukeboxPacketSmoke {
 
     private static ItemStack disc(String sound, String title) {
         ItemStack stack = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(stack, new TrackData(sound, "Minecraft", Component.literal(title)));
+        EtchedMusicDiscItem.setContent(stack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE,
+                java.util.List.of(new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, sound, "Minecraft", title)))));
         return stack;
     }
 }

@@ -2,6 +2,9 @@ package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioNbtCodec;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.menu.AlbumCoverMenu;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
@@ -39,7 +42,7 @@ public final class RecordPresentationGameTests {
     public static void versionedDiscsRoundTripAndLegacyOrInvalidDiscsAreNotInsertionSources(GameTestHelper helper) {
         var descriptor = new TrackData("minecraft:music_disc.blocks", "Minecraft", Component.literal("Blocks"));
         ItemStack valid = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(valid, descriptor);
+        EtchedMusicDiscItem.setContent(valid, content(null, descriptor));
         ItemStack restored = ItemStack.of(valid.save(new CompoundTag()));
         helper.assertTrue(AlbumCoverMenu.isValid(restored), "Versioned disc was not accepted for album insertion");
         helper.assertTrue(RecordContentResolver.resolve(restored).orElseThrow().program().tracks().get(0).source()
@@ -80,10 +83,10 @@ public final class RecordPresentationGameTests {
                 ItemStack stack = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
                 var descriptor = new TrackData(source, "Artist", Component.literal("Title"));
                 if (album) {
-                    EtchedMusicDiscItem.setMusic(stack, descriptor, descriptor.withTitle(Component.literal("One")),
-                            descriptor.withTitle(Component.literal("Two")));
+                    EtchedMusicDiscItem.setContent(stack, content(descriptor, descriptor.withTitle(Component.literal("One")),
+                            descriptor.withTitle(Component.literal("Two"))));
                 } else {
-                    EtchedMusicDiscItem.setMusic(stack, descriptor);
+                    EtchedMusicDiscItem.setContent(stack, content(null, descriptor));
                 }
                 var tooltip = new ArrayList<Component>();
                 stack.getItem().appendHoverText(stack, helper.getLevel(), tooltip, TooltipFlag.Default.NORMAL);
@@ -108,5 +111,14 @@ public final class RecordPresentationGameTests {
             }
         }
         helper.succeed();
+    }
+
+    private static RecordContent content(TrackData album, TrackData... tracks) {
+        var program = new AudioProgram(AudioProgram.Kind.FINITE, java.util.Arrays.stream(tracks)
+                .map(track -> new AudioTrack(TrackData.isLocalSound(track.url()) ? AudioTrack.SourceType.SOUND_EVENT
+                        : AudioTrack.SourceType.REMOTE, track.url(), track.artist(), track.title().getString())).toList());
+        return new RecordContent(program, java.util.Optional.ofNullable(album).map(data -> new RecordContent.AlbumMetadata(
+                TrackData.isLocalSound(data.url()) ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
+                data.url(), data.artist(), data.title().getString())));
     }
 }

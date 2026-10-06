@@ -2,6 +2,9 @@ package gg.moonflower.etched.gametest;
 
 import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.block.RadioBlock;
 import gg.moonflower.etched.common.blockentity.RadioBlockEntity;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
@@ -122,9 +125,9 @@ public final class EtchedGameTests {
 
         ItemStack etchedDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         etchedDisc.getOrCreateTag().putString("CharacterizationMarker", "nested-record-data");
-        EtchedMusicDiscItem.setMusic(etchedDisc,
+        EtchedMusicDiscItem.setContent(etchedDisc, content(null,
                 new TrackData("https://audio.example/first.mp3", "Artist", Component.literal("First")),
-                new TrackData("https://audio.example/second.mp3", "Artist", Component.literal("Second")));
+                new TrackData("https://audio.example/second.mp3", "Artist", Component.literal("Second"))));
 
         ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
         albumCover.getOrCreateTag().putString("CharacterizationMarker", "album-data");
@@ -186,9 +189,9 @@ public final class EtchedGameTests {
         TrackData second = track("second");
         TrackData third = track("third");
         ItemStack multiTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(multiTrackDisc, track("album"), first, second);
+        EtchedMusicDiscItem.setContent(multiTrackDisc, content(track("album"), first, second));
         ItemStack singleTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(singleTrackDisc, third);
+        EtchedMusicDiscItem.setContent(singleTrackDisc, content(null, third));
         ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(albumCover, List.of(multiTrackDisc, singleTrackDisc));
 
@@ -226,7 +229,7 @@ public final class EtchedGameTests {
         ItemStack vanilla = new ItemStack(Items.MUSIC_DISC_CAT);
         ItemStack etchedDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         TrackData custom = track("custom");
-        EtchedMusicDiscItem.setMusic(etchedDisc, custom);
+        EtchedMusicDiscItem.setContent(etchedDisc, content(null, custom));
         ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(album, List.of(vanilla, etchedDisc));
 
@@ -247,9 +250,9 @@ public final class EtchedGameTests {
         TrackData second = track("second");
         TrackData third = track("third");
         ItemStack multiTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(multiTrackDisc, track("album"), first, second);
+        EtchedMusicDiscItem.setContent(multiTrackDisc, content(track("album"), first, second));
         ItemStack singleTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(singleTrackDisc, third);
+        EtchedMusicDiscItem.setContent(singleTrackDisc, content(null, third));
         ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(albumCover, List.of(multiTrackDisc, singleTrackDisc));
         ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
@@ -278,10 +281,10 @@ public final class EtchedGameTests {
     public static void boomboxPauseAndRecordReplacementSurviveSynchronization(GameTestHelper helper) {
         ItemStack firstRecord = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         firstRecord.getOrCreateTag().putString("CharacterizationMarker", "first-record");
-        EtchedMusicDiscItem.setMusic(firstRecord, track("first"));
+        EtchedMusicDiscItem.setContent(firstRecord, content(null, track("first")));
         ItemStack replacementRecord = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         replacementRecord.getOrCreateTag().putString("CharacterizationMarker", "replacement-record");
-        EtchedMusicDiscItem.setMusic(replacementRecord, track("replacement"));
+        EtchedMusicDiscItem.setContent(replacementRecord, content(null, track("replacement")));
 
         ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
         BoomboxItem.setRecord(boombox, firstRecord);
@@ -346,5 +349,14 @@ public final class EtchedGameTests {
 
     private static TrackData track(String name) {
         return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
+    }
+
+    private static RecordContent content(TrackData album, TrackData... tracks) {
+        var program = new AudioProgram(AudioProgram.Kind.FINITE, java.util.Arrays.stream(tracks)
+                .map(track -> new AudioTrack(TrackData.isLocalSound(track.url()) ? AudioTrack.SourceType.SOUND_EVENT
+                        : AudioTrack.SourceType.REMOTE, track.url(), track.artist(), track.title().getString())).toList());
+        return new RecordContent(program, java.util.Optional.ofNullable(album).map(data -> new RecordContent.AlbumMetadata(
+                TrackData.isLocalSound(data.url()) ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
+                data.url(), data.artist(), data.title().getString())));
     }
 }

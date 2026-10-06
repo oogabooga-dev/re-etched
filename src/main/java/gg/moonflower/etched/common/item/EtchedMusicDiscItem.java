@@ -3,7 +3,6 @@ package gg.moonflower.etched.common.item;
 import gg.moonflower.etched.api.record.PlayableRecordItem;
 import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioNbtCodec;
-import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.core.Etched;
@@ -15,7 +14,6 @@ import net.minecraft.world.item.ItemStack;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -162,41 +160,6 @@ public class EtchedMusicDiscItem extends PlayableRecordItem {
         }
 
         return labelTag.contains("Secondary", Tag.TAG_ANY_NUMERIC) ? labelTag.getInt("Secondary") : 0xFFFFFF;
-    }
-
-    /**
-     * Sets the URL for the specified stack.
-     *
-     * @param stack  The stack to set NBT for
-     * @param tracks The tracks to apply to the disk. If more than one are provided, the first is treated as the album data
-     */
-    public static void setMusic(ItemStack stack, TrackData... tracks) {
-        if (tracks.length == 0) {
-            clearContent(stack);
-            return;
-        }
-        // Temporary input boundary for metadata consumers: validate the whole result before touching NBT.
-        int firstTrack = tracks.length == 1 ? 0 : 1;
-        if (tracks.length - firstTrack > AudioProgram.MAX_TRACKS) {
-            throw new IllegalArgumentException("Disc exceeds the track limit");
-        }
-        var program = new ArrayList<AudioTrack>(tracks.length - firstTrack);
-        for (int i = firstTrack; i < tracks.length; i++) {
-            program.add(audioTrack(tracks[i]));
-        }
-        Optional<RecordContent.AlbumMetadata> album = Optional.empty();
-        if (firstTrack == 1) {
-            AudioTrack descriptor = audioTrack(tracks[0]);
-            album = Optional.of(new RecordContent.AlbumMetadata(descriptor.sourceType(), descriptor.source(),
-                    descriptor.artist(), descriptor.title()));
-        }
-        setContent(stack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, program), album));
-    }
-
-    private static AudioTrack audioTrack(TrackData track) {
-        return new AudioTrack(TrackData.isLocalSound(track.url())
-                ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
-                track.url(), track.artist(), track.title().getString());
     }
 
     public static void setContent(ItemStack stack, RecordContent content) {

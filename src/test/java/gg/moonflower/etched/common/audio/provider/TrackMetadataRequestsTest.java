@@ -1,8 +1,9 @@
 package gg.moonflower.etched.common.audio.provider;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioCancellation;
-import net.minecraft.network.chat.Component;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -24,21 +25,22 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TrackMetadataRequestsTest {
 
-    private static final TrackData TRACK = new TrackData("https://audio.example/track", "Artist", Component.literal("Track"));
+    private static final AudioTrack TRACK = new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/track", "Artist", "Track");
+    private static final RecordContent CONTENT = new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, List.of(TRACK)));
 
     @Test
-    void overlappingRequestsHaveIndependentFuturesAndArraysAndPreserveAlbumOrder() throws Exception {
+    void overlappingRequestsHaveIndependentFuturesAndImmutableExplicitAlbumResults() throws Exception {
         var workers = workers();
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        TrackData album = new TrackData("https://provider.example/album", "Artist", Component.literal("Album"));
-        List<TrackData> tracks = List.of(album, TRACK);
+        var album = new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE, "https://provider.example/album", "Artist", "Album");
+        var content = new RecordContent(CONTENT.program(), java.util.Optional.of(album));
         AtomicInteger calls = new AtomicInteger();
         TrackMetadataRequests.MetadataLookup lookup = () -> {
             calls.incrementAndGet();
             started.countDown();
             await(release);
-            return tracks;
+            return content;
         };
         try {
             var first = TrackMetadataRequests.submit(lookup, workers);
@@ -46,13 +48,12 @@ class TrackMetadataRequestsTest {
             var second = TrackMetadataRequests.submit(lookup, workers);
             assertNotSame(first, second);
             release.countDown();
-            TrackData[] one = first.get(2, TimeUnit.SECONDS);
-            TrackData[] two = second.get(2, TimeUnit.SECONDS);
-            assertNotSame(one, two);
-            assertArrayEquals(new TrackData[]{album, TRACK}, one);
-            one[1] = TRACK.withArtist("Label artist");
-            assertEquals("Artist", two[1].artist());
-            assertEquals("Artist", tracks.get(1).artist());
+            RecordContent one = first.get(2, TimeUnit.SECONDS);
+            RecordContent two = second.get(2, TimeUnit.SECONDS);
+            assertEquals(content, one);
+            assertEquals(album, two.album().orElseThrow());
+            assertEquals(List.of(TRACK), two.program().tracks());
+            assertThrows(UnsupportedOperationException.class, () -> one.program().tracks().clear());
             assertEquals(2, calls.get());
         } finally {
             release.countDown();
@@ -66,7 +67,7 @@ class TrackMetadataRequestsTest {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch returned = new CountDownLatch(1);
-        AtomicReference<CompletableFuture<TrackData[]>> pending = new AtomicReference<>();
+        AtomicReference<CompletableFuture<RecordContent>> pending = new AtomicReference<>();
         AudioCancellation cancellation = new AudioCancellation();
         var waiter = CompletableFuture.supplyAsync(() -> {
             try {
@@ -75,7 +76,7 @@ class TrackMetadataRequestsTest {
                         started.countDown();
                         try {
                             await(release);
-                            return List.of(TRACK);
+                            return CONTENT;
                         } finally {
                             returned.countDown();
                         }
@@ -97,7 +98,7 @@ class TrackMetadataRequestsTest {
             release.countDown();
             assertTrue(returned.await(2, TimeUnit.SECONDS));
             assertTrue(pending.get().isCancelled());
-            assertEquals(TRACK, TrackMetadataRequests.submit(() -> List.of(TRACK), workers).get(2, TimeUnit.SECONDS)[0]);
+            assertEquals(CONTENT, TrackMetadataRequests.submit(() -> CONTENT, workers).get(2, TimeUnit.SECONDS));
         } finally {
             release.countDown();
             workers.shutdownNow();
@@ -114,17 +115,17 @@ class TrackMetadataRequestsTest {
             var running = TrackMetadataRequests.submit(() -> {
                 started.countDown();
                 await(release);
-                return List.of(TRACK);
+                return CONTENT;
             }, workers);
             assertTrue(started.await(2, TimeUnit.SECONDS));
             var queued = TrackMetadataRequests.submit(() -> {
                 called.set(true);
-                return List.of(TRACK);
+                return CONTENT;
             }, workers);
             assertEquals(1, workers.getQueue().size());
             assertTrue(queued.cancel(false));
             assertTrue(workers.getQueue().isEmpty());
-            var next = TrackMetadataRequests.submit(() -> List.of(TRACK), workers);
+            var next = TrackMetadataRequests.submit(() -> CONTENT, workers);
             release.countDown();
             running.get(2, TimeUnit.SECONDS);
             next.get(2, TimeUnit.SECONDS);
@@ -144,10 +145,10 @@ class TrackMetadataRequestsTest {
             var running = TrackMetadataRequests.submit(() -> {
                 started.countDown();
                 await(release);
-                return List.of(TRACK);
+                return CONTENT;
             }, workers);
             assertTrue(started.await(2, TimeUnit.SECONDS));
-            var queued = TrackMetadataRequests.submit(() -> List.of(TRACK), workers);
+            var queued = TrackMetadataRequests.submit(() -> CONTENT, workers);
             var rejected = TrackMetadataRequests.submit(() -> {
                 throw new AssertionError("Rejected provider was invoked");
             }, workers);
@@ -162,21 +163,19 @@ class TrackMetadataRequestsTest {
     }
 
     @Test
-    void awaitDoesNotStartPreCancelledRequestsOrExposeProviderArrays() throws Exception {
+    void awaitDoesNotStartPreCancelledRequestsAndReturnsImmutableValues() throws Exception {
         AudioCancellation cancelled = new AudioCancellation();
         cancelled.cancel();
         assertThrows(CancellationException.class, () -> TrackMetadataRequests.await(() -> {
             throw new AssertionError("Pre-cancelled operation started a provider request");
         }, cancelled));
-        TrackData[] source = {TRACK};
-        TrackData[] copy = TrackMetadataRequests.await(() -> CompletableFuture.completedFuture(source), new AudioCancellation());
-        assertNotSame(source, copy);
-        copy[0] = TRACK.withArtist("Label artist");
-        assertEquals("Artist", source[0].artist());
+        var value = TrackMetadataRequests.await(() -> CompletableFuture.completedFuture(CONTENT), new AudioCancellation());
+        assertEquals(CONTENT, value);
+        assertThrows(UnsupportedOperationException.class, () -> value.program().tracks().clear());
         AudioCancellation cancelledDuringStart = new AudioCancellation();
         assertThrows(CancellationException.class, () -> TrackMetadataRequests.await(() -> {
             cancelledDuringStart.cancel();
-            return CompletableFuture.completedFuture(source);
+            return CompletableFuture.completedFuture(CONTENT);
         }, cancelledDuringStart));
     }
 
@@ -189,8 +188,8 @@ class TrackMetadataRequestsTest {
             assertSame(failure, assertThrows(CompletionException.class, request::join).getCause());
             var broken = TrackMetadataRequests.submit(() -> { throw new LinkageError("fixture error"); }, workers);
             assertInstanceOf(LinkageError.class, assertThrows(CompletionException.class, broken::join).getCause());
-            assertEquals(TRACK, TrackMetadataRequests.await(
-                    () -> TrackMetadataRequests.submit(() -> List.of(TRACK), workers), new AudioCancellation())[0]);
+            assertEquals(CONTENT, TrackMetadataRequests.await(
+                    () -> TrackMetadataRequests.submit(() -> CONTENT, workers), new AudioCancellation()));
         } finally {
             workers.shutdownNow();
         }
@@ -218,7 +217,7 @@ class TrackMetadataRequestsTest {
                     java.net.URI.create("https://provider.example/metadata"), 200, java.util.Map.of(), body, cancellation)) {
                 cancellation.onCancel(response::close);
                 response.body().read();
-                return List.of(TRACK);
+                return CONTENT;
             } finally {
                 returned.countDown();
             }
@@ -281,11 +280,13 @@ class TrackMetadataRequestsTest {
                         java.net.URI.create("https://soundcloud.com/"), java.net.URI.create("https://api-v2.soundcloud.com/resolve"),
                         SoundCloudMetadataResolver.Limits.DEFAULT);
             });
-            var tracks = request.get(2, TimeUnit.SECONDS);
-            assertEquals(1, tracks.length);
-            assertEquals(input.toString(), tracks[0].url());
-            assertEquals("Artist", tracks[0].artist());
-            assertEquals("Track", tracks[0].title().getString());
+            var content = request.get(2, TimeUnit.SECONDS);
+            assertTrue(content.album().isEmpty());
+            var tracks = content.program().tracks();
+            assertEquals(1, tracks.size());
+            assertEquals(input.toString(), tracks.get(0).source());
+            assertEquals("Artist", tracks.get(0).artist());
+            assertEquals("Track", tracks.get(0).title());
             assertEquals(input.equals(bandcampInput) ? 1 : 3, opened.get());
             assertEquals(opened.get(), closed.get());
             assertFalse(scope.isCancelled());
@@ -293,20 +294,19 @@ class TrackMetadataRequestsTest {
     }
 
     @Test
-    void invalidWorkerMetadataFailsWithoutPublishingPartialOrSharedValues() throws Exception {
+    void missingWorkerMetadataFailsAndDeliveredProgramsDoNotExposeMutableInputs() throws Exception {
         var workers = workers();
         try {
-            for (List<TrackData> tracks : List.of(List.<TrackData>of(), List.of(TRACK.withUrl("file:///unsafe")),
-                    java.util.Collections.nCopies(102, TRACK))) {
-                var pending = TrackMetadataRequests.submit(() -> tracks, workers);
-                assertInstanceOf(IOException.class, assertThrows(ExecutionException.class,
-                        () -> pending.get(2, TimeUnit.SECONDS)).getCause());
-            }
-            var title = Component.literal("Original");
-            var pending = TrackMetadataRequests.submit(() -> List.of(TRACK.withTitle(title)), workers);
-            var result = pending.get(2, TimeUnit.SECONDS);
-            title.append(" changed");
-            assertEquals("Original", result[0].title().getString());
+            var missing = TrackMetadataRequests.submit(() -> null, workers);
+            assertInstanceOf(IOException.class, assertThrows(ExecutionException.class,
+                    () -> missing.get(2, TimeUnit.SECONDS)).getCause());
+            assertThrows(IOException.class, () -> TrackMetadataRequests.await(
+                    () -> CompletableFuture.completedFuture(null), new AudioCancellation()));
+            var mutable = new java.util.ArrayList<>(List.of(TRACK));
+            var content = new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, mutable));
+            var pending = TrackMetadataRequests.submit(() -> content, workers);
+            mutable.clear();
+            assertEquals(CONTENT, pending.get(2, TimeUnit.SECONDS));
         } finally {
             workers.shutdownNow();
         }
@@ -343,7 +343,7 @@ class TrackMetadataRequestsTest {
             var running = TrackMetadataRequests.submit(() -> {
                 started.countDown();
                 await(release);
-                return List.of(TRACK);
+                return CONTENT;
             }, workers);
             assertTrue(started.await(2, TimeUnit.SECONDS));
             var cancelled = new AudioCancellation();
@@ -355,13 +355,13 @@ class TrackMetadataRequestsTest {
             assertTrue(queued.isCancelled());
             assertTrue(workers.getQueue().isEmpty());
             var deliveredScope = new AudioCancellation();
-            var delivered = TrackMetadataRequests.submitCancellable(token -> List.of(TRACK), deliveredScope, workers);
+            var delivered = TrackMetadataRequests.submitCancellable(token -> CONTENT, deliveredScope, workers);
             release.countDown();
             running.get(2, TimeUnit.SECONDS);
             var values = delivered.get(2, TimeUnit.SECONDS);
             deliveredScope.cancel();
             assertFalse(delivered.isCancelled());
-            assertEquals(TRACK, values[0]);
+            assertEquals(CONTENT, values);
         } finally {
             release.countDown();
             workers.shutdownNow();

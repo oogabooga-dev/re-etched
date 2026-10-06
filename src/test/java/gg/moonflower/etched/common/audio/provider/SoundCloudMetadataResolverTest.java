@@ -57,12 +57,50 @@ class SoundCloudMetadataResolverTest {
                 respond(exchange, 200, ALBUM_JSON);
             });
             var tracks = fixture.resolver().resolveTracks(TRACK, new AudioCancellation());
-            assertEquals(List.of(TRACK.toString(), "https://soundcloud.com/a/first", "https://soundcloud.com/a/second"),
-                    tracks.stream().map(track -> track.url()).toList());
-            assertEquals(List.of("Album", "First", "Second"), tracks.stream().map(track -> track.title().getString()).toList());
-            assertEquals(List.of("Artist", "Artist", "Guest"), tracks.stream().map(track -> track.artist()).toList());
+            assertEquals(TRACK.toString(), tracks.album().orElseThrow().source());
+            assertEquals("Album", tracks.album().orElseThrow().title());
+            assertEquals(List.of("https://soundcloud.com/a/first", "https://soundcloud.com/a/second"),
+                    tracks.program().tracks().stream().map(track -> track.source()).toList());
+            assertEquals(List.of("First", "Second"), tracks.program().tracks().stream().map(track -> track.title()).toList());
+            assertEquals(List.of("Artist", "Guest"), tracks.program().tracks().stream().map(track -> track.artist()).toList());
             assertEquals(List.of(TRACK, TRACK, URI.create("https://soundcloud.com/a/first"),
                     URI.create("https://soundcloud.com/a/second")), fixture.checkedPages);
+        }
+    }
+
+    @Test
+    void typedMetadataBoundsArtistTitleAndWholeProgramAndPreservesAOneTrackAlbum() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.discovery();
+            var responseBody = new java.util.concurrent.atomic.AtomicReference<>(ALBUM_JSON);
+            fixture.server.handle("/resolve", exchange -> respond(exchange, 200, responseBody.get()));
+            for (String field : List.of("Album", "Artist", "First", "Guest")) {
+                responseBody.set(ALBUM_JSON.replace(field, "x".repeat(129)));
+                assertEquals(RadioFailure.Code.RESOURCE_LIMIT, assertThrows(RadioTransportException.class,
+                        () -> fixture.resolver().resolveTracks(TRACK, new AudioCancellation())).code());
+            }
+            responseBody.set(TRACK_JSON.replace("Track & Title", "x".repeat(128)));
+            assertEquals(128, fixture.resolver().resolveTracks(TRACK, new AudioCancellation()).program().tracks().get(0).title().length());
+            var json = com.google.gson.JsonParser.parseString(ALBUM_JSON).getAsJsonObject();
+            var entries = json.getAsJsonArray("tracks");
+            entries.remove(2);
+            var album = json.toString();
+            responseBody.set(album);
+            var content = fixture.resolver().resolveTracks(TRACK, new AudioCancellation());
+            assertEquals("Album", content.album().orElseThrow().title());
+            assertEquals(1, content.program().tracks().size());
+            assertEquals("First", content.program().tracks().get(0).title());
+            var template = entries.get(0).getAsJsonObject().deepCopy();
+            template.addProperty("permalink_url", "https://soundcloud.com/a/" + "x".repeat(7000));
+            while (!entries.isEmpty()) {
+                entries.remove(0);
+            }
+            for (int i = 0; i < 10; i++) {
+                entries.add(template.deepCopy());
+            }
+            responseBody.set(json.toString());
+            assertEquals(RadioFailure.Code.RESOURCE_LIMIT, assertThrows(RadioTransportException.class,
+                    () -> fixture.resolver().resolveTracks(TRACK, new AudioCancellation())).code());
         }
     }
 
@@ -126,7 +164,9 @@ class SoundCloudMetadataResolverTest {
                 respond(exchange, query(exchange.getRequestURI()).get("client_id").equals("client-1") ? 401 : 200, TRACK_JSON);
             });
             var resolver = fixture.resolver();
-            assertEquals("Track & Title", resolver.resolveTracks(TRACK, new AudioCancellation()).get(0).title().getString());
+            var content = resolver.resolveTracks(TRACK, new AudioCancellation());
+            assertTrue(content.album().isEmpty());
+            assertEquals("Track & Title", content.program().tracks().get(0).title());
             assertEquals(2, scripts.get());
             assertEquals(2, api.get());
             resolver.resolveTracks(TRACK, new AudioCancellation());
@@ -339,7 +379,7 @@ class SoundCloudMetadataResolverTest {
                     assertInstanceOf(CancellationException.class, assertThrows(ExecutionException.class,
                             () -> request.get(2, TimeUnit.SECONDS)).getCause());
                     // A retired operation must not poison subsequent discovery on the same resolver.
-                    assertEquals(1, resolver.resolveTracks(TRACK, new AudioCancellation()).size());
+                    assertEquals(1, resolver.resolveTracks(TRACK, new AudioCancellation()).program().tracks().size());
                 } finally {
                     release.countDown();
                 }

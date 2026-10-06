@@ -60,19 +60,56 @@ class BandcampMetadataResolverTest {
         var checked = new java.util.ArrayList<URI>();
         var tracks = new BandcampMetadataResolver(transport, checked::add,
                 BandcampMetadataResolver.Limits.DEFAULT).resolveTracks(ALBUM, new AudioCancellation());
-        assertEquals(List.of(ALBUM.toString(), "https://artist.bandcamp.com/track/first",
-                "https://artist.bandcamp.com/track/second"), tracks.stream().map(track -> track.url()).toList());
-        assertEquals(List.of("Album & Title", "First & One", "Second"),
-                tracks.stream().map(track -> track.title().getString()).toList());
-        assertEquals(List.of("Artist & Co", "Artist & Co", "Guest"),
-                tracks.stream().map(track -> track.artist()).toList());
-        assertEquals(tracks.stream().map(track -> URI.create(track.url())).toList(), checked);
+        assertEquals(ALBUM.toString(), tracks.album().orElseThrow().source());
+        assertEquals("Album & Title", tracks.album().orElseThrow().title());
+        assertEquals(List.of("https://artist.bandcamp.com/track/first", "https://artist.bandcamp.com/track/second"),
+                tracks.program().tracks().stream().map(track -> track.source()).toList());
+        assertEquals(List.of("First & One", "Second"), tracks.program().tracks().stream().map(track -> track.title()).toList());
+        assertEquals(List.of("Artist & Co", "Guest"), tracks.program().tracks().stream().map(track -> track.artist()).toList());
+        assertEquals(List.of(ALBUM, URI.create("https://artist.bandcamp.com/track/first"),
+                URI.create("https://artist.bandcamp.com/track/second")), checked);
         assertEquals(1, requests.get());
         assertTrue(page.disconnected);
         assertTrue(page.bodyClosed);
         assertEquals("GET", page.getRequestMethod());
         assertFalse(page.getInstanceFollowRedirects());
         assertNull(page.getRequestProperty("Icy-MetaData"));
+    }
+
+    @Test
+    void typedMetadataBoundsArtistTitleAndWholeProgramAndPreservesAOneTrackAlbum() throws Exception {
+        for (String field : List.of("Artist &amp; Co", "Album &amp; Title", "First &amp; One", "Guest")) {
+            FixtureConnection page = page(ALBUM_JSON.replace(field, "x".repeat(129)));
+            assertEquals(RadioFailure.Code.RESOURCE_LIMIT, assertThrows(RadioTransportException.class,
+                    () -> resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                            .resolveTracks(ALBUM, new AudioCancellation())).code());
+            assertTrue(page.bodyClosed);
+            assertTrue(page.disconnected);
+        }
+        var single = resolver(page(TRACK_JSON.replace("Only Track", "x".repeat(128))), ALLOW_ALL,
+                BandcampMetadataResolver.Limits.DEFAULT).resolveTracks(ALBUM, new AudioCancellation());
+        assertEquals(128, single.program().tracks().get(0).title().length());
+        String albumJson = "{\"artist\":\"Artist\",\"current\":{\"type\":\"album\",\"title\":\"Album\"},"
+                + "\"trackinfo\":[{\"title_link\":\"/track/one\",\"title\":\"Only\"}]}";
+        var album = resolver(page(albumJson), ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveTracks(ALBUM, new AudioCancellation());
+        assertEquals(1, album.program().tracks().size());
+        assertEquals("Album", album.album().orElseThrow().title());
+        assertEquals("Only", album.program().tracks().get(0).title());
+        var json = JsonParser.parseString(albumJson).getAsJsonObject();
+        var entries = json.getAsJsonArray("trackinfo");
+        var template = entries.get(0).getAsJsonObject().deepCopy();
+        template.addProperty("title_link", "/track/" + "x".repeat(7000));
+        entries.remove(0);
+        for (int i = 0; i < 10; i++) {
+            entries.add(template.deepCopy());
+        }
+        FixtureConnection excessive = page(json.toString());
+        assertEquals(RadioFailure.Code.RESOURCE_LIMIT, assertThrows(RadioTransportException.class,
+                () -> resolver(excessive, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                        .resolveTracks(ALBUM, new AudioCancellation())).code());
+        assertTrue(excessive.bodyClosed);
+        assertTrue(excessive.disconnected);
     }
 
     @Test
@@ -118,7 +155,7 @@ class BandcampMetadataResolverTest {
         AudioCancellation cancellation = new AudioCancellation();
         cancellation.cancel();
         // Target the projection boundary: public entrypoints reject an already-cancelled request before fetching.
-        var projection = BandcampMetadataResolver.class.getDeclaredMethod("parseTracks",
+        var projection = BandcampMetadataResolver.class.getDeclaredMethod("parseContent",
                 URI.class, URI.class, JsonObject.class, AudioCancellation.class);
         projection.setAccessible(true);
         InvocationTargetException failure = assertThrows(InvocationTargetException.class,
@@ -151,9 +188,10 @@ class BandcampMetadataResolverTest {
         };
         var tracks = resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
                 .resolveTracks(ALBUM, new AudioCancellation());
-        assertEquals(1, tracks.size());
-        assertEquals(ALBUM.toString(), tracks.get(0).url());
-        assertEquals("Only Track", tracks.get(0).title().getString());
+        assertTrue(tracks.album().isEmpty());
+        assertEquals(1, tracks.program().tracks().size());
+        assertEquals(ALBUM.toString(), tracks.program().tracks().get(0).source());
+        assertEquals("Only Track", tracks.program().tracks().get(0).title());
         assertTrue(page.disconnected);
         assertTrue(page.bodyClosed);
     }
@@ -176,9 +214,9 @@ class BandcampMetadataResolverTest {
             assertTrue(page.bodyClosed);
         }
         FixtureConnection exact = page(ALBUM_JSON);
-        assertEquals(3, resolver(exact, ALLOW_ALL,
+        assertEquals(2, resolver(exact, ALLOW_ALL,
                 new BandcampMetadataResolver.Limits(body.length, 100, 8192, 5))
-                .resolveTracks(ALBUM, new AudioCancellation()).size());
+                .resolveTracks(ALBUM, new AudioCancellation()).program().tracks().size());
     }
 
     @Test
@@ -257,8 +295,8 @@ class BandcampMetadataResolverTest {
         });
         var tracks = new BandcampMetadataResolver(transport, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
                 .resolveTracks(ALBUM, new AudioCancellation());
-        assertEquals(ALBUM.toString(), tracks.get(0).url());
-        assertEquals("https://artist.bandcamp.com/catalog/first", tracks.get(1).url());
+        assertEquals(ALBUM.toString(), tracks.album().orElseThrow().source());
+        assertEquals("https://artist.bandcamp.com/catalog/first", tracks.program().tracks().get(0).source());
         assertTrue(start.disconnected);
         assertTrue(finalPage.disconnected);
     }

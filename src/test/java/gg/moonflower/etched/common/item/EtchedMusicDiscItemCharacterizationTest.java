@@ -14,8 +14,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,7 +37,7 @@ class EtchedMusicDiscItemCharacterizationTest {
     void singleTrackRoundTripsThroughVersionedContentWithPresentationAlbumFallback() {
         ItemStack stack = new ItemStack(Items.PAPER);
 
-        EtchedMusicDiscItem.setMusic(stack, FIRST);
+        EtchedMusicDiscItem.setContent(stack, content(null, FIRST));
 
         assertArrayEquals(new TrackData[]{FIRST}, EtchedMusicDiscItem.readMusic(stack).orElseThrow());
         assertEquals(FIRST, EtchedMusicDiscItem.readAlbum(stack).orElseThrow());
@@ -55,7 +55,7 @@ class EtchedMusicDiscItemCharacterizationTest {
     @Test
     void albumMetadataIsSeparateAndTrackOrderIsPreserved() {
         ItemStack stack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(stack, ALBUM, FIRST, SECOND);
+        EtchedMusicDiscItem.setContent(stack, content(ALBUM, FIRST, SECOND));
         assertArrayEquals(new TrackData[]{FIRST, SECOND}, EtchedMusicDiscItem.readMusic(stack).orElseThrow());
         assertEquals(ALBUM, EtchedMusicDiscItem.readAlbum(stack).orElseThrow());
         assertEquals(2, EtchedMusicDiscItem.countTracks(stack));
@@ -69,12 +69,12 @@ class EtchedMusicDiscItemCharacterizationTest {
     @Test
     void clearingAudioContentPreservesUnrelatedPresentationAndRemovesObsoleteAudioKeys() {
         ItemStack stack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(stack, ALBUM, FIRST, SECOND);
+        EtchedMusicDiscItem.setContent(stack, content(ALBUM, FIRST, SECOND));
         stack.getOrCreateTag().putInt("DiscColor", 0x123456);
         stack.getTag().put("Music", legacyTrack(FIRST));
         stack.getTag().put("Album", legacyTrack(ALBUM));
 
-        EtchedMusicDiscItem.setMusic(stack);
+        EtchedMusicDiscItem.clearContent(stack);
 
         assertTrue(EtchedMusicDiscItem.readMusic(stack).isEmpty());
         assertTrue(EtchedMusicDiscItem.readAlbum(stack).isEmpty());
@@ -109,7 +109,7 @@ class EtchedMusicDiscItemCharacterizationTest {
         for (String fault : List.of("wrong-envelope", "no-version", "future", "live", "invalid-track", "invalid-album",
                 "too-many", "wrong-list", "long-title", "total-text")) {
             ItemStack stack = new ItemStack(Items.PAPER);
-            EtchedMusicDiscItem.setMusic(stack, ALBUM, FIRST, SECOND);
+            EtchedMusicDiscItem.setContent(stack, content(ALBUM, FIRST, SECOND));
             stack.getTag().put("Music", legacyTrack(FIRST));
             CompoundTag content = stack.getTag().getCompound(EtchedMusicDiscItem.CONTENT_TAG);
             CompoundTag program = content.getCompound("Program");
@@ -149,18 +149,19 @@ class EtchedMusicDiscItemCharacterizationTest {
     }
 
     @Test
-    void metadataWriterRejectsInvalidOrExcessiveResultsBeforeMutatingTheExistingDisc() {
+    void invalidTypedContentCannotBeConstructedAndMutateTheExistingDisc() {
         ItemStack stack = new ItemStack(Items.PAPER);
-        EtchedMusicDiscItem.setMusic(stack, FIRST);
+        EtchedMusicDiscItem.setContent(stack, content(null, FIRST));
         CompoundTag before = stack.getTag().copy();
-        TrackData[] excessive = new TrackData[AudioProgram.MAX_TRACKS + 2];
-        Arrays.fill(excessive, FIRST);
-        for (TrackData[] input : List.of(excessive, new TrackData[]{FIRST.withArtist("x".repeat(129))},
-                new TrackData[]{FIRST.withTitle("x".repeat(129))}, new TrackData[]{FIRST.withUrl("file:///unsafe")},
-                new TrackData[]{FIRST.withUrl("https://user@audio.example/track")})) {
-            assertThrows(IllegalArgumentException.class, () -> EtchedMusicDiscItem.setMusic(stack, input));
+        for (TrackData invalid : List.of(FIRST.withArtist("x".repeat(129)), FIRST.withTitle("x".repeat(129)),
+                FIRST.withUrl("file:///unsafe"), FIRST.withUrl("https://user@audio.example/track"))) {
+            assertThrows(IllegalArgumentException.class, () -> EtchedMusicDiscItem.setContent(stack, content(null, invalid)));
             assertEquals(before, stack.getTag());
         }
+        assertThrows(IllegalArgumentException.class, () -> EtchedMusicDiscItem.setContent(stack,
+                new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, java.util.Collections.nCopies(
+                        AudioProgram.MAX_TRACKS + 1, new AudioTrack(AudioTrack.SourceType.REMOTE, FIRST.url(), "Artist", "First"))))));
+        assertEquals(before, stack.getTag());
     }
 
     @Test
@@ -187,7 +188,7 @@ class EtchedMusicDiscItemCharacterizationTest {
         stack.getOrCreateTag().put("Music", legacyTrack(FIRST));
         stack.getTag().put("Album", legacyTrack(ALBUM));
         stack.getTag().putString("Marker", "retained");
-        EtchedMusicDiscItem.setMusic(stack, SECOND);
+        EtchedMusicDiscItem.setContent(stack, content(null, SECOND));
         assertFalse(stack.getTag().contains("Music"));
         assertFalse(stack.getTag().contains("Album"));
         assertEquals("retained", stack.getTag().getString("Marker"));
@@ -226,6 +227,13 @@ class EtchedMusicDiscItemCharacterizationTest {
 
     private static TrackData track(String name) {
         return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
+    }
+
+    private static RecordContent content(TrackData album, TrackData... tracks) {
+        var program = new AudioProgram(AudioProgram.Kind.FINITE, java.util.Arrays.stream(tracks)
+                .map(track -> new AudioTrack(AudioTrack.SourceType.REMOTE, track.url(), track.artist(), track.title().getString())).toList());
+        return new RecordContent(program, Optional.ofNullable(album).map(data -> new RecordContent.AlbumMetadata(
+                AudioTrack.SourceType.REMOTE, data.url(), data.artist(), data.title().getString())));
     }
 
     /** Golden pre-v5 payload, used only to prove rejection; production has no legacy codec. */

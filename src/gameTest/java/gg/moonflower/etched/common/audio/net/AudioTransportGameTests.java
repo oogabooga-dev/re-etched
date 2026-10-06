@@ -71,8 +71,9 @@ public final class AudioTransportGameTests {
         var resolved = new SoundCloudMetadataResolver(transport, policy, URI.create("https://soundcloud.com/"),
                 URI.create("https://api-v2.soundcloud.com/resolve"), SoundCloudMetadataResolver.Limits.DEFAULT)
                 .resolveTracks(input, new AudioCancellation());
-        helper.assertTrue(resolved.size() == 1 && resolved.get(0).url().equals(input.toString())
-                && resolved.get(0).title().getString().equals("Track"), "SoundCloud lost track metadata");
+        helper.assertTrue(resolved.album().isEmpty() && resolved.program().tracks().size() == 1
+                && resolved.program().tracks().get(0).source().equals(input.toString())
+                && resolved.program().tracks().get(0).title().equals("Track"), "SoundCloud lost track metadata");
         helper.assertTrue(checked.equals(List.of(input, input)), "SoundCloud did not validate input and stored destination");
         helper.assertTrue(connections.size() == 3, "SoundCloud downloaded media or repeated discovery");
         helper.succeed();
@@ -105,7 +106,8 @@ public final class AudioTransportGameTests {
                 .resolveTracks(input, new AudioCancellation());
         List<URI> expected = List.of(input, URI.create("https://artist.bandcamp.com/track/one"),
                 URI.create("https://artist.bandcamp.com/track/two"));
-        helper.assertTrue(tracks.stream().map(track -> URI.create(track.url())).toList().equals(expected),
+        helper.assertTrue(tracks.album().orElseThrow().source().equals(input.toString())
+                && tracks.program().tracks().stream().map(track -> URI.create(track.source())).toList().equals(expected.subList(1, 3)),
                 "Bandcamp lost ordered metadata destinations");
         helper.assertTrue(checked.equals(expected), "Bandcamp did not validate every stored destination");
         helper.assertTrue(opened.equals(List.of(input)), "Bandcamp opened unexpected responses");
@@ -183,7 +185,7 @@ public final class AudioTransportGameTests {
                 URI.create("https://soundcloud.com/"), URI.create("https://api-v2.soundcloud.com/resolve"),
                 SoundCloudMetadataResolver.Limits.DEFAULT).resolveTracks(input, new AudioCancellation());
         ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(disc, tracks.toArray(TrackData[]::new));
+        EtchedMusicDiscItem.setContent(disc, tracks);
         helper.assertTrue(PlayableRecord.getStackAlbum(disc).orElseThrow().url().equals(input.toString()),
                 "SoundCloud metadata lost the album descriptor");
         TrackData[] music = PlayableRecord.getStackMusic(disc).orElseThrow();
@@ -214,7 +216,7 @@ public final class AudioTransportGameTests {
         var tracks = new BandcampMetadataResolver(transport, destination -> {}, BandcampMetadataResolver.Limits.DEFAULT)
                 .resolveTracks(uri, new AudioCancellation());
         ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(disc, tracks.toArray(TrackData[]::new));
+        EtchedMusicDiscItem.setContent(disc, tracks);
         helper.assertTrue(PlayableRecord.getStackAlbum(disc).orElseThrow().title().getString().equals("Album"),
                 "Bandcamp metadata lost the album descriptor");
         TrackData[] music = PlayableRecord.getStackMusic(disc).orElseThrow();
