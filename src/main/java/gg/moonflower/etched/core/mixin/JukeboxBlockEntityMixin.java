@@ -60,7 +60,7 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
     public void startPlaying(CallbackInfo ci) {
         if (!(this.getFirstItem().getItem() instanceof RecordItem)) {
             BlockPos pos = this.getBlockPos();
-            EtchedMessages.PLAY.send(PacketDistributor.NEAR.with(() -> new PacketDistributor.TargetPoint(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64, this.level.dimension())), new ClientboundPlayMusicPacket(this.getFirstItem().copy(), pos));
+            EtchedMessages.PLAY.send(PacketDistributor.NEAR.with(() -> new PacketDistributor.TargetPoint(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64, this.level.dimension())), ClientboundPlayMusicPacket.fromRecord(this.level.dimension(), pos, this.getFirstItem()));
         }
     }
 

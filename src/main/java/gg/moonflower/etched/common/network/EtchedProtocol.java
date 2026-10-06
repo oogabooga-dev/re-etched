@@ -8,6 +8,7 @@ import net.minecraftforge.network.NetworkDirection;
 
 /**
  * The protocol boundary for incompatible 5.x development builds.
+ * Packet IDs and playback payloads remain provisional until authoritative owner migration is complete.
  */
 public final class EtchedProtocol {
 

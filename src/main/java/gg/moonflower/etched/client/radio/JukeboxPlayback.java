@@ -1,6 +1,7 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.common.audio.PlaybackRevision;
+import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.item.RecordContentResolver;
@@ -54,8 +55,16 @@ public final class JukeboxPlayback {
         }
     }
 
-    public static boolean acceptPacket(ResourceKey<Level> dimension, BlockPos pos, ItemStack record) {
-        return STARTS.consume(PlaybackOwnerKey.block(dimension, pos), Item.getId(record.getItem()));
+    public static boolean acceptPacket(ResourceKey<Level> dimension, BlockPos pos, int itemId) {
+        return STARTS.consume(PlaybackOwnerKey.block(dimension, pos), itemId);
+    }
+
+    public static boolean startProgram(BlockPos pos, AudioProgram program) {
+        var level = Minecraft.getInstance().level;
+        if (level == null || !hasRecord(level.getBlockState(pos))) {
+            return false;
+        }
+        return apply(AudioPlaybackManager.getInstance(), PlaybackOwnerKey.block(level.dimension(), pos), new RecordContent(program));
     }
 
     public static void clearPendingStarts() {

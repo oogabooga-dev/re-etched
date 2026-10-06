@@ -10,6 +10,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.fml.IExtensionPoint;
 import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkRegistry;
@@ -174,18 +175,21 @@ class EtchedProtocolTest {
 
     @Test
     void roundTripsCurrentBlockMusicCodec() {
-        ItemStack record = recordWithLegacyPayload();
+        ItemStack record = recordWithCosmetics();
         BlockPos pos = new BlockPos(-12, 64, 345);
+        ClientboundPlayMusicPacket packet = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, record);
         ClientboundPlayMusicPacket decoded = roundTrip(
-                new ClientboundPlayMusicPacket(record, pos), ClientboundPlayMusicPacket::new);
+                packet, ClientboundPlayMusicPacket::new);
 
-        assertTrue(ItemStack.matches(record, decoded.record()));
+        assertEquals(packet, decoded);
         assertEquals(pos, decoded.pos());
+        assertEquals(Level.OVERWORLD, decoded.dimension());
+        assertEquals("minecraft:music_disc.cat", decoded.program().orElseThrow().tracks().get(0).source());
     }
 
-    private static ItemStack recordWithLegacyPayload() {
-        ItemStack record = new ItemStack(Items.PAPER);
-        record.getOrCreateTag().putString("Music", "legacy-payload");
+    private static ItemStack recordWithCosmetics() {
+        ItemStack record = new ItemStack(Items.MUSIC_DISC_CAT);
+        record.getOrCreateTag().putString("CosmeticMarker", "not-playback-content");
         return record;
     }
 

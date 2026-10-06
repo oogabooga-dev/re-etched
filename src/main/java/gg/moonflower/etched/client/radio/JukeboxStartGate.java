@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Correlates custom jukebox 1010 events and legacy item packets in send order.
- * The server sends one legacy item packet immediately after each custom 1010;
+ * Correlates custom jukebox 1010 events and bounded program packets in send order.
+ * The server sends one program packet immediately after each custom 1010;
  * both use the same ordered Minecraft connection. Stop events invalidate slots
  * but cannot remove them until their packets arrive.
  */

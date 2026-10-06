@@ -203,18 +203,17 @@ public final class EtchedGameTests {
         JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(jukeboxPos);
         jukebox.setFirstItem(albumCover);
         ClientboundPlayMusicPacket sentPacket =
-                new ClientboundPlayMusicPacket(jukebox.getFirstItem().copy(), absoluteJukeboxPos);
+                ClientboundPlayMusicPacket.fromRecord(helper.getLevel().dimension(), absoluteJukeboxPos, jukebox.getFirstItem());
 
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             sentPacket.writePacketData(buffer);
             ClientboundPlayMusicPacket receivedPacket = new ClientboundPlayMusicPacket(buffer);
-            var tracks = RecordContentResolver.resolve(receivedPacket.record()).orElseThrow().program().tracks();
+            var tracks = receivedPacket.program().orElseThrow().tracks();
 
             helper.assertTrue(receivedPacket.pos().equals(absoluteJukeboxPos),
                     "The jukebox playback packet changed its position");
-            helper.assertTrue(ItemStack.matches(receivedPacket.record(), sentPacket.record()),
-                    "The jukebox playback packet changed the record NBT");
+            helper.assertTrue(receivedPacket.equals(sentPacket), "The jukebox packet changed its typed dimension/program/discriminator");
             helper.assertTrue(tracks.size() == 3, "The Album Cover packet did not contain every track");
             helper.assertTrue(tracks.equals(List.of(first, second, third)), "The Album Cover track changed order or metadata");
         } finally {

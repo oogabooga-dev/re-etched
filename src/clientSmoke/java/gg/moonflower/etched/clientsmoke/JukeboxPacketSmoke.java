@@ -119,7 +119,7 @@ final class JukeboxPacketSmoke {
             step = 3;
             ticks = 0;
             // All four messages traverse the integrated connection in this order. A's
-            // legacy packet is intentionally held until B's start event is in flight.
+            // program packet is intentionally held until B's start event is in flight.
             MinecraftServer server = client.getSingleplayerServer();
             ResourceKey<Level> dimension = client.level.dimension();
             UUID playerId = client.player.getUUID();
@@ -130,7 +130,7 @@ final class JukeboxPacketSmoke {
                 level.levelEvent(null, 1010, pos, id);
                 level.levelEvent(null, 1011, pos, 0);
                 level.levelEvent(null, 1010, pos, id);
-                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), new ClientboundPlayMusicPacket(A, pos));
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), ClientboundPlayMusicPacket.fromRecord(dimension, pos, A));
             });
         }
         if (step == 3 && ++ticks >= 40) {
@@ -144,7 +144,9 @@ final class JukeboxPacketSmoke {
             UUID playerId = client.player.getUUID();
             server.execute(() -> {
                 ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), new ClientboundPlayMusicPacket(B, pos));
+                // A foreign-dimension payload must neither start playback nor consume B's current-world ticket.
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), ClientboundPlayMusicPacket.fromRecord(Level.NETHER, pos, B));
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), ClientboundPlayMusicPacket.fromRecord(player.level().dimension(), pos, B));
             });
         }
         if (step == 4 && client.level != null) {
@@ -397,7 +399,7 @@ final class JukeboxPacketSmoke {
                     ServerLevel level = server.getLevel(dimension);
                     level.levelEvent(null, 1010, pos, Item.getId(unsupported.getItem()));
                     EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
-                            new ClientboundPlayMusicPacket(unsupported, pos));
+                            ClientboundPlayMusicPacket.fromRecord(level.dimension(), pos, unsupported));
                 });
             } else if (++ticks >= 100) {
                 throw new AssertionError("Unsupported third-party record did not reach the held boombox");
