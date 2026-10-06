@@ -1,9 +1,18 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
+import net.minecraft.core.BlockPos;
+import net.minecraft.stats.Stats;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.RecordItem;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.JukeboxBlock;
+import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gameevent.GameEvent;
 
 /** Keeps the original jukebox comparator and playing-event semantics for custom record items. */
 public final class JukeboxRecordSupport {
@@ -16,14 +25,32 @@ public final class JukeboxRecordSupport {
             return false;
         }
         Item item = stack.getItem();
-        if (item instanceof RecordItem) {
-            return false;
+        // Type-only for already stored records, including an empty Album Cover placed by commands.
+        return item instanceof EtchedMusicDiscItem || item instanceof AlbumCoverItem;
+    }
+
+    public static InteractionResult useOn(UseOnContext context) {
+        Level level = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        BlockState state = level.getBlockState(pos);
+        ItemStack stack = context.getItemInHand();
+        if (!state.is(Blocks.JUKEBOX) || state.getValue(JukeboxBlock.HAS_RECORD)
+                || !isCustomRecord(stack) || RecordContentResolver.resolve(stack).isEmpty()) {
+            return InteractionResult.PASS;
         }
-        // First-party items no longer rely on the compatibility API for jukebox behavior.
-        if (item instanceof EtchedMusicDiscItem || item instanceof AlbumCoverItem) {
-            return true;
+
+        if (!level.isClientSide()) {
+            if (!(level.getBlockEntity(pos) instanceof JukeboxBlockEntity jukebox)) {
+                return InteractionResult.PASS;
+            }
+            Player player = context.getPlayer();
+            jukebox.setFirstItem(stack.copyWithCount(1));
+            level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(player, state));
+            stack.shrink(1);
+            if (player != null) {
+                player.awardStat(Stats.PLAY_RECORD);
+            }
         }
-        // Keep third-party PlayableRecord items working as before.
-        return item instanceof PlayableRecord;
+        return InteractionResult.sidedSuccess(level.isClientSide());
     }
 }

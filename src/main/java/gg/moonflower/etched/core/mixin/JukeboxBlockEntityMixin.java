@@ -1,6 +1,7 @@
 package gg.moonflower.etched.core.mixin;
 
 import gg.moonflower.etched.common.item.JukeboxRecordSupport;
+import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.registry.EtchedItems;
@@ -75,8 +76,8 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
 
     @Inject(method = "canPlaceItem", at = @At("RETURN"), cancellable = true)
     public void canPlaceItem(int index, ItemStack stack, CallbackInfoReturnable<Boolean> cir) {
-        if (!cir.getReturnValueZ()) {
-            cir.setReturnValue(stack.is(EtchedItems.ALBUM_COVER.get()) && this.getItem(index).isEmpty());
+        if (JukeboxRecordSupport.isCustomRecord(stack)) {
+            cir.setReturnValue(this.getItem(index).isEmpty() && RecordContentResolver.resolve(stack).isPresent());
         }
     }
 

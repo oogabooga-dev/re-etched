@@ -1,6 +1,5 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.common.menu.BoomboxMenu;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
@@ -240,7 +239,7 @@ public class BoomboxItem extends Item implements ContainerItem {
     }
 
     private static boolean canAdd(ItemStack boombox, ItemStack record) {
-        if (!(boombox.is(EtchedItems.BOOMBOX.get())) || !(record.getItem() instanceof PlayableRecord)) {
+        if (!(boombox.is(EtchedItems.BOOMBOX.get())) || RecordContentResolver.resolve(record).isEmpty()) {
             return false;
         }
         return getRecord(boombox).isEmpty();

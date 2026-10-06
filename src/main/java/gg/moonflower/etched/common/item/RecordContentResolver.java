@@ -1,6 +1,5 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
@@ -8,6 +7,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,26 +34,33 @@ public final class RecordContentResolver {
             return fromDisc(stack);
         }
         if (stack.getItem() instanceof AlbumCoverItem) {
-            List<AudioTrack> tracks = new ArrayList<>();
-            for (ItemStack disc : AlbumCoverItem.readRecords(stack)) {
-                // No recursive albums, and each record has at most one bounded program.
-                if ((disc.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record))
-                        || disc.getItem() instanceof EtchedMusicDiscItem) {
-                    resolve(disc).ifPresent(content -> {
-                        for (AudioTrack track : content.program().tracks()) {
-                            if (tracks.size() < AudioProgram.MAX_TRACKS) {
-                                tracks.add(track);
-                            }
-                        }
-                    });
-                } else if (disc.getItem() instanceof PlayableRecord) {
-                    // Never silently discard third-party tracks from a legacy Album Cover.
-                    return Optional.empty();
-                }
-            }
-            return fromAudioTracks(tracks);
+            return fromRecords(AlbumCoverItem.readRecords(stack));
         }
         return Optional.empty();
+    }
+
+    /** Album slots accept only valid first-party discs, never another album or a legacy provider. */
+    public static boolean isPlayableDisc(ItemStack stack) {
+        return !(stack.getItem() instanceof AlbumCoverItem) && resolve(stack).isPresent();
+    }
+
+    static Optional<RecordContent> fromRecords(Collection<ItemStack> records) {
+        List<AudioTrack> tracks = new ArrayList<>();
+        for (ItemStack disc : records) {
+            if (disc.isEmpty()) {
+                continue;
+            }
+            // Reject a whole album rather than silently dropping unsupported/invalid discs or later tracks.
+            if (disc.getItem() instanceof AlbumCoverItem) {
+                return Optional.empty();
+            }
+            Optional<RecordContent> content = resolve(disc);
+            if (content.isEmpty() || content.orElseThrow().program().tracks().size() > AudioProgram.MAX_TRACKS - tracks.size()) {
+                return Optional.empty();
+            }
+            tracks.addAll(content.orElseThrow().program().tracks());
+        }
+        return fromAudioTracks(tracks);
     }
 
     static Optional<RecordContent> fromDisc(ItemStack stack) {

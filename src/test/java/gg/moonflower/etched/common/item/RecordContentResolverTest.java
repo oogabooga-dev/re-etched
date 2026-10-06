@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecordContentResolverTest {
@@ -27,6 +28,28 @@ class RecordContentResolverTest {
         assertEquals(AudioTrack.SourceType.SOUND_EVENT, content.program().tracks().get(0).sourceType());
         assertEquals(((RecordItem) Items.MUSIC_DISC_13).getSound().getLocation().toString(), content.program().tracks().get(0).source());
         assertTrue(RecordContentResolver.resolve(new ItemStack(Items.STONE)).isEmpty());
+    }
+
+    @Test
+    void albumAggregationKeepsOrderIgnoresEmptySlotsAndRejectsUnsupportedRecords() {
+        var first = new ItemStack(Items.MUSIC_DISC_CAT);
+        var second = new ItemStack(Items.MUSIC_DISC_BLOCKS);
+        var content = RecordContentResolver.fromRecords(List.of(first, ItemStack.EMPTY, second)).orElseThrow();
+        assertEquals(List.of("minecraft:music_disc.cat", "minecraft:music_disc.blocks"),
+                content.program().tracks().stream().map(AudioTrack::source).toList());
+        assertTrue(content.album().isEmpty());
+        assertTrue(RecordContentResolver.fromRecords(List.of(first, new ItemStack(Items.PAPER), second)).isEmpty());
+        assertTrue(RecordContentResolver.fromRecords(List.of(ItemStack.EMPTY)).isEmpty());
+        assertTrue(RecordContentResolver.isPlayableDisc(first));
+        assertFalse(RecordContentResolver.isPlayableDisc(new ItemStack(Items.PAPER)));
+    }
+
+    @Test
+    void albumTrackLimitRejectsRatherThanTruncatingTheSequence() {
+        var disc = new ItemStack(Items.MUSIC_DISC_CAT);
+        assertEquals(AudioProgram.MAX_TRACKS, RecordContentResolver.fromRecords(
+                java.util.Collections.nCopies(AudioProgram.MAX_TRACKS, disc)).orElseThrow().program().tracks().size());
+        assertTrue(RecordContentResolver.fromRecords(java.util.Collections.nCopies(AudioProgram.MAX_TRACKS + 1, disc)).isEmpty());
     }
 
     @Test
