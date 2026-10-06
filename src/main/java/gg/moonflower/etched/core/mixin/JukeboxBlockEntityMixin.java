@@ -13,7 +13,6 @@ import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -36,7 +35,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class JukeboxBlockEntityMixin extends BlockEntity implements ContainerSingleItem {
 
     @Unique
-    private boolean etched$customPlaying;
+    private boolean etched$managedPlaying;
 
     @Shadow
     @Final
@@ -65,8 +64,8 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
     }
 
     @Inject(method = "startPlaying", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;levelEvent(Lnet/minecraft/world/entity/player/Player;ILnet/minecraft/core/BlockPos;I)V"))
-    private void etched$publishCustomBlockState(CallbackInfo ci) {
-        if (!this.getFirstItem().isEmpty() && !(this.getFirstItem().getItem() instanceof RecordItem)
+    private void etched$publishManagedBlockState(CallbackInfo ci) {
+        if (!this.getFirstItem().isEmpty() && JukeboxRecordSupport.requiresPlaybackPacket(this.getFirstItem().getItem())
                 && this.level instanceof ServerLevel serverLevel) {
             BlockPos pos = this.getBlockPos();
             // Chunk block updates are batched, but 1010 and the program packet are sent immediately.
@@ -78,8 +77,8 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
 
     @Inject(method = "startPlaying", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;levelEvent(Lnet/minecraft/world/entity/player/Player;ILnet/minecraft/core/BlockPos;I)V", shift = At.Shift.AFTER))
     public void startPlaying(CallbackInfo ci) {
-        this.etched$customPlaying = !this.getFirstItem().isEmpty() && !(this.getFirstItem().getItem() instanceof RecordItem);
-        if (this.etched$customPlaying && this.level instanceof ServerLevel serverLevel) {
+        this.etched$managedPlaying = !this.getFirstItem().isEmpty() && JukeboxRecordSupport.requiresPlaybackPacket(this.getFirstItem().getItem());
+        if (this.etched$managedPlaying && this.level instanceof ServerLevel serverLevel) {
             BlockPos pos = this.getBlockPos();
             this.etched$sendState(ClientboundPlayMusicPacket.fromRecord(serverLevel.dimension(), pos,
                     ServerPlaybackClock.get(serverLevel).next(), this.getFirstItem()));
@@ -88,17 +87,17 @@ public abstract class JukeboxBlockEntityMixin extends BlockEntity implements Con
 
     @Inject(method = "stopPlaying", at = @At("TAIL"))
     private void etched$stopPlaying(CallbackInfo ci) {
-        if (this.etched$customPlaying && this.level instanceof ServerLevel serverLevel) {
+        if (this.etched$managedPlaying && this.level instanceof ServerLevel serverLevel) {
             this.etched$sendState(ClientboundPlayMusicPacket.stopped(serverLevel.dimension(), this.getBlockPos(),
                     ServerPlaybackClock.get(serverLevel).next()));
         }
-        this.etched$customPlaying = false;
+        this.etched$managedPlaying = false;
     }
 
     @Inject(method = "load", at = @At("TAIL"))
-    private void etched$restoreCustomPlaying(CompoundTag tag, CallbackInfo ci) {
-        // Removal clears the inventory before stopPlaying. Remember the custom owner across disk restore too.
-        this.etched$customPlaying = this.isRecordPlaying() && !(this.getFirstItem().getItem() instanceof RecordItem);
+    private void etched$restoreManagedPlaying(CompoundTag tag, CallbackInfo ci) {
+        // Removal clears the inventory before stopPlaying. Remember the managed owner across disk restore too.
+        this.etched$managedPlaying = this.isRecordPlaying() && JukeboxRecordSupport.requiresPlaybackPacket(this.getFirstItem().getItem());
     }
 
     @Unique

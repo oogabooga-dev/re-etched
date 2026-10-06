@@ -3,6 +3,7 @@ package gg.moonflower.etched.common.item;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
+import gg.moonflower.etched.common.audio.ServerPlaybackClock;
 import gg.moonflower.etched.common.menu.AlbumCoverMenu;
 import gg.moonflower.etched.common.menu.BoomboxMenu;
 import gg.moonflower.etched.core.Etched;
@@ -154,6 +155,26 @@ public final class RecordInsertionGameTests {
         ItemStack unsupported = new ItemStack(ForgeRegistries.ITEMS.getValue(UnsupportedInsertionRecord.ID));
         return List.of(new ItemStack(Items.PAPER), unsupported, legacy, invalid,
                 new ItemStack(EtchedItems.ALBUM_COVER.get()), album(List.of(invalid)), album(List.of(unsupported)));
+    }
+
+    @GameTest(template = "empty")
+    public static void thirdPartyRecordItemKeepsNativeStartStopAndNoManagedRevision(GameTestHelper helper) {
+        ItemStack foreign = foreignDisc();
+        helper.assertFalse(JukeboxRecordSupport.requiresPlaybackPacket(foreign.getItem()),
+                "A third-party RecordItem was routed to first-party state");
+        helper.assertFalse(VanillaRecordAdapter.isVanilla((net.minecraft.world.item.RecordItem) foreign.getItem()),
+                "A foreign disc sharing a vanilla sound was admitted as an actual vanilla disc");
+        helper.assertTrue(RecordContentResolver.resolve(foreign).isEmpty(), "Third-party disc resolved managed content");
+        helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
+        var jukebox = (JukeboxBlockEntity) helper.getBlockEntity(BlockPos.ZERO);
+        helper.assertTrue(jukebox.canPlaceItem(0, foreign), "Native disc automation was disabled");
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long before = clock.current();
+        jukebox.setFirstItem(foreign);
+        helper.assertTrue(jukebox.isRecordPlaying(), "Native third-party disc did not start");
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before, "Native third-party start/stop allocated managed state");
+        helper.succeed();
     }
 
     private static ItemStack disc(int count, String source) {

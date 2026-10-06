@@ -36,7 +36,8 @@ public class EtchedClientPlayPacketHandler {
             Map<BlockPos, SoundInstance> playingRecords = ((LevelRendererAccessor) client.levelRenderer).getPlayingRecords();
             SoundInstance soundInstance = playingRecords.get(pos);
 
-            if (soundInstance != null) {
+            // A managed stop owns no native wrapper: a late stop must not close a third-party replacement.
+            if (soundInstance != null && !pkt.isStop()) {
                 client.getSoundManager().stop(soundInstance);
                 playingRecords.remove(pos);
             }

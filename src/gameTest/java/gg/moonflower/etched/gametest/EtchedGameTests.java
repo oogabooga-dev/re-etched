@@ -280,15 +280,39 @@ public final class EtchedGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void nativeJukeboxEventsDoNotAllocateCustomProtocolRevisions(GameTestHelper helper) {
+    public static void vanillaJukeboxStartStopAndRestoredStopAllocateServerRevisions(GameTestHelper helper) {
         var clock = ServerPlaybackClock.get(helper.getLevel());
         long before = clock.current();
         helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
         JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(BlockPos.ZERO);
         jukebox.setFirstItem(new ItemStack(Items.MUSIC_DISC_CAT));
+        helper.assertTrue(clock.current() == before + 1L, "Vanilla disc start did not allocate a server revision");
+        CompoundTag saved = jukebox.saveWithoutMetadata();
         jukebox.removeFirstItem();
-        helper.assertTrue(clock.current() == before, "Native disc events leaked into the custom packet lifecycle");
+        helper.assertTrue(clock.current() == before + 2L, "Vanilla disc stop did not allocate a server revision");
+        jukebox.load(saved);
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 3L, "Restored vanilla disc lost its authoritative stop owner");
         helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void vanillaDiscNaturalServerStopAllocatesTheNextRevision(GameTestHelper helper) {
+        helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(BlockPos.ZERO);
+        jukebox.setFirstItem(new ItemStack(Items.MUSIC_DISC_CAT));
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long startRevision = clock.current();
+        CompoundTag saved = jukebox.saveWithoutMetadata();
+        saved.putLong("TickCount", 1_000_000L);
+        saved.putLong("RecordStartTick", 0L);
+        jukebox.load(saved);
+        helper.runAfterDelay(2, () -> {
+            helper.assertTrue(!jukebox.isRecordPlaying(), "Vanilla disc did not reach its native server stop");
+            helper.assertTrue(gg.moonflower.etched.common.audio.PlaybackRevision.isNewer(clock.current(), startRevision),
+                    "Natural vanilla disc stop did not advance its server revision");
+            helper.succeed();
+        });
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)

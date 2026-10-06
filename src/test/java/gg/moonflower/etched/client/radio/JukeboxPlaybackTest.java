@@ -5,6 +5,9 @@ import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.JukeboxBlock;
@@ -38,10 +41,16 @@ class JukeboxPlaybackTest {
         AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
         RecordContent first = program(remote("first"));
         RecordContent replacement = program(remote("second"));
+        JukeboxStartGate starts = new JukeboxStartGate();
+        JukeboxRevisionGate revisions = new JukeboxRevisionGate();
 
-        assertTrue(JukeboxPlayback.apply(manager, KEY, first));
-        assertTrue(JukeboxPlayback.apply(manager, KEY, replacement));
-        assertEquals(1, manager.getPlaybackState(KEY).orElseThrow().revision());
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO,
+                42, 10L, Optional.of(first.program()))));
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO,
+                42, 11L, Optional.of(replacement.program()))));
+        assertEquals(11L, manager.getPlaybackState(KEY).orElseThrow().revision());
         assertEquals(replacement.program(), manager.getPlaybackState(KEY).orElseThrow().program().orElseThrow());
         assertTrue(manager.remove(KEY));
         assertFalse(manager.getPlaybackState(KEY).isPresent());
@@ -50,10 +59,16 @@ class JukeboxPlaybackTest {
     @Test
     void mixedAlbumSupersedesThePreviousProgramWithOneOwnerRevision() {
         AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
-        assertTrue(JukeboxPlayback.apply(manager, KEY, program(remote("first"))));
-        assertTrue(JukeboxPlayback.apply(manager, KEY, program(remote("second"),
-                new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.cat", "", ""))));
-        assertEquals(1, manager.getPlaybackState(KEY).orElseThrow().revision());
+        JukeboxStartGate starts = new JukeboxStartGate();
+        JukeboxRevisionGate revisions = new JukeboxRevisionGate();
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, packet(20L, "first")));
+        starts.start(KEY, 42, true);
+        var mixed = program(remote("second"),
+                new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.cat", "", ""));
+        assertTrue(deliver(manager, starts, revisions, new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO,
+                42, 21L, Optional.of(mixed.program()))));
+        assertEquals(21L, manager.getPlaybackState(KEY).orElseThrow().revision());
     }
 
     @Test
@@ -126,6 +141,34 @@ class JukeboxPlaybackTest {
         assertTrue(manager.getPlaybackState(KEY).isEmpty());
         starts.start(KEY, 42, true);
         assertTrue(deliver(manager, starts, revisions, packet(11L, "next incarnation")));
+    }
+
+    @Test
+    void actualVanillaDiscEventsOnlyAdmitServerPacketsAndRetainTheExactRevision() {
+        AudioPlaybackManager manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        JukeboxStartGate starts = new JukeboxStartGate();
+        JukeboxRevisionGate revisions = new JukeboxRevisionGate();
+        var cat = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, BlockPos.ZERO, 50L, new ItemStack(Items.MUSIC_DISC_CAT));
+        assertFalse(deliver(manager, starts, revisions, cat));
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, cat.itemId(), true);
+        assertTrue(deliver(manager, starts, revisions, cat));
+        assertEquals(cat.state(), manager.getPlaybackState(KEY).orElseThrow());
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, cat.itemId(), true);
+        assertFalse(deliver(manager, starts, revisions, cat));
+        assertEquals(cat.state(), manager.getPlaybackState(KEY).orElseThrow());
+    }
+
+    @Test
+    void nonManagedEventsInvalidatePendingVanillaTicketsWithoutCreatingTheirOwn() {
+        JukeboxStartGate starts = new JukeboxStartGate();
+        int vanillaId = Item.getId(Items.MUSIC_DISC_CAT);
+        int foreignId = Item.getId(Items.AIR); // Registered native foreign disc is covered in transformed tests.
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, vanillaId, true);
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, foreignId, true);
+        assertFalse(starts.consume(KEY, vanillaId));
+        assertFalse(starts.consume(KEY, foreignId));
+        JukeboxPlayback.levelEvent(starts, Level.OVERWORLD, 1010, BlockPos.ZERO, vanillaId, true);
+        assertTrue(starts.consume(KEY, vanillaId));
     }
 
     private static ClientboundPlayMusicPacket packet(long revision, String name) {

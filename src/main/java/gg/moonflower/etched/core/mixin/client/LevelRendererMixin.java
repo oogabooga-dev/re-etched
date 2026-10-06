@@ -5,6 +5,7 @@ import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.client.GuiHook;
 import gg.moonflower.etched.client.radio.JukeboxPlayback;
+import gg.moonflower.etched.common.item.JukeboxRecordSupport;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.resources.sounds.SoundInstance;
@@ -13,7 +14,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -57,26 +57,21 @@ public abstract class LevelRendererMixin {
         }
         boolean hasRecord = JukeboxPlayback.hasRecord(this.level.getBlockState(pos));
         JukeboxPlayback.levelEvent(this.level.dimension(), event, pos, data, hasRecord);
-        if (event == 1010 && (!hasRecord || !(Item.byId(data) instanceof RecordItem))) {
-            // Custom starts are applied by their authoritative packet, not this unrevisioned sound event.
+        if (event == 1010 && JukeboxRecordSupport.requiresPlaybackPacket(Item.byId(data))) {
+            // First-party starts are applied by their authoritative packet, not this unrevisioned sound event.
             // In particular a duplicate/stale event must not retire the current session before revision admission.
             ci.cancel();
         }
     }
 
     @Inject(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At("HEAD"), cancellable = true, remap = false)
-    private void etched$playManagedRecord(SoundEvent sound, BlockPos pos, RecordItem disc, CallbackInfo ci) {
-        if (sound == null) {
-            JukeboxPlayback.stop(pos);
-        } else if (disc != null && JukeboxPlayback.start(pos, new ItemStack(disc))) {
-            SoundInstance previous = this.playingRecords.remove(pos);
-            if (previous != null) {
-                net.minecraft.client.Minecraft.getInstance().getSoundManager().stop(previous);
-            }
+    private void etched$guardManagedRecord(SoundEvent sound, BlockPos pos, RecordItem disc, CallbackInfo ci) {
+        if (sound != null && disc != null && JukeboxRecordSupport.requiresPlaybackPacket(disc)) {
+            // Direct calls must not bypass server-authoritative state for an actual vanilla disc either.
             ci.cancel();
-        } else {
-            JukeboxPlayback.stop(pos);
+            return;
         }
+        JukeboxPlayback.stop(pos);
     }
 
     @Redirect(method = "playStreamingMusic(Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/RecordItem;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/sounds/SoundManager;play(Lnet/minecraft/client/resources/sounds/SoundInstance;)V", remap = true), remap = false)

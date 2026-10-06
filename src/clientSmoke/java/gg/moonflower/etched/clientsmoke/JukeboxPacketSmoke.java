@@ -290,6 +290,13 @@ final class JukeboxPacketSmoke {
                 }
                 return;
             }
+            step = 46;
+            ticks = 0;
+        }
+        if (step == 46) {
+            if (!NativeJukeboxRevisionSmoke.tick(client, pos, B)) {
+                return;
+            }
             step = 5;
             ticks = 0;
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());

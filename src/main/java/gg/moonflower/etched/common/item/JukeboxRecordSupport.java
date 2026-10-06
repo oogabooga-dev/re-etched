@@ -6,6 +6,8 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -27,6 +29,11 @@ public final class JukeboxRecordSupport {
         Item item = stack.getItem();
         // Type-only for already stored records, including an empty Album Cover placed by commands.
         return item instanceof EtchedMusicDiscItem || item instanceof AlbumCoverItem;
+    }
+
+    /** Vanilla discs and non-native starts use typed state; third-party RecordItems retain native playback. */
+    public static boolean requiresPlaybackPacket(Item item) {
+        return item != null && item != Items.AIR && (!(item instanceof RecordItem record) || VanillaRecordAdapter.isVanilla(record));
     }
 
     public static InteractionResult useOn(UseOnContext context) {

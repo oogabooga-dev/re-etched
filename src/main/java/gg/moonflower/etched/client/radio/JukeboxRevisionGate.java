@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** Retains custom jukebox revision tombstones after local session removal, until world cleanup. */
+/** Retains managed jukebox revision tombstones after local session removal, until world cleanup. */
 final class JukeboxRevisionGate {
 
     private static final int MAX_OWNERS = 256;

@@ -3,8 +3,10 @@ package gg.moonflower.etched.clientsmoke;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
@@ -20,6 +22,7 @@ import java.util.List;
 public final class UnsupportedSmokeRecord extends Item {
 
     static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "client_smoke_unsupported_record");
+    static final ResourceLocation FOREIGN_DISC_ID = ResourceLocation.fromNamespaceAndPath(Etched.MOD_ID, "client_smoke_foreign_disc");
 
     private UnsupportedSmokeRecord(Properties properties) {
         super(properties);
@@ -27,8 +30,11 @@ public final class UnsupportedSmokeRecord extends Item {
 
     @SubscribeEvent
     public static void register(RegisterEvent event) {
-        event.register(ForgeRegistries.Keys.ITEMS, helper ->
-                helper.register(ID, new UnsupportedSmokeRecord(new Item.Properties().stacksTo(1))));
+        event.register(ForgeRegistries.Keys.ITEMS, helper -> {
+            helper.register(ID, new UnsupportedSmokeRecord(new Item.Properties().stacksTo(1)));
+            helper.register(FOREIGN_DISC_ID, new RecordItem(1, () -> SoundEvents.MUSIC_DISC_CAT,
+                    new Item.Properties().stacksTo(1), 185));
+        });
     }
 
     @Override
