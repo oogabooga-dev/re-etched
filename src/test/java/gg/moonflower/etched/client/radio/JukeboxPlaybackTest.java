@@ -2,6 +2,7 @@ package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.PlaybackState;
 import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import net.minecraft.core.BlockPos;
@@ -19,6 +20,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JukeboxPlaybackTest {
@@ -28,6 +30,7 @@ class JukeboxPlaybackTest {
     }
 
     private static final PlaybackOwnerKey.BlockOwner KEY = PlaybackOwnerKey.block(Level.OVERWORLD, BlockPos.ZERO);
+    private final JukeboxSessionOwners sessions = new JukeboxSessionOwners();
 
     @Test
     void delayedStartsRequireAnInsertedRecordInTheCurrentJukebox() {
@@ -182,7 +185,7 @@ class JukeboxPlaybackTest {
         var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
         var starts = new JukeboxStartGate();
         var revisions = new JukeboxRevisionGate();
-        var sessions = new JukeboxSessionOwners();
+        var sessions = this.sessions;
         var record = new ItemStack(Items.MUSIC_DISC_CAT);
         var adjacent = PlaybackOwnerKey.block(Level.OVERWORLD, new BlockPos(-1, 0, 0));
         var foreign = PlaybackOwnerKey.block(Level.NETHER, BlockPos.ZERO);
@@ -190,7 +193,6 @@ class JukeboxPlaybackTest {
             var packet = ClientboundPlayMusicPacket.fromRecord(key.dimension(), key.pos(), 10L, record);
             starts.start(key, packet.itemId(), true);
             assertTrue(deliver(manager, starts, revisions, packet));
-            sessions.remember(key, manager.getPlaybackState(key).orElseThrow());
         }
         var pending = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, new BlockPos(15, 64, 15), 100L, record);
         var pendingKey = PlaybackOwnerKey.block(pending.dimension(), pending.pos());
@@ -246,12 +248,86 @@ class JukeboxPlaybackTest {
         assertEquals(1L, manager.getPlaybackState(KEY).orElseThrow().revision());
     }
 
-    private static boolean deliver(AudioPlaybackManager manager, JukeboxStartGate starts,
-                                   JukeboxRevisionGate revisions, ClientboundPlayMusicPacket packet) {
+    @Test
+    void delayedAuthoritativeStopCannotCloseAnotherAdapterAtTheSamePosition() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, packet(10L, "first")));
+        var previous = manager.getPlaybackState(KEY).orElseThrow();
+        manager.remove(KEY);
+        var other = new PlaybackState(previous.revision(), previous.program(), true);
+        manager.update(KEY, other); // Same values, different adapter-owned state instance.
+        var stop = ClientboundPlayMusicPacket.stopped(Level.OVERWORLD, BlockPos.ZERO, 11L);
+        assertTrue(deliver(manager, starts, revisions, stop));
+        assertSame(other, manager.getPlaybackState(KEY).orElse(null));
+    }
+
+    @Test
+    void unknownStopsAndUnsupportedReplacementDoNotOwnAnotherAdapterAndStillCompressTheirRevision() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        var other = new PlaybackState(500L, Optional.of(program(remote("other adapter")).program()), true);
+        manager.update(KEY, other);
+        assertTrue(deliver(manager, starts, revisions, ClientboundPlayMusicPacket.stopped(Level.OVERWORLD, BlockPos.ZERO, 10L)));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, new ClientboundPlayMusicPacket(Level.OVERWORLD, BlockPos.ZERO,
+                42, 11L, Optional.empty())));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+        starts.start(KEY, 42, true);
+        assertFalse(deliver(manager, starts, revisions, packet(11L, "late")));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+    }
+
+    @Test
+    void directNativeStopInvalidatesPendingTicketsAndReleasesOnlyItsExactSession() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, packet(10L, "first")));
+        starts.start(KEY, 42, true); // A managed event has arrived, but its packet has not.
+        assertTrue(JukeboxPlayback.stop(manager, starts, this.sessions, revisions, KEY));
+        assertTrue(manager.getPlaybackState(KEY).isEmpty());
+        assertFalse(deliver(manager, starts, revisions, packet(100L, "late native handoff")));
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, packet(11L, "fresh snapshot")));
+
+        var accepted = manager.getPlaybackState(KEY).orElseThrow();
+        manager.remove(KEY);
+        var other = new PlaybackState(accepted.revision(), accepted.program(), true);
+        manager.update(KEY, other);
+        starts.start(KEY, 42, true);
+        assertFalse(JukeboxPlayback.stop(manager, starts, this.sessions, revisions, KEY));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+        assertFalse(deliver(manager, starts, revisions, packet(101L, "another late handoff")));
+        assertFalse(JukeboxPlayback.stop(manager, starts, this.sessions, revisions, KEY));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+    }
+
+    @Test
+    void rejectedManagedUpdateDoesNotAdoptAnotherAdapterAndItsLaterStopCannotCloseIt() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var starts = new JukeboxStartGate();
+        var revisions = new JukeboxRevisionGate();
+        var other = new PlaybackState(100L, Optional.of(program(remote("other")).program()), true);
+        manager.update(KEY, other);
+        starts.start(KEY, 42, true);
+        assertTrue(deliver(manager, starts, revisions, packet(10L, "rejected by manager")));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+        assertTrue(deliver(manager, starts, revisions, ClientboundPlayMusicPacket.stopped(Level.OVERWORLD, BlockPos.ZERO, 11L)));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+    }
+
+    private boolean deliver(AudioPlaybackManager manager, JukeboxStartGate starts,
+                            JukeboxRevisionGate revisions, ClientboundPlayMusicPacket packet) {
         if (!JukeboxPlayback.acceptPacket(starts, revisions, packet, true)) {
             return false;
         }
-        JukeboxPlayback.applyPacket(manager, packet);
+        JukeboxPlayback.applyPacket(manager, this.sessions, revisions, packet);
         return true;
     }
 

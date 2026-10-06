@@ -10,6 +10,7 @@ import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.audio.ServerPlaybackClock;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
+import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundBoomboxStatePacket;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
@@ -32,6 +33,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.JukeboxBlock;
 import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.network.PacketDistributor;
@@ -123,7 +125,7 @@ final class WorldReopenSmoke {
                 advance();
             }
             case 1 -> {
-                if (dropped.size() != 3 || dropped.stream().anyMatch(id -> find(client, id) == null)
+                if (!droppedLoaded(client)
                         || !positiveKeys(client).stream().allMatch(manager::isPlaying) || ticks < 20) {
                     return false;
                 }
@@ -177,7 +179,7 @@ final class WorldReopenSmoke {
             case 3 -> {
                 if (client.level == null || client.player == null || client.getSingleplayerServer() == null
                         || client.getSingleplayerServer() == oldServer || !oldServer.isShutdown()
-                        || !client.level.dimension().equals(dimension) || dropped.stream().anyMatch(id -> find(client, id) == null)
+                        || !client.level.dimension().equals(dimension) || !droppedLoaded(client)
                         || !positiveKeys(client).stream().allMatch(manager::isPlaying)) {
                     return false;
                 }
@@ -195,6 +197,7 @@ final class WorldReopenSmoke {
                     if (!PlaybackRevision.isNewer(ServerPlaybackClock.get(player.serverLevel()).current(), diskRevision)) {
                         throw new AssertionError("Reopened server did not resume the persisted global allocator");
                     }
+                    assertRestoredNegativeSources(player);
                     for (int i = 0; i < 2; i++) {
                         var box = (JukeboxBlockEntity) player.serverLevel().getBlockEntity(pos.above(i * 2));
                         if (!box.isRecordPlaying() || box.saveWithoutMetadata().getLong("RecordStartTick") != startTicks.get(i)) {
@@ -273,11 +276,41 @@ final class WorldReopenSmoke {
                 throw new AssertionError("Reopen auto-started a stopped/invalid/native jukebox");
             }
         }
-        for (var id : dropped.subList(1, 3)) {
+        for (int i = 1; i < 3; i++) {
+            var id = dropped.get(i);
+            var entity = find(client, id);
+            if (!(entity instanceof ItemEntity item) || !item.getItem().is(EtchedItems.BOOMBOX.get())
+                    || !BoomboxItem.hasRecord(item.getItem()) || BoomboxItem.isPaused(item.getItem()) != (i == 1)
+                    || !BoomboxItem.getRecord(item.getItem()).is(i == 1 ? Items.MUSIC_DISC_CAT : EtchedItems.ALBUM_COVER.get())) {
+                throw new AssertionError("Reopen lost or changed a paused/invalid boombox persistence fixture");
+            }
             if (manager.getPlaybackState(PlaybackOwnerKey.entity(dimension, id)).isPresent()) {
                 throw new AssertionError("Reopen auto-started a paused/invalid dropped boombox");
             }
         }
+    }
+
+    private static void assertRestoredNegativeSources(ServerPlayer player) {
+        var expected = List.of(Items.MUSIC_DISC_CAT, EtchedItems.ALBUM_COVER.get(),
+                ForgeRegistries.ITEMS.getValue(UnsupportedSmokeRecord.FOREIGN_DISC_ID));
+        for (int i = 0; i < expected.size(); i++) {
+            var at = pos.above((i + 2) * 2);
+            var state = player.serverLevel().getBlockState(at);
+            if (!(player.serverLevel().getBlockEntity(at) instanceof JukeboxBlockEntity box)
+                    || !state.is(Blocks.JUKEBOX) || !state.getValue(JukeboxBlock.HAS_RECORD)
+                    || !box.getFirstItem().is(expected.get(i))) {
+                throw new AssertionError("Reopen lost a retained stopped/invalid/native record fixture");
+            }
+            if ((i == 0 && box.isRecordPlaying()) || (i == 1 && RecordContentResolver.resolve(box.getFirstItem()).isPresent())
+                    || (i == 2 && !box.isRecordPlaying())) {
+                throw new AssertionError("Reopen changed stopped/invalid/native fixture eligibility");
+            }
+        }
+    }
+
+    private static boolean droppedLoaded(Minecraft client) {
+        return dropped.size() == 3 && dropped.stream().allMatch(id -> find(client, id) instanceof ItemEntity item
+                && !item.getItem().isEmpty()); // Spawn alone is not proof that the retained item data has arrived.
     }
 
     private static Entity find(Minecraft client, UUID id) {

@@ -20,6 +20,11 @@ final class JukeboxSessionOwners {
         this.states.remove(key);
     }
 
+    boolean remove(AudioPlaybackManager manager, PlaybackOwnerKey.BlockOwner key) {
+        PlaybackState state = this.states.remove(key);
+        return state != null && manager.getPlaybackState(key).orElse(null) == state && manager.remove(key);
+    }
+
     void prune(AudioPlaybackManager manager, Predicate<PlaybackOwnerKey.BlockOwner> valid) {
         this.prune(manager, valid, key -> { });
     }

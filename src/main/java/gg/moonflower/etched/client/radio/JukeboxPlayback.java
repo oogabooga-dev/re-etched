@@ -59,26 +59,26 @@ public final class JukeboxPlayback {
 
     /** Called only after ticket/revision admission, including disabled unsupported replacements and stops. */
     public static void applyPacket(ClientboundPlayMusicPacket packet) {
-        var manager = AudioPlaybackManager.getInstance();
-        boolean applied = applyPacket(manager, packet);
-        var key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
-        var state = manager.getPlaybackState(key);
-        if (applied && !packet.isStop() && packet.program().isPresent() && state.isPresent()
-                && state.orElseThrow().equals(packet.state())) {
-            SESSIONS.remember(key, state.orElseThrow());
-        } else {
-            SESSIONS.forget(key);
-            REVISIONS.release(key);
-        }
+        applyPacket(AudioPlaybackManager.getInstance(), SESSIONS, REVISIONS, packet);
     }
 
-    static boolean applyPacket(AudioPlaybackManager manager, ClientboundPlayMusicPacket packet) {
-        PlaybackOwnerKey.BlockOwner key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
-        if (!packet.isStop() && packet.program().isPresent()) {
-            return manager.update(key, packet.state());
-        } else {
-            return manager.remove(key);
+    static boolean applyPacket(AudioPlaybackManager manager, JukeboxSessionOwners sessions,
+                               JukeboxRevisionGate revisions, ClientboundPlayMusicPacket packet) {
+        var key = PlaybackOwnerKey.block(packet.dimension(), packet.pos());
+        if (packet.isStop() || packet.program().isEmpty()) {
+            boolean removed = sessions.remove(manager, key);
+            revisions.release(key);
+            return removed; // A jukebox stop never owns a radio/other adapter's replacement at this position.
         }
+        boolean applied = manager.update(key, packet.state());
+        var state = manager.getPlaybackState(key);
+        if (applied && state.isPresent() && state.orElseThrow().equals(packet.state())) {
+            sessions.remember(key, state.orElseThrow());
+        } else {
+            sessions.forget(key);
+            revisions.release(key);
+        }
+        return applied;
     }
 
     /** World/logout cleanup clears both pending event tickets and revision tombstones. */
@@ -91,11 +91,16 @@ public final class JukeboxPlayback {
     public static void stop(BlockPos pos) {
         var level = Minecraft.getInstance().level;
         if (level != null) {
-            var key = PlaybackOwnerKey.block(level.dimension(), pos);
-            SESSIONS.forget(key);
-            REVISIONS.release(key);
-            AudioPlaybackManager.getInstance().remove(key);
+            stop(AudioPlaybackManager.getInstance(), STARTS, SESSIONS, REVISIONS, PlaybackOwnerKey.block(level.dimension(), pos));
         }
+    }
+
+    static boolean stop(AudioPlaybackManager manager, JukeboxStartGate starts, JukeboxSessionOwners sessions,
+                        JukeboxRevisionGate revisions, PlaybackOwnerKey.BlockOwner key) {
+        starts.stop(key); // Direct native callbacks must invalidate queued managed tickets too, not just levelEvent.
+        boolean removed = sessions.remove(manager, key);
+        revisions.release(key);
+        return removed;
     }
 
     /** Untracking releases sessions and invalidates pending starts, but does not forget revision watermarks. */
