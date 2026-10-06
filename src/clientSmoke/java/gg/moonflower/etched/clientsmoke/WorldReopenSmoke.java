@@ -19,6 +19,7 @@ import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
@@ -60,30 +61,55 @@ final class WorldReopenSmoke {
     private static volatile long beforeClose;
     private static volatile List<Long> startTicks = List.of();
     private static volatile boolean serverChecked;
+    private static volatile Throwable serverFailure;
     private static long diskRevision;
     private static List<ClientboundPlayMusicPacket> oldBlocks;
     private static List<ClientboundBoomboxStatePacket> oldEntities;
     private static List<PlaybackState> restored;
+    private static SoundInstance oldNative;
 
     private WorldReopenSmoke() {
     }
 
     static boolean tick(Minecraft client, String world) {
+        if (serverFailure != null) {
+            throw new AssertionError("World reopen server fixture failed at step " + step, serverFailure);
+        }
         if (step == 6) {
             return true;
         }
         if (++ticks > 600) {
-            throw new AssertionError("World reopen smoke timed out at step " + step);
+            var manager = AudioPlaybackManager.getInstance();
+            throw new AssertionError("World reopen smoke timed out at step " + step + " at " + pos
+                    + ", dropped=" + (client.level == null || client.player == null ? "no client world"
+                    : dropped.stream().map(id -> find(client, id)).toList())
+                    + ", playback=" + (client.player == null || dropped.isEmpty() ? List.of() : positiveKeys(client).stream()
+                    .map(key -> key + ": " + manager.getPlaybackState(key) + ", " + manager.getSessionSnapshot(key)).toList()));
         }
         var manager = AudioPlaybackManager.getInstance();
         switch (step) {
             case 0 -> {
                 dimension = client.level.dimension();
-                pos = client.player.blockPosition().offset(2, 0, 2);
+                var anchor = client.player.blockPosition().offset(2, 0, 2);
+                pos = new BlockPos(anchor.getX(), Math.max(client.level.getMinBuildHeight() + 2,
+                        Math.min(anchor.getY(), client.level.getMaxBuildHeight() - 16)), anchor.getZ());
                 oldServer = client.getSingleplayerServer();
                 clockFile = oldServer.getWorldPath(LevelResource.ROOT).resolve("data/etched_playback_clock.dat");
                 submit(client, player -> {
                     var level = player.serverLevel();
+                    // Nether terrain can put the transferred creative player inside solid blocks and move it.
+                    // Fix height to a valid range and isolate the entire fixture from lava/fire and terrain.
+                    for (var at : BlockPos.betweenClosed(pos.offset(-1, -1, -1), pos.offset(1, 13, 1))) {
+                        boolean boundary = at.getX() != pos.getX() || at.getZ() != pos.getZ()
+                                || at.getY() == pos.getY() - 1 || at.getY() == pos.getY() + 13;
+                        level.setBlockAndUpdate(at, (boundary ? Blocks.GLASS : Blocks.AIR).defaultBlockState());
+                    }
+                    var playerPos = pos.offset(-2, 0, -2);
+                    level.setBlockAndUpdate(playerPos.below(), Blocks.GLASS.defaultBlockState());
+                    level.setBlockAndUpdate(playerPos, Blocks.AIR.defaultBlockState());
+                    level.setBlockAndUpdate(playerPos.above(), Blocks.AIR.defaultBlockState());
+                    player.teleportTo(level, playerPos.getX() + 0.5, playerPos.getY(), playerPos.getZ() + 0.5,
+                            player.getYRot(), player.getXRot());
                     var custom = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
                     EtchedMusicDiscItem.setContent(custom, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE,
                             List.of(new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, "minecraft:music_disc.blocks", "", "Reopen")))));
@@ -93,7 +119,10 @@ final class WorldReopenSmoke {
                     for (int i = 0; i < records.size(); i++) {
                         var at = pos.above(i * 2);
                         level.setBlockAndUpdate(at, Blocks.JUKEBOX.defaultBlockState());
-                        var jukebox = (JukeboxBlockEntity) level.getBlockEntity(at);
+                        if (!(level.getBlockEntity(at) instanceof JukeboxBlockEntity jukebox)) {
+                            throw new AssertionError("Reopen fixture did not create a jukebox at " + at
+                                    + ": " + level.getBlockState(at));
+                        }
                         jukebox.setFirstItem(records.get(i));
                         if (i == 2) {
                             var saved = jukebox.saveWithoutMetadata();
@@ -121,6 +150,7 @@ final class WorldReopenSmoke {
                         ids.add(item.getUUID());
                     }
                     dropped = List.copyOf(ids);
+                    assertRestoredNegativeSources(player);
                 });
                 advance();
             }
@@ -128,6 +158,10 @@ final class WorldReopenSmoke {
                 if (!droppedLoaded(client)
                         || !positiveKeys(client).stream().allMatch(manager::isPlaying) || ticks < 20) {
                     return false;
+                }
+                oldNative = ((LevelRendererAccessor) client.levelRenderer).getPlayingRecords().get(pos.above(8));
+                if (oldNative == null || !client.getSoundManager().isActive(oldNative)) {
+                    return false; // Prove the native source really played before close, rather than a lost fixture.
                 }
                 oldBlocks = List.of(0, 1).stream().map(i -> {
                     var at = pos.above(i * 2);
@@ -156,6 +190,7 @@ final class WorldReopenSmoke {
                 client.level.disconnect();
                 client.clearLevel(new TitleScreen()); // Waits for the integrated server save and shutdown.
                 if (client.level != null || !oldServer.isShutdown()
+                        || client.getSoundManager().isActive(oldNative)
                         || oldBlocks.stream().anyMatch(packet -> manager.getPlaybackState(
                                 PlaybackOwnerKey.block(dimension, packet.pos())).isPresent())
                         || oldEntities.stream().anyMatch(packet -> manager.getPlaybackState(
@@ -238,8 +273,7 @@ final class WorldReopenSmoke {
                         player.serverLevel().setBlockAndUpdate(at, Blocks.AIR.defaultBlockState());
                     }
                     dropped.forEach(id -> player.serverLevel().getEntity(id).discard());
-                    var itemPos = pos.above(12);
-                    for (var at : BlockPos.betweenClosed(itemPos.offset(-1, -1, -1), itemPos.offset(1, 1, 1))) {
+                    for (var at : BlockPos.betweenClosed(pos.offset(-1, -1, -1), pos.offset(1, 13, 1))) {
                         player.serverLevel().setBlockAndUpdate(at, Blocks.AIR.defaultBlockState());
                     }
                 });
@@ -272,8 +306,14 @@ final class WorldReopenSmoke {
         var nativeRecords = ((LevelRendererAccessor) client.levelRenderer).getPlayingRecords();
         for (int i = 2; i < 5; i++) {
             var at = pos.above(i * 2);
-            if (manager.getPlaybackState(PlaybackOwnerKey.block(dimension, at)).isPresent() || nativeRecords.containsKey(at)) {
-                throw new AssertionError("Reopen auto-started a stopped/invalid/native jukebox");
+            var nativeSound = nativeRecords.get(at);
+            // Vanilla setLevel does not clear this map. Only the exact inactive pre-close native wrapper
+            // may remain as bookkeeping; a new wrapper or a still-active old sound is not a silent restore.
+            if (manager.getPlaybackState(PlaybackOwnerKey.block(dimension, at)).isPresent()
+                    || nativeSound != null && (i != 4 || nativeSound != oldNative || client.getSoundManager().isActive(nativeSound))) {
+                throw new AssertionError("Reopen auto-started a stopped/invalid/native jukebox at " + at
+                        + ": managed=" + manager.getPlaybackState(PlaybackOwnerKey.block(dimension, at))
+                        + ", native=" + nativeRecords.get(at));
             }
         }
         for (int i = 1; i < 3; i++) {
@@ -333,7 +373,13 @@ final class WorldReopenSmoke {
     private static void submit(Minecraft client, Consumer<ServerPlayer> action) {
         var server = client.getSingleplayerServer();
         var playerId = client.player.getUUID();
-        server.execute(() -> action.accept(server.getPlayerList().getPlayer(playerId)));
+        server.execute(() -> {
+            try {
+                action.accept(server.getPlayerList().getPlayer(playerId));
+            } catch (RuntimeException | AssertionError failure) {
+                serverFailure = failure; // Do not hide a server-side fixture failure behind a later client timeout.
+            }
+        });
     }
 
     private static void send(ServerPlayer player, EtchedPacket packet) {
