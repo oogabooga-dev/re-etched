@@ -30,6 +30,8 @@ public final class EtchedProtocol {
             new PacketContract<>(5, ServerboundEditMusicLabelPacket.class, NetworkDirection.PLAY_TO_SERVER);
     static final PacketContract<ServerboundSetRadioUrlPacket> SERVERBOUND_SET_RADIO_URL =
             new PacketContract<>(6, ServerboundSetRadioUrlPacket.class, NetworkDirection.PLAY_TO_SERVER);
+    static final PacketContract<ClientboundBoomboxStatePacket> CLIENTBOUND_BOOMBOX_STATE =
+            new PacketContract<>(7, ClientboundBoomboxStatePacket.class, NetworkDirection.PLAY_TO_CLIENT);
 
     private EtchedProtocol() {
     }

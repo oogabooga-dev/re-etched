@@ -25,6 +25,7 @@ public class EtchedMessages {
         register(EtchedProtocol.SERVERBOUND_SET_ETCHING_URL, ServerboundSetEtchingUrlPacket::new);
         register(EtchedProtocol.SERVERBOUND_EDIT_MUSIC_LABEL, ServerboundEditMusicLabelPacket::new);
         register(EtchedProtocol.SERVERBOUND_SET_RADIO_URL, ServerboundSetRadioUrlPacket::new);
+        register(EtchedProtocol.CLIENTBOUND_BOOMBOX_STATE, ClientboundBoomboxStatePacket::new);
     }
 
     private static <MSG extends EtchedPacket> void register(EtchedProtocol.PacketContract<MSG> contract, Function<FriendlyByteBuf, MSG> decoder) {

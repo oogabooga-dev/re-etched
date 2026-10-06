@@ -3,6 +3,7 @@ package gg.moonflower.etched.common.network.play.handler;
 import gg.moonflower.etched.client.screen.EtchingScreen;
 import gg.moonflower.etched.client.screen.RadioScreen;
 import gg.moonflower.etched.client.radio.JukeboxPlayback;
+import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.common.network.play.*;
 import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
 import net.minecraft.client.Minecraft;
@@ -16,6 +17,19 @@ import java.util.Map;
 
 @ApiStatus.Internal
 public class EtchedClientPlayPacketHandler {
+
+    public static void handleBoomboxState(ClientboundBoomboxStatePacket packet, NetworkEvent.Context ctx) {
+        Minecraft client = Minecraft.getInstance();
+        ctx.enqueueWork(() -> {
+            var connection = client.getConnection();
+            ClientLevel level = client.level;
+            if (connection == null || connection.getConnection() != ctx.getNetworkManager()
+                    || level == null || !level.dimension().equals(packet.dimension())) {
+                return;
+            }
+            BoomboxPlayback.getInstance().receive(packet);
+        });
+    }
 
     public static void handlePlayMusicPacket(ClientboundPlayMusicPacket pkt, NetworkEvent.Context ctx) {
         Minecraft client = Minecraft.getInstance();

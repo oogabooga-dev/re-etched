@@ -11,6 +11,7 @@ import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.common.audio.ServerPlaybackClock;
+import gg.moonflower.etched.common.audio.BoomboxServerPlayback;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
 import gg.moonflower.etched.core.Etched;
@@ -311,6 +312,59 @@ public final class EtchedGameTests {
             helper.assertTrue(!jukebox.isRecordPlaying(), "Vanilla disc did not reach its native server stop");
             helper.assertTrue(gg.moonflower.etched.common.audio.PlaybackRevision.isNewer(clock.current(), startRevision),
                     "Natural vanilla disc stop did not advance its server revision");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void heldBoomboxIntentAllocatesOnlyServerProgramTransitions(GameTestHelper helper) {
+        var stand = EntityType.ARMOR_STAND.create(helper.getLevel());
+        stand.setPos(Vec3.atCenterOf(helper.absolutePos(BlockPos.ZERO)));
+        helper.getLevel().addFreshEntity(stand);
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+        stand.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, boombox);
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long before = clock.current();
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 1L, "Held boombox did not allocate its server start");
+        BoomboxServerPlayback.observe(stand);
+        boombox.getOrCreateTag().putString("Cosmetic", "unchanged-program");
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 1L, "Unchanged held program allocated another revision");
+        BoomboxItem.setPaused(boombox, true);
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 2L, "Pause did not allocate its authoritative stop");
+        BoomboxItem.setPaused(boombox, false);
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 3L, "Resume did not allocate a fresh server revision");
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.PAPER));
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 4L, "Unsupported replacement did not stop the server owner");
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 4L, "Unsupported record repeatedly allocated revisions");
+        stand.discard();
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void droppedNonBoomboxReplacementIsRetiredByTheServerTick(GameTestHelper helper) {
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+        Vec3 pos = Vec3.atCenterOf(helper.absolutePos(BlockPos.ZERO));
+        ItemEntity dropped = new ItemEntity(helper.getLevel(), pos.x, pos.y, pos.z, boombox);
+        helper.getLevel().addFreshEntity(dropped);
+        BoomboxServerPlayback.observe(dropped);
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long started = clock.current();
+        dropped.setItem(new ItemStack(Items.STONE));
+        helper.runAfterDelay(2, () -> {
+            helper.assertTrue(gg.moonflower.etched.common.audio.PlaybackRevision.isNewer(clock.current(), started),
+                    "Non-boombox replacement did not emit an authoritative stop");
+            long before = clock.current();
+            BoomboxServerPlayback.observe(dropped);
+            helper.assertTrue(clock.current() == before, "Server tick did not retire the dropped owner before the Item hook disappeared");
+            dropped.discard();
             helper.succeed();
         });
     }

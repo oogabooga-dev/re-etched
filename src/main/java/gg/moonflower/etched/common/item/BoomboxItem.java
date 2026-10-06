@@ -1,6 +1,7 @@
 package gg.moonflower.etched.common.item;
 
 import gg.moonflower.etched.common.menu.BoomboxMenu;
+import gg.moonflower.etched.common.audio.BoomboxServerPlayback;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.ChatFormatting;
@@ -58,6 +59,7 @@ public class BoomboxItem extends Item implements ContainerItem {
     @Override
     public boolean onEntityItemUpdate(ItemStack stack, ItemEntity entity) {
         if (!entity.level().isClientSide()) {
+            BoomboxServerPlayback.observe(entity);
             return false;
         }
         BoomboxClientBridge.update(entity,

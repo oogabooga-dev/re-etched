@@ -74,6 +74,8 @@ class EtchedProtocolTest {
                 ServerboundEditMusicLabelPacket.class, NetworkDirection.PLAY_TO_SERVER);
         assertContract(EtchedProtocol.SERVERBOUND_SET_RADIO_URL, 6,
                 ServerboundSetRadioUrlPacket.class, NetworkDirection.PLAY_TO_SERVER);
+        assertContract(EtchedProtocol.CLIENTBOUND_BOOMBOX_STATE, 7,
+                ClientboundBoomboxStatePacket.class, NetworkDirection.PLAY_TO_CLIENT);
 
         Set<Integer> ids = new HashSet<>();
         ids.add(EtchedProtocol.CLIENTBOUND_ETCHING_URL_ERROR.id());
@@ -82,7 +84,8 @@ class EtchedProtocolTest {
         ids.add(EtchedProtocol.SERVERBOUND_SET_ETCHING_URL.id());
         ids.add(EtchedProtocol.SERVERBOUND_EDIT_MUSIC_LABEL.id());
         ids.add(EtchedProtocol.SERVERBOUND_SET_RADIO_URL.id());
-        assertEquals(Set.of(0, 2, 3, 4, 5, 6), ids);
+        ids.add(EtchedProtocol.CLIENTBOUND_BOOMBOX_STATE.id());
+        assertEquals(Set.of(0, 2, 3, 4, 5, 6, 7), ids);
         assertFalse(ids.contains(1), "Retired entity packet ID must not be reassigned");
     }
 
