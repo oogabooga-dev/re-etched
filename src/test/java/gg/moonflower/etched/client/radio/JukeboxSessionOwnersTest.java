@@ -76,4 +76,27 @@ class JukeboxSessionOwnersTest {
         owners.prune(manager, key -> false);
         assertTrue(manager.getPlaybackState(other).isPresent());
     }
+
+    @Test
+    void everyRetiredSessionCompactsItsWatermarkWithoutClosingOtherAdapters() {
+        var manager = new AudioPlaybackManager(AudioPlaybackManager.PlaybackDriver.NOOP);
+        var owners = new JukeboxSessionOwners();
+        var revisions = new JukeboxRevisionGate();
+        var state = new PlaybackState(10L, Optional.of(PROGRAM), true);
+        assertTrue(revisions.accept(KEY, 10L));
+        manager.update(KEY, state);
+        owners.remember(KEY, state);
+        owners.prune(manager, key -> false, revisions::release);
+        assertFalse(revisions.accept(KEY, 10L));
+        assertTrue(revisions.accept(KEY, 11L));
+        manager.update(KEY, new PlaybackState(11L, Optional.of(PROGRAM), true));
+        owners.remember(KEY, manager.getPlaybackState(KEY).orElseThrow());
+        manager.remove(KEY);
+        var other = new PlaybackState(12L, Optional.of(PROGRAM), true);
+        manager.update(KEY, other);
+        owners.prune(manager, key -> true, revisions::release);
+        assertFalse(revisions.accept(KEY, 11L));
+        assertSame(other, manager.getPlaybackState(KEY).orElseThrow());
+        assertTrue(revisions.accept(KEY, 12L));
+    }
 }

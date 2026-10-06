@@ -4,6 +4,9 @@ import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.common.audio.PlaybackRevision;
 import gg.moonflower.etched.common.audio.ServerPlaybackClock;
+import gg.moonflower.etched.common.audio.PlaybackState;
+import gg.moonflower.etched.common.network.EtchedMessages;
+import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
 import gg.moonflower.etched.core.mixin.client.LevelRendererAccessor;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import net.minecraft.client.Minecraft;
@@ -17,6 +20,7 @@ import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
 import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -28,12 +32,14 @@ final class JukeboxTrackingSmoke {
     private static int ticks;
     private static Vec3 origin;
     private static volatile long beforeTracking;
+    private static PlaybackState stable;
+    private static volatile ClientboundPlayMusicPacket churnStart;
 
     private JukeboxTrackingSmoke() {
     }
 
     static boolean tick(Minecraft client, BlockPos pos) {
-        if (step == 4) {
+        if (step == 6) {
             return true;
         }
         if (++ticks > 400) {
@@ -119,15 +125,62 @@ final class JukeboxTrackingSmoke {
                         throw new AssertionError("Chunk snapshot auto-started stopped/invalid/native disc at " + fixturePos);
                     }
                 }
+                stable = manager.getPlaybackState(key).orElseThrow();
                 submit(client, player -> {
                     for (int offset : List.of(2, 4, 6, 8)) {
                         var fixturePos = pos.above(offset);
                         ((JukeboxBlockEntity) player.serverLevel().getBlockEntity(fixturePos)).removeFirstItem();
                         player.serverLevel().setBlockAndUpdate(fixturePos, Blocks.AIR.defaultBlockState());
                     }
+                    var level = player.serverLevel();
+                    for (int i = 0; i < 600; i++) {
+                        send(player, ClientboundPlayMusicPacket.stopped(level.dimension(), pos.below(100 + i),
+                                ServerPlaybackClock.get(level).next()));
+                    }
+                    var fixturePos = pos.above(10);
+                    level.setBlockAndUpdate(fixturePos, Blocks.JUKEBOX.defaultBlockState());
+                    var fixture = (JukeboxBlockEntity) level.getBlockEntity(fixturePos);
+                    fixture.setFirstItem(new ItemStack(Items.MUSIC_DISC_CAT));
+                    churnStart = ClientboundPlayMusicPacket.fromRecord(level.dimension(), fixturePos,
+                            ServerPlaybackClock.get(level).current(), fixture.getFirstItem());
+                });
+                advance();
+            }
+            case 4 -> {
+                var churnKey = PlaybackOwnerKey.block(client.level.dimension(), pos.above(10));
+                if (churnStart == null || !manager.isPlaying(churnKey)) {
+                    return false;
+                }
+                if (manager.getPlaybackState(key).orElseThrow() != stable) {
+                    throw new AssertionError("Retired jukebox history churn mutated an already active owner");
+                }
+                submit(client, player -> {
+                    var fixture = (JukeboxBlockEntity) player.serverLevel().getBlockEntity(churnStart.pos());
+                    var saved = fixture.saveWithoutMetadata();
+                    saved.putBoolean("IsPlaying", false);
+                    fixture.load(saved); // Keep HAS_RECORD true so the stale challenge reaches revision admission.
+                    send(player, ClientboundPlayMusicPacket.stopped(player.serverLevel().dimension(), churnStart.pos(),
+                            ServerPlaybackClock.get(player.serverLevel()).next()));
+                    player.serverLevel().levelEvent(null, 1010, churnStart.pos(), churnStart.itemId());
+                    send(player, churnStart);
+                });
+                advance();
+            }
+            case 5 -> {
+                if (ticks < 20) {
+                    return false;
+                }
+                var churnKey = PlaybackOwnerKey.block(client.level.dimension(), pos.above(10));
+                if (manager.getPlaybackState(churnKey).isPresent() || manager.getPlaybackState(key).orElseThrow() != stable) {
+                    throw new AssertionError("Compressed jukebox history re-admitted a stale ticketed start or mutated an active owner");
+                }
+                submit(client, player -> {
+                    ((JukeboxBlockEntity) player.serverLevel().getBlockEntity(churnStart.pos())).removeFirstItem();
+                    player.serverLevel().setBlockAndUpdate(churnStart.pos(), Blocks.AIR.defaultBlockState());
                     player.serverLevel().setChunkForced(chunk.x, chunk.z, false);
                 });
                 System.out.println("ETCHED JUKEBOX CHUNK UNTRACK RETRACK AND SAVED PLAYING SNAPSHOT SMOKE PASSED");
+                System.out.println("ETCHED JUKEBOX RETIRED OWNER HISTORY CHURN AND STALE RESURRECTION SMOKE PASSED");
                 advance();
                 return true;
             }
@@ -145,5 +198,9 @@ final class JukeboxTrackingSmoke {
         var server = client.getSingleplayerServer();
         var playerId = client.player.getUUID();
         server.execute(() -> action.accept(server.getPlayerList().getPlayer(playerId)));
+    }
+
+    private static void send(ServerPlayer player, ClientboundPlayMusicPacket packet) {
+        EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
 }

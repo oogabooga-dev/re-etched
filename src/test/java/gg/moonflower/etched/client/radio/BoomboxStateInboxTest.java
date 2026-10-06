@@ -49,7 +49,7 @@ class BoomboxStateInboxTest {
         inbox.get(KEY).retire();
         assertFalse(inbox.accept(packet(OWNER, 10L, true)));
         assertTrue(inbox.accept(packet(OWNER, 11L, false)));
-        assertNull(inbox.get(KEY).packet);
+        assertNull(inbox.get(KEY));
         assertFalse(inbox.accept(packet(OWNER, 10L, true)));
         assertTrue(inbox.accept(new ClientboundBoomboxStatePacket(Level.OVERWORLD, 99, OWNER,
                 new PlaybackState(12L, Optional.of(PROGRAM), true))));
@@ -65,31 +65,77 @@ class BoomboxStateInboxTest {
         assertFalse(inbox.accept(packet(new UUID(0, 33), 1L, true)));
         assertTrue(inbox.accept(packet(OWNER, 2L, true)));
         assertTrue(inbox.accept(packet(OWNER, 3L, false)));
-        assertTrue(inbox.accept(packet(new UUID(0, 33), 2L, true)));
+        assertFalse(inbox.accept(packet(new UUID(0, 33), 2L, true)));
+        assertTrue(inbox.accept(packet(new UUID(0, 33), 4L, true)));
     }
 
     @Test
-    void ownerBoundFailsClosedWithoutEvictingTombstonesAndWorldCleanupResetsIt() {
+    void retiredOwnerChurnIsCompressedWithoutReAdmittingStaleStartsAndWorldCleanupResetsIt() {
         var inbox = new BoomboxStateInbox();
-        for (int i = 1; i <= 256; i++) {
-            assertTrue(inbox.accept(packet(new UUID(0, i), 1L, false)));
+        for (int i = 1; i <= 2_000; i++) {
+            assertTrue(inbox.accept(packet(new UUID(0, i), i, false)));
         }
-        assertFalse(inbox.accept(packet(new UUID(0, 257), 2L, false)));
+        assertTrue(inbox.snapshot().isEmpty());
         assertFalse(inbox.accept(packet(OWNER, 1L, true)));
-        assertTrue(inbox.accept(packet(OWNER, 2L, true)));
+        assertTrue(inbox.accept(packet(OWNER, 2_001L, true)));
         inbox.clearAll();
         assertTrue(inbox.accept(packet(new UUID(0, 257), 1L, true)));
     }
 
     @Test
-    void dimensionsAndOwnersAreIndependentAndOrderingIsWrapSafe() {
+    void retainedDimensionsAndOwnersAreIndependentBelowTheWrapSafeRetirementFloor() {
         var inbox = new BoomboxStateInbox();
         assertTrue(inbox.accept(packet(OWNER, Long.MAX_VALUE, true)));
+        var other = new ClientboundBoomboxStatePacket(Level.NETHER, 1, OWNER,
+                new PlaybackState(Long.MAX_VALUE - 10L, Optional.of(PROGRAM), true));
+        assertTrue(inbox.accept(other));
         assertTrue(inbox.accept(packet(OWNER, Long.MIN_VALUE, false)));
         assertFalse(inbox.accept(packet(OWNER, Long.MAX_VALUE, true)));
         assertTrue(inbox.accept(new ClientboundBoomboxStatePacket(Level.NETHER, 1, OWNER,
-                new PlaybackState(1L, Optional.of(PROGRAM), true))));
-        assertEquals(Long.MIN_VALUE, inbox.get(KEY).revision);
+                new PlaybackState(Long.MAX_VALUE - 9L, Optional.of(PROGRAM), true))));
+        assertNull(inbox.get(KEY));
+        assertTrue(inbox.accept(packet(new UUID(0, 2), Long.MIN_VALUE + 1L, true)));
+    }
+
+    @Test
+    void allRetainedOwnersStayBoundedButRetirementAndStopsStillMakeProgress() {
+        var inbox = new BoomboxStateInbox();
+        for (int i = 1; i <= 256; i++) {
+            UUID owner = new UUID(0, i);
+            assertTrue(inbox.accept(packet(owner, i, true)));
+            inbox.get(PlaybackOwnerKey.entity(Level.OVERWORLD, owner)).activate();
+        }
+        UUID extra = new UUID(0, 257);
+        assertFalse(inbox.accept(packet(extra, 1_000L, true)));
+        assertTrue(inbox.accept(packet(extra, 300L, false)));
+        assertTrue(inbox.accept(packet(OWNER, 301L, false)));
+        assertTrue(inbox.accept(packet(extra, 302L, true)));
+        assertFalse(inbox.accept(packet(OWNER, 1L, true)));
+        assertTrue(inbox.accept(packet(new UUID(0, 2), 3L, true))); // Known active owner below the floor is retained.
+    }
+
+    @Test
+    void expiryAndLocalRetirementReleaseIdentityWithoutAllowingOldPacketsBack() {
+        var inbox = new BoomboxStateInbox();
+        for (int i = 1; i <= 1_000; i++) {
+            UUID owner = new UUID(0, i);
+            var key = PlaybackOwnerKey.entity(Level.OVERWORLD, owner);
+            assertTrue(inbox.accept(packet(owner, i, true)));
+            var entry = inbox.get(key);
+            if (i % 2 == 0) {
+                entry.activate();
+                entry.retire(); // Entity leave or source-capacity failure.
+            } else {
+                for (int tick = 0; tick < 100; tick++) {
+                    entry.tickPending();
+                }
+            }
+            inbox.compactRetired();
+            assertNull(inbox.get(key));
+            assertFalse(inbox.accept(packet(owner, i, true)));
+        }
+        assertTrue(inbox.snapshot().isEmpty());
+        assertTrue(inbox.accept(packet(OWNER, 1_001L, true)));
     }
 
     @Test

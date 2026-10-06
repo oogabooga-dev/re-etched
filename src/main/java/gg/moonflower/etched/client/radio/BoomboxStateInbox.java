@@ -1,6 +1,5 @@
 package gg.moonflower.etched.client.radio;
 
-import gg.moonflower.etched.common.audio.PlaybackRevision;
 import gg.moonflower.etched.common.network.play.ClientboundBoomboxStatePacket;
 
 import java.util.ArrayList;
@@ -8,28 +7,30 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Bounded revision tombstones and spawn/equipment waiting; duplicates cannot extend a pending request. */
+/** Bounded spawn/equipment waiting plus compressed retired revision history; duplicates cannot extend waiting. */
 final class BoomboxStateInbox {
 
-    private static final int MAX_OWNERS = 256;
     private static final int MAX_PENDING = 32;
     private static final int PENDING_TICKS = 100;
 
     private final Map<PlaybackOwnerKey.EntityOwner, Entry> entries = new HashMap<>();
+    private final PlaybackRevisionHistory<PlaybackOwnerKey.EntityOwner> history = new PlaybackRevisionHistory<>();
 
     boolean accept(ClientboundBoomboxStatePacket packet) {
+        this.compactRetired();
         var key = PlaybackOwnerKey.entity(packet.dimension(), packet.owner());
         Entry previous = this.entries.get(key);
-        if (previous != null && !PlaybackRevision.isNewer(packet.state().revision(), previous.revision)) {
-            return false;
-        }
-        if (previous == null && this.entries.size() >= MAX_OWNERS) {
-            return false;
-        }
         if (packet.state().enabled() && (previous == null || !previous.pending()) && this.pendingCount() >= MAX_PENDING) {
             return false;
         }
-        this.entries.put(key, new Entry(packet));
+        if (!this.history.accept(key, packet.state().revision(), packet.state().enabled())) {
+            return false;
+        }
+        if (packet.state().enabled()) {
+            this.entries.put(key, new Entry(packet));
+        } else {
+            this.entries.remove(key);
+        }
         return true;
     }
 
@@ -56,8 +57,20 @@ final class BoomboxStateInbox {
         return this.entries.values().stream().filter(Entry::pending).count();
     }
 
+    void compactRetired() {
+        var iterator = this.entries.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (entry.getValue().packet == null) {
+                this.history.release(entry.getKey());
+                iterator.remove(); // No UUID, entity ID, program or per-owner tombstone survives retirement.
+            }
+        }
+    }
+
     void clearAll() {
         this.entries.clear();
+        this.history.clearAll();
     }
 
     static final class Entry {

@@ -195,7 +195,7 @@ class JukeboxPlaybackTest {
         var pending = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, new BlockPos(15, 64, 15), 100L, record);
         var pendingKey = PlaybackOwnerKey.block(pending.dimension(), pending.pos());
         starts.start(pendingKey, pending.itemId(), true);
-        JukeboxPlayback.unloadChunk(manager, starts, sessions, Level.OVERWORLD, new ChunkPos(0, 0));
+        JukeboxPlayback.unloadChunk(manager, starts, sessions, revisions, Level.OVERWORLD, new ChunkPos(0, 0));
         assertTrue(manager.getPlaybackState(KEY).isEmpty());
         assertTrue(manager.getPlaybackState(adjacent).isPresent());
         assertTrue(manager.getPlaybackState(foreign).isPresent());

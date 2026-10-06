@@ -34,12 +34,13 @@ final class BoomboxRevisionSmoke {
     private static volatile ClientboundBoomboxStatePacket early;
     private static volatile ItemEntity future;
     private static volatile long snapshotRevision;
+    private static volatile UUID churnOwner;
 
     private BoomboxRevisionSmoke() {
     }
 
     static boolean tick(Minecraft client) {
-        if (step == 5) {
+        if (step == 7) {
             return true;
         }
         if (++ticks > 200) {
@@ -127,7 +128,41 @@ final class BoomboxRevisionSmoke {
                 if (manager.getPlaybackState(key).orElseThrow() != stable) {
                     throw new AssertionError("Unchanged equipment/program restarted after its directed server snapshot");
                 }
+                submit(client, player -> {
+                    var level = player.serverLevel();
+                    for (int i = 0; i < 600; i++) {
+                        send(player, new ClientboundBoomboxStatePacket(level.dimension(), player.getId(), new UUID(91L, i),
+                                new PlaybackState(ServerPlaybackClock.get(level).next(), Optional.empty(), false)));
+                    }
+                    ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+                    BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+                    future = new ItemEntity(level, player.getX() + 6, player.getY(), player.getZ(), boombox);
+                    churnOwner = future.getUUID();
+                    level.addFreshEntity(future);
+                });
+                advance();
+            }
+            case 5 -> {
+                var churnKey = churnOwner == null ? null : PlaybackOwnerKey.entity(client.level.dimension(), churnOwner);
+                if (churnKey == null || !manager.isPlaying(churnKey)) {
+                    return false;
+                }
+                if (manager.getPlaybackState(key).orElseThrow() != stable || BoomboxPlayback.getInstance().receive(early)) {
+                    throw new AssertionError("Boombox churn mutated an active owner or re-admitted an old retired publication");
+                }
+                submit(client, player -> future.discard());
+                advance();
+            }
+            case 6 -> {
+                if (ticks < 20) {
+                    return false;
+                }
+                var churnKey = PlaybackOwnerKey.entity(client.level.dimension(), churnOwner);
+                if (manager.getPlaybackState(churnKey).isPresent() || manager.getPlaybackState(key).orElseThrow() != stable) {
+                    throw new AssertionError("Boombox history churn lost cleanup or changed an existing finite loop");
+                }
                 System.out.println("ETCHED BOOMBOX SERVER REVISION AND EARLY ENTITY SNAPSHOT SMOKE PASSED");
+                System.out.println("ETCHED BOOMBOX RETIRED OWNER HISTORY CHURN AND FRESH ENTITY ADMISSION SMOKE PASSED");
                 advance();
                 return true;
             }

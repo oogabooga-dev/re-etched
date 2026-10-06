@@ -58,4 +58,20 @@ class JukeboxRevisionGateTest {
         gate.clearAll();
         assertTrue(gate.accept(extra, 1L));
     }
+
+    @Test
+    void retiredOwnersAreCompressedAndOnlyFreshServerPublicationsCanRestoreThem() {
+        var gate = new JukeboxRevisionGate();
+        for (int i = 0; i < 2_000; i++) {
+            var key = PlaybackOwnerKey.block(Level.OVERWORLD, new BlockPos(i, 64, 0));
+            assertTrue(gate.accept(key, i + 1L));
+            gate.release(key);
+            assertFalse(gate.accept(key, i + 1L));
+        }
+        assertFalse(gate.accept(KEY, 1L));
+        assertTrue(gate.accept(KEY, 2_001L));
+        assertTrue(gate.accept(KEY, 2_002L, false));
+        assertFalse(gate.accept(KEY, 2_001L));
+        assertTrue(gate.accept(KEY, 2_003L));
+    }
 }

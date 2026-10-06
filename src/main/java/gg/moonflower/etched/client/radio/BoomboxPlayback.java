@@ -65,7 +65,7 @@ public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
     }
 
     private void tryBind(PlaybackOwnerKey.EntityOwner key, BoomboxStateInbox.Entry entry) {
-        if (entry.packet == null || !entry.pending()) {
+        if (entry == null || entry.packet == null || !entry.pending()) {
             return;
         }
         var level = Minecraft.getInstance().level;
@@ -141,6 +141,7 @@ public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
             entry.retire();
             this.removeActive(key);
             this.localRecords.remove(key);
+            this.inbox.compactRetired();
         }
     }
 
@@ -166,6 +167,7 @@ public final class BoomboxPlayback implements BoomboxClientBridge.Listener {
                 }
             }
         }
+        this.inbox.compactRetired();
     }
 
     public void clearAll() {

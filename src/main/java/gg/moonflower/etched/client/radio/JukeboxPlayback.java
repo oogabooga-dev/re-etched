@@ -54,7 +54,7 @@ public final class JukeboxPlayback {
         if (!packet.isStop() && (!starts.consume(key, packet.itemId()) || !hasRecord)) {
             return false;
         }
-        return revisions.accept(key, packet.revision());
+        return revisions.accept(key, packet.revision(), !packet.isStop() && packet.program().isPresent());
     }
 
     /** Called only after ticket/revision admission, including disabled unsupported replacements and stops. */
@@ -68,6 +68,7 @@ public final class JukeboxPlayback {
             SESSIONS.remember(key, state.orElseThrow());
         } else {
             SESSIONS.forget(key);
+            REVISIONS.release(key);
         }
     }
 
@@ -92,19 +93,21 @@ public final class JukeboxPlayback {
         if (level != null) {
             var key = PlaybackOwnerKey.block(level.dimension(), pos);
             SESSIONS.forget(key);
+            REVISIONS.release(key);
             AudioPlaybackManager.getInstance().remove(key);
         }
     }
 
     /** Untracking releases sessions and invalidates pending starts, but does not forget revision watermarks. */
     public static void unloadChunk(ResourceKey<Level> dimension, ChunkPos pos) {
-        unloadChunk(AudioPlaybackManager.getInstance(), STARTS, SESSIONS, dimension, pos);
+        unloadChunk(AudioPlaybackManager.getInstance(), STARTS, SESSIONS, REVISIONS, dimension, pos);
     }
 
     static void unloadChunk(AudioPlaybackManager manager, JukeboxStartGate starts, JukeboxSessionOwners sessions,
+                            JukeboxRevisionGate revisions,
                             ResourceKey<Level> dimension, ChunkPos pos) {
         starts.unloadChunk(dimension, pos);
-        sessions.prune(manager, key -> !key.dimension().equals(dimension) || !new ChunkPos(key.pos()).equals(pos));
+        sessions.prune(manager, key -> !key.dimension().equals(dimension) || !new ChunkPos(key.pos()).equals(pos), revisions::release);
     }
 
     /** ClientChunkCache can move its center without posting Unload for out-of-range slots. */
@@ -119,7 +122,7 @@ public final class JukeboxPlayback {
                 STARTS.stop(key); // Keep watermark and send-order slots even when local resources are gone.
             }
             return valid;
-        });
+        }, REVISIONS::release);
     }
 
 }
