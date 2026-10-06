@@ -1,19 +1,17 @@
 package gg.moonflower.etched.common.item;
 
-import gg.moonflower.etched.api.record.TrackData;
-import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.RecordContent;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.RecordItem;
-import net.minecraft.nbt.Tag;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-/** First-party disc adapter; defers albums containing third-party playable items to the legacy path. */
+/** First-party record content; unsupported third-party entries reject the managed program. */
 public final class RecordContentResolver {
 
     private RecordContentResolver() {
@@ -36,67 +34,37 @@ public final class RecordContentResolver {
             return fromDisc(stack);
         }
         if (stack.getItem() instanceof AlbumCoverItem) {
-            List<AudioTrack> tracks = new ArrayList<>();
-            for (ItemStack disc : AlbumCoverItem.readRecords(stack)) {
-                // No recursive albums, and each record has at most one bounded program.
-                if ((disc.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record))
-                        || disc.getItem() instanceof EtchedMusicDiscItem) {
-                    resolve(disc).ifPresent(content -> {
-                        for (AudioTrack track : content.program().tracks()) {
-                            if (tracks.size() < AudioProgram.MAX_TRACKS) {
-                                tracks.add(track);
-                            }
-                        }
-                    });
-                } else if (disc.getItem() instanceof PlayableRecord) {
-                    // Never silently discard third-party tracks from a legacy Album Cover.
-                    return Optional.empty();
-                }
-            }
-            return fromAudioTracks(tracks);
+            return fromRecords(AlbumCoverItem.readRecords(stack));
         }
         return Optional.empty();
     }
 
-    static Optional<RecordContent> fromDisc(ItemStack stack) {
-        Optional<RecordContent> content = fromTracks(EtchedMusicDiscItem.readMusic(stack).orElseGet(() -> new TrackData[0]));
-        if (content.isEmpty() || stack.getTag() == null || !stack.getTag().contains("Album", Tag.TAG_COMPOUND)) {
-            return content;
-        }
-        Optional<RecordContent.AlbumMetadata> album = EtchedMusicDiscItem.readAlbum(stack)
-                .flatMap(RecordContentResolver::albumMetadata);
-        try {
-            return Optional.of(new RecordContent(content.orElseThrow().program(), album));
-        } catch (IllegalArgumentException exception) {
-            return content;
-        }
+    /** Album slots accept only valid first-party discs, never another album or a legacy provider. */
+    public static boolean isPlayableDisc(ItemStack stack) {
+        return !(stack.getItem() instanceof AlbumCoverItem) && resolve(stack).isPresent();
     }
 
-    static Optional<RecordContent> fromTracks(TrackData[] data) {
+    static Optional<RecordContent> fromRecords(Collection<ItemStack> records) {
         List<AudioTrack> tracks = new ArrayList<>();
-        for (TrackData track : data) {
-            if (tracks.size() >= AudioProgram.MAX_TRACKS) {
-                break;
+        for (ItemStack disc : records) {
+            if (disc.isEmpty()) {
+                continue;
             }
-            try {
-                tracks.add(new AudioTrack(TrackData.isLocalSound(track.url())
-                        ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
-                        track.url(), track.artist(), track.title().getString()));
-            } catch (IllegalArgumentException exception) {
-                // Old disc NBT can contain URLs/metadata that the bounded internal model rejects.
+            // Reject a whole album rather than silently dropping unsupported/invalid discs or later tracks.
+            if (disc.getItem() instanceof AlbumCoverItem) {
+                return Optional.empty();
             }
+            Optional<RecordContent> content = resolve(disc);
+            if (content.isEmpty() || content.orElseThrow().program().tracks().size() > AudioProgram.MAX_TRACKS - tracks.size()) {
+                return Optional.empty();
+            }
+            tracks.addAll(content.orElseThrow().program().tracks());
         }
         return fromAudioTracks(tracks);
     }
 
-    private static Optional<RecordContent.AlbumMetadata> albumMetadata(TrackData data) {
-        try {
-            return Optional.of(new RecordContent.AlbumMetadata(TrackData.isLocalSound(data.url())
-                    ? AudioTrack.SourceType.SOUND_EVENT : AudioTrack.SourceType.REMOTE,
-                    data.url(), data.artist(), data.title().getString()));
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
+    static Optional<RecordContent> fromDisc(ItemStack stack) {
+        return EtchedMusicDiscItem.readContent(stack);
     }
 
     private static Optional<RecordContent> fromAudioTracks(List<AudioTrack> tracks) {

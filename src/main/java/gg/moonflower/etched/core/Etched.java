@@ -1,14 +1,11 @@
 package gg.moonflower.etched.core;
 
-import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.client.screen.*;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.EtchedProtocol;
-import gg.moonflower.etched.common.sound.download.BandcampSource;
-import gg.moonflower.etched.common.sound.download.SoundCloudSource;
 import gg.moonflower.etched.core.registry.*;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.renderer.item.ItemProperties;
@@ -78,9 +75,6 @@ public class Etched {
 
     private static void init(FMLCommonSetupEvent event) {
         EtchedMessages.init();
-
-        SoundSourceManager.registerSource(new SoundCloudSource());
-        SoundSourceManager.registerSource(new BandcampSource());
 
         event.enqueueWork(() -> {
             CauldronInteraction.WATER.put(EtchedItems.BLANK_MUSIC_DISC.get(), CauldronInteraction.DYED_ITEM);

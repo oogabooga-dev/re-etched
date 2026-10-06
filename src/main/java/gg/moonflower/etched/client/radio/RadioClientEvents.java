@@ -1,9 +1,12 @@
 package gg.moonflower.etched.client.radio;
 
 import gg.moonflower.etched.core.Etched;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.GameShuttingDownEvent;
@@ -40,8 +43,16 @@ public final class RadioClientEvents {
     }
 
     @SubscribeEvent
+    public static void onChunkUnload(ChunkEvent.Unload event) {
+        if (event.getLevel() instanceof ClientLevel level && Minecraft.getInstance().level == level) {
+            JukeboxPlayback.unloadChunk(level.dimension(), event.getChunk().getPos());
+        }
+    }
+
+    @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
+            JukeboxPlayback.prune();
             BoomboxPlayback.getInstance().prune();
         }
     }

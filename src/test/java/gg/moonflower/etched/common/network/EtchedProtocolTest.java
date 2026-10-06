@@ -10,6 +10,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.fml.IExtensionPoint;
 import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkRegistry;
@@ -21,7 +22,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -49,6 +49,16 @@ class EtchedProtocolTest {
     }
 
     @Test
+    void frozenEpochRejectsSemanticVersionsAlternateSpellingsAndFutureEpochs() {
+        for (String version : new String[]{"", "05", "5 ", " 5", "5.0.0", "5.1", "6", "3.0.4"}) {
+            assertFalse(EtchedProtocol.accepts(version), version);
+            var display = EtchedProtocol.displayTest();
+            assertFalse(display.remoteVersionTest().test(version, true), version);
+            assertFalse(display.remoteVersionTest().test(version, false), version);
+        }
+    }
+
+    @Test
     void displayTestUsesTheNetworkProtocolEpoch() {
         IExtensionPoint.DisplayTest displayTest = EtchedProtocol.displayTest();
 
@@ -64,8 +74,6 @@ class EtchedProtocolTest {
     void assignsDistinctIdsAndExplicitDirectionsToCurrentPackets() {
         assertContract(EtchedProtocol.CLIENTBOUND_ETCHING_URL_ERROR, 0,
                 ClientboundEtchingUrlErrorPacket.class, NetworkDirection.PLAY_TO_CLIENT);
-        assertContract(EtchedProtocol.CLIENTBOUND_PLAY_ENTITY_MUSIC, 1,
-                ClientboundPlayEntityMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
         assertContract(EtchedProtocol.CLIENTBOUND_PLAY_MUSIC, 2,
                 ClientboundPlayMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
         assertContract(EtchedProtocol.CLIENTBOUND_RADIO_MENU_INIT, 3,
@@ -76,16 +84,19 @@ class EtchedProtocolTest {
                 ServerboundEditMusicLabelPacket.class, NetworkDirection.PLAY_TO_SERVER);
         assertContract(EtchedProtocol.SERVERBOUND_SET_RADIO_URL, 6,
                 ServerboundSetRadioUrlPacket.class, NetworkDirection.PLAY_TO_SERVER);
+        assertContract(EtchedProtocol.CLIENTBOUND_BOOMBOX_STATE, 7,
+                ClientboundBoomboxStatePacket.class, NetworkDirection.PLAY_TO_CLIENT);
 
         Set<Integer> ids = new HashSet<>();
         ids.add(EtchedProtocol.CLIENTBOUND_ETCHING_URL_ERROR.id());
-        ids.add(EtchedProtocol.CLIENTBOUND_PLAY_ENTITY_MUSIC.id());
         ids.add(EtchedProtocol.CLIENTBOUND_PLAY_MUSIC.id());
         ids.add(EtchedProtocol.CLIENTBOUND_RADIO_MENU_INIT.id());
         ids.add(EtchedProtocol.SERVERBOUND_SET_ETCHING_URL.id());
         ids.add(EtchedProtocol.SERVERBOUND_EDIT_MUSIC_LABEL.id());
         ids.add(EtchedProtocol.SERVERBOUND_SET_RADIO_URL.id());
-        assertEquals(Set.of(0, 1, 2, 3, 4, 5, 6), ids);
+        ids.add(EtchedProtocol.CLIENTBOUND_BOOMBOX_STATE.id());
+        assertEquals(Set.of(0, 2, 3, 4, 5, 6, 7), ids);
+        assertFalse(ids.contains(1), "Retired entity packet ID must not be reassigned");
     }
 
     @Test
@@ -177,27 +188,21 @@ class EtchedProtocolTest {
 
     @Test
     void roundTripsCurrentBlockMusicCodec() {
-        ItemStack record = recordWithLegacyPayload();
+        ItemStack record = recordWithCosmetics();
         BlockPos pos = new BlockPos(-12, 64, 345);
+        ClientboundPlayMusicPacket packet = ClientboundPlayMusicPacket.fromRecord(Level.OVERWORLD, pos, 81L, record);
         ClientboundPlayMusicPacket decoded = roundTrip(
-                new ClientboundPlayMusicPacket(record, pos), ClientboundPlayMusicPacket::new);
+                packet, ClientboundPlayMusicPacket::new);
 
-        assertTrue(ItemStack.matches(record, decoded.record()));
+        assertEquals(packet, decoded);
         assertEquals(pos, decoded.pos());
+        assertEquals(Level.OVERWORLD, decoded.dimension());
+        assertEquals("minecraft:music_disc.cat", decoded.program().orElseThrow().tracks().get(0).source());
     }
 
-    @Test
-    void roundTripsCurrentEntityMusicCodecs() {
-        ItemStack record = recordWithLegacyPayload();
-
-        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.START, record, 42);
-        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.RESTART, record, 300);
-        assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action.STOP, ItemStack.EMPTY, 7);
-    }
-
-    private static ItemStack recordWithLegacyPayload() {
-        ItemStack record = new ItemStack(Items.PAPER);
-        record.getOrCreateTag().putString("Music", "legacy-payload");
+    private static ItemStack recordWithCosmetics() {
+        ItemStack record = new ItemStack(Items.MUSIC_DISC_CAT);
+        record.getOrCreateTag().putString("CosmeticMarker", "not-playback-content");
         return record;
     }
 
@@ -206,23 +211,6 @@ class EtchedProtocolTest {
         assertEquals(id, contract.id());
         assertEquals(type, contract.type());
         assertEquals(direction, contract.direction());
-    }
-
-    private static void assertEntityMusicCodec(ClientboundPlayEntityMusicPacket.Action action,
-                                               ItemStack record, int entityId) {
-        byte[] encoded = write(buffer -> {
-            buffer.writeEnum(action);
-            if (action != ClientboundPlayEntityMusicPacket.Action.STOP) {
-                buffer.writeItem(record);
-            }
-            buffer.writeVarInt(entityId);
-        });
-        ClientboundPlayEntityMusicPacket decoded = decode(encoded, ClientboundPlayEntityMusicPacket::new);
-
-        assertEquals(action, decoded.getAction());
-        assertTrue(ItemStack.matches(record, decoded.getRecord()));
-        assertEquals(entityId, decoded.getEntityId());
-        assertArrayEquals(encoded, encode(decoded));
     }
 
     private static <T extends EtchedPacket> T roundTrip(T packet, Function<FriendlyByteBuf, T> decoder) {

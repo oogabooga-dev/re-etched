@@ -7,7 +7,9 @@ import net.minecraftforge.fml.IExtensionPoint;
 import net.minecraftforge.network.NetworkDirection;
 
 /**
- * The protocol boundary for incompatible 5.x development builds.
+ * Frozen protocol-5 channel contract; see NETWORK_PROTOCOL.md and EtchedWireContractTest.
+ * Incompatible changes to IDs, directions, payloads or field limits require a new protocol epoch.
+ * Pre-freeze development builds are not compatibility targets even if they advertised "5".
  */
 public final class EtchedProtocol {
 
@@ -18,8 +20,7 @@ public final class EtchedProtocol {
     public static final int MAX_URL_LENGTH = 8_192;
     static final PacketContract<ClientboundEtchingUrlErrorPacket> CLIENTBOUND_ETCHING_URL_ERROR =
             new PacketContract<>(0, ClientboundEtchingUrlErrorPacket.class, NetworkDirection.PLAY_TO_CLIENT);
-    static final PacketContract<ClientboundPlayEntityMusicPacket> CLIENTBOUND_PLAY_ENTITY_MUSIC =
-            new PacketContract<>(1, ClientboundPlayEntityMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
+    // ID 1 belonged to the retired legacy entity sound packet. Reserved and unregistered throughout epoch 5.
     static final PacketContract<ClientboundPlayMusicPacket> CLIENTBOUND_PLAY_MUSIC =
             new PacketContract<>(2, ClientboundPlayMusicPacket.class, NetworkDirection.PLAY_TO_CLIENT);
     static final PacketContract<ClientboundRadioMenuInitPacket> CLIENTBOUND_RADIO_MENU_INIT =
@@ -30,6 +31,8 @@ public final class EtchedProtocol {
             new PacketContract<>(5, ServerboundEditMusicLabelPacket.class, NetworkDirection.PLAY_TO_SERVER);
     static final PacketContract<ServerboundSetRadioUrlPacket> SERVERBOUND_SET_RADIO_URL =
             new PacketContract<>(6, ServerboundSetRadioUrlPacket.class, NetworkDirection.PLAY_TO_SERVER);
+    static final PacketContract<ClientboundBoomboxStatePacket> CLIENTBOUND_BOOMBOX_STATE =
+            new PacketContract<>(7, ClientboundBoomboxStatePacket.class, NetworkDirection.PLAY_TO_CLIENT);
 
     private EtchedProtocol() {
     }

@@ -6,10 +6,7 @@ import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
-import gg.moonflower.etched.common.sound.download.BandcampSource;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -48,110 +45,6 @@ class BandcampMetadataResolverTest {
                           {"title_link":"/track/second","title":"Second","artist":"Guest"}]}
              """;
 
-    private static final String MEDIA_JSON = """
-            {"current":{"type":"album"}, "trackinfo":[
-              {"file":{"mp3-128":"https://media.example/one.mp3?x=1&y=2"}},
-              {"file":null}, {}, {"file":{"other":"https://media.example/unsupported"}},
-              {"file":{"mp3-128":null}},
-              {"file":{"mp3-128":"https://media.example/two.mp3"}}]}
-            """;
-
-    @Test
-    void mediaProjectionPreservesPlayableOrderWithoutTitlesOrOpeningMedia() throws Exception {
-        for (String type : List.of("album", "track")) {
-            FixtureConnection page = page(MEDIA_JSON.replace("album", type));
-            AtomicInteger requests = new AtomicInteger();
-            var transport = new RadioHttpTransportImpl(Proxy.NO_PROXY, ALLOW_ALL, Duration.ofSeconds(1),
-                    Duration.ofSeconds(1), 5, (uri, proxy) -> {
-                assertEquals(ALBUM, uri);
-                requests.incrementAndGet();
-                return page;
-            });
-            var checked = new java.util.ArrayList<URI>();
-            AudioNetworkPolicy policy = uri -> {
-                assertTrue(page.disconnected);
-                assertTrue(page.bodyClosed);
-                checked.add(uri);
-            };
-            var media = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT)
-                    .resolveMediaUrls(ALBUM, new AudioCancellation());
-            assertEquals(List.of(URI.create("https://media.example/one.mp3?x=1&y=2"),
-                    URI.create("https://media.example/two.mp3")), media);
-            assertEquals(media, checked);
-            assertEquals(1, requests.get());
-            assertThrows(UnsupportedOperationException.class, () -> media.add(ALBUM));
-        }
-    }
-
-    @Test
-    void mediaProjectionRejectsMalformedOrEmptyListsAndUnsafeUrlsWithoutPartialResults() throws Exception {
-        for (String json : List.of("{}", "{\"current\":{\"type\":\"track\"},\"trackinfo\":[]}",
-                MEDIA_JSON.replace("\"album\"", "\"other\""),
-                MEDIA_JSON.replace("{\"file\":null}", "{\"file\":4}"),
-                MEDIA_JSON.replace("https://media.example/two.mp3", "file:///etc/passwd"),
-                MEDIA_JSON.replace("https://media.example/two.mp3", "https://user@media.example/two.mp3"),
-                MEDIA_JSON.replace("https://media.example/two.mp3", "/relative.mp3"),
-                MEDIA_JSON.replace("https://media.example/two.mp3", "bad url"),
-                "{\"current\":{\"type\":\"track\"},\"trackinfo\":[{\"file\":null}]}")) {
-            FixtureConnection page = page(json);
-            assertThrows(IOException.class, () -> resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
-                    .resolveMediaUrls(ALBUM, new AudioCancellation()));
-            assertTrue(page.disconnected);
-            assertTrue(page.bodyClosed);
-        }
-    }
-
-    @Test
-    void mediaProjectionHonorsBodyEntryFieldAndOutputPolicyLimits() throws Exception {
-        int bodyBytes = html(MEDIA_JSON).getBytes(StandardCharsets.UTF_8).length;
-        for (var limits : List.of(new BandcampMetadataResolver.Limits(bodyBytes - 1, 100, 8192, 5),
-                new BandcampMetadataResolver.Limits(bodyBytes, 5, 8192, 5),
-                new BandcampMetadataResolver.Limits(4096, 100, ALBUM.toString().length(), 5))) {
-            String json = limits.maxFieldLength() == ALBUM.toString().length()
-                    ? MEDIA_JSON.replace("https://media.example/two.mp3", "https://media.example/" + "x".repeat(100)) : MEDIA_JSON;
-            FixtureConnection page = page(json);
-            RadioTransportException error = assertThrows(RadioTransportException.class,
-                    () -> resolver(page, ALLOW_ALL, limits).resolveMediaUrls(ALBUM, new AudioCancellation()));
-            assertEquals(limits.maxBodyBytes() == bodyBytes - 1 ? RadioFailure.Code.PLAYLIST_TOO_LARGE
-                    : RadioFailure.Code.RESOURCE_LIMIT, error.code());
-            assertTrue(page.disconnected);
-            assertTrue(page.bodyClosed);
-        }
-        FixtureConnection page = page(MEDIA_JSON);
-        AudioNetworkPolicy policy = uri -> {
-            if (uri.getPath().equals("/two.mp3")) {
-                throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false, "blocked media", null);
-            }
-        };
-        assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
-                () -> resolver(page, policy, BandcampMetadataResolver.Limits.DEFAULT)
-                        .resolveMediaUrls(ALBUM, new AudioCancellation())).code());
-        assertTrue(page.disconnected);
-    }
-
-    @Test
-    void cancelledMediaProjectionDoesNotOpenPagesOrAdvancePastPolicyChecks() throws Exception {
-        AudioCancellation cancelled = new AudioCancellation();
-        cancelled.cancel();
-        var unopened = new BandcampMetadataResolver((request, token) -> {
-            throw new AssertionError("Pre-cancelled projection opened a response");
-        }, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT);
-        assertThrows(CancellationException.class, () -> unopened.resolveMediaUrls(ALBUM, cancelled));
-
-        AudioCancellation cancellation = new AudioCancellation();
-        FixtureConnection page = page(MEDIA_JSON);
-        AtomicInteger checks = new AtomicInteger();
-        AudioNetworkPolicy policy = uri -> {
-            checks.incrementAndGet();
-            cancellation.cancel();
-        };
-        assertThrows(CancellationException.class, () -> resolver(page, policy, BandcampMetadataResolver.Limits.DEFAULT)
-                .resolveMediaUrls(ALBUM, cancellation));
-        assertEquals(1, checks.get());
-        assertTrue(page.disconnected);
-        assertTrue(page.bodyClosed);
-    }
-
     @Test
     void preservesAlbumDescriptorTrackOrderAndArtistFallbackWithoutOpeningMedia() throws Exception {
         FixtureConnection page = page(ALBUM_JSON);
@@ -167,19 +60,56 @@ class BandcampMetadataResolverTest {
         var checked = new java.util.ArrayList<URI>();
         var tracks = new BandcampMetadataResolver(transport, checked::add,
                 BandcampMetadataResolver.Limits.DEFAULT).resolveTracks(ALBUM, new AudioCancellation());
-        assertEquals(List.of(ALBUM.toString(), "https://artist.bandcamp.com/track/first",
-                "https://artist.bandcamp.com/track/second"), tracks.stream().map(track -> track.url()).toList());
-        assertEquals(List.of("Album & Title", "First & One", "Second"),
-                tracks.stream().map(track -> track.title().getString()).toList());
-        assertEquals(List.of("Artist & Co", "Artist & Co", "Guest"),
-                tracks.stream().map(track -> track.artist()).toList());
-        assertEquals(tracks.stream().map(track -> URI.create(track.url())).toList(), checked);
+        assertEquals(ALBUM.toString(), tracks.album().orElseThrow().source());
+        assertEquals("Album & Title", tracks.album().orElseThrow().title());
+        assertEquals(List.of("https://artist.bandcamp.com/track/first", "https://artist.bandcamp.com/track/second"),
+                tracks.program().tracks().stream().map(track -> track.source()).toList());
+        assertEquals(List.of("First & One", "Second"), tracks.program().tracks().stream().map(track -> track.title()).toList());
+        assertEquals(List.of("Artist & Co", "Guest"), tracks.program().tracks().stream().map(track -> track.artist()).toList());
+        assertEquals(List.of(ALBUM, URI.create("https://artist.bandcamp.com/track/first"),
+                URI.create("https://artist.bandcamp.com/track/second")), checked);
         assertEquals(1, requests.get());
         assertTrue(page.disconnected);
         assertTrue(page.bodyClosed);
         assertEquals("GET", page.getRequestMethod());
         assertFalse(page.getInstanceFollowRedirects());
         assertNull(page.getRequestProperty("Icy-MetaData"));
+    }
+
+    @Test
+    void typedMetadataBoundsArtistTitleAndWholeProgramAndPreservesAOneTrackAlbum() throws Exception {
+        for (String field : List.of("Artist &amp; Co", "Album &amp; Title", "First &amp; One", "Guest")) {
+            FixtureConnection page = page(ALBUM_JSON.replace(field, "x".repeat(129)));
+            assertEquals(RadioFailure.Code.RESOURCE_LIMIT, assertThrows(RadioTransportException.class,
+                    () -> resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                            .resolveTracks(ALBUM, new AudioCancellation())).code());
+            assertTrue(page.bodyClosed);
+            assertTrue(page.disconnected);
+        }
+        var single = resolver(page(TRACK_JSON.replace("Only Track", "x".repeat(128))), ALLOW_ALL,
+                BandcampMetadataResolver.Limits.DEFAULT).resolveTracks(ALBUM, new AudioCancellation());
+        assertEquals(128, single.program().tracks().get(0).title().length());
+        String albumJson = "{\"artist\":\"Artist\",\"current\":{\"type\":\"album\",\"title\":\"Album\"},"
+                + "\"trackinfo\":[{\"title_link\":\"/track/one\",\"title\":\"Only\"}]}";
+        var album = resolver(page(albumJson), ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                .resolveTracks(ALBUM, new AudioCancellation());
+        assertEquals(1, album.program().tracks().size());
+        assertEquals("Album", album.album().orElseThrow().title());
+        assertEquals("Only", album.program().tracks().get(0).title());
+        var json = JsonParser.parseString(albumJson).getAsJsonObject();
+        var entries = json.getAsJsonArray("trackinfo");
+        var template = entries.get(0).getAsJsonObject().deepCopy();
+        template.addProperty("title_link", "/track/" + "x".repeat(7000));
+        entries.remove(0);
+        for (int i = 0; i < 10; i++) {
+            entries.add(template.deepCopy());
+        }
+        FixtureConnection excessive = page(json.toString());
+        assertEquals(RadioFailure.Code.RESOURCE_LIMIT, assertThrows(RadioTransportException.class,
+                () -> resolver(excessive, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
+                        .resolveTracks(ALBUM, new AudioCancellation())).code());
+        assertTrue(excessive.bodyClosed);
+        assertTrue(excessive.disconnected);
     }
 
     @Test
@@ -225,7 +155,7 @@ class BandcampMetadataResolverTest {
         AudioCancellation cancellation = new AudioCancellation();
         cancellation.cancel();
         // Target the projection boundary: public entrypoints reject an already-cancelled request before fetching.
-        var projection = BandcampMetadataResolver.class.getDeclaredMethod("parseTracks",
+        var projection = BandcampMetadataResolver.class.getDeclaredMethod("parseContent",
                 URI.class, URI.class, JsonObject.class, AudioCancellation.class);
         projection.setAccessible(true);
         InvocationTargetException failure = assertThrows(InvocationTargetException.class,
@@ -258,9 +188,10 @@ class BandcampMetadataResolverTest {
         };
         var tracks = resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
                 .resolveTracks(ALBUM, new AudioCancellation());
-        assertEquals(1, tracks.size());
-        assertEquals(ALBUM.toString(), tracks.get(0).url());
-        assertEquals("Only Track", tracks.get(0).title().getString());
+        assertTrue(tracks.album().isEmpty());
+        assertEquals(1, tracks.program().tracks().size());
+        assertEquals(ALBUM.toString(), tracks.program().tracks().get(0).source());
+        assertEquals("Only Track", tracks.program().tracks().get(0).title());
         assertTrue(page.disconnected);
         assertTrue(page.bodyClosed);
     }
@@ -283,9 +214,9 @@ class BandcampMetadataResolverTest {
             assertTrue(page.bodyClosed);
         }
         FixtureConnection exact = page(ALBUM_JSON);
-        assertEquals(3, resolver(exact, ALLOW_ALL,
+        assertEquals(2, resolver(exact, ALLOW_ALL,
                 new BandcampMetadataResolver.Limits(body.length, 100, 8192, 5))
-                .resolveTracks(ALBUM, new AudioCancellation()).size());
+                .resolveTracks(ALBUM, new AudioCancellation()).program().tracks().size());
     }
 
     @Test
@@ -364,15 +295,14 @@ class BandcampMetadataResolverTest {
         });
         var tracks = new BandcampMetadataResolver(transport, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT)
                 .resolveTracks(ALBUM, new AudioCancellation());
-        assertEquals(ALBUM.toString(), tracks.get(0).url());
-        assertEquals("https://artist.bandcamp.com/catalog/first", tracks.get(1).url());
+        assertEquals(ALBUM.toString(), tracks.album().orElseThrow().source());
+        assertEquals("https://artist.bandcamp.com/catalog/first", tracks.program().tracks().get(0).source());
         assertTrue(start.disconnected);
         assertTrue(finalPage.disconnected);
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void cancellationReleasesARequestBlockedReadingMetadata(boolean mediaProjection) throws Exception {
+    @Test
+    void cancellationReleasesARequestBlockedReadingMetadata() throws Exception {
         CountDownLatch reading = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         AudioCancellation cancellation = new AudioCancellation();
@@ -406,11 +336,7 @@ class BandcampMetadataResolverTest {
         var resolver = resolver(page, ALLOW_ALL, BandcampMetadataResolver.Limits.DEFAULT);
         CompletableFuture<?> request = CompletableFuture.runAsync(() -> {
             try {
-                if (mediaProjection) {
-                    resolver.resolveMediaUrls(ALBUM, cancellation);
-                } else {
-                    resolver.resolveTracks(ALBUM, cancellation);
-                }
+                resolver.resolveTracks(ALBUM, cancellation);
             } catch (IOException exception) {
                 throw new CompletionException(exception);
             }
@@ -438,15 +364,13 @@ class BandcampMetadataResolverTest {
         var resolver = new BandcampMetadataResolver(transport, policy, BandcampMetadataResolver.Limits.DEFAULT);
         assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
                 () -> resolver.resolveTracks(ALBUM, new AudioCancellation())).code());
-        BandcampSource legacy = new BandcampSource();
         for (String url : List.of("https://notbandcamp.com/album/x", "https://bandcamp.com.example/x",
                 "https://user@artist.bandcamp.com/x", "ftp://artist.bandcamp.com/x")) {
             assertFalse(BandcampPageReader.supports(URI.create(url)));
-            assertFalse(legacy.isValidUrl(url));
             assertEquals(RadioFailure.Code.INVALID_URL, assertThrows(RadioTransportException.class,
                     () -> resolver.resolveTracks(URI.create(url), new AudioCancellation())).code());
         }
-        assertTrue(legacy.isValidUrl("https://Artist.Bandcamp.com/track/example"));
+        assertTrue(BandcampPageReader.supports(URI.create("https://Artist.Bandcamp.com/track/example")));
     }
 
     @Test

@@ -48,6 +48,50 @@ class ProviderCoverCacheLoaderTest {
     Path temporary;
 
     @Test
+    void rejectsUnknownSourcesBeforeCreatingTransportOrResolvingMetadata() throws Exception {
+        var cache = new BoundedMediaCache(temporary.resolve("unsupported"));
+        for (String source : List.of("minecraft:music_disc.13", "https://images.example/cover.png",
+                "https://bandcamp.com.evil.example/a", "https://evilsoundcloud.com/a", "https://user@soundcloud.com/a")) {
+            assertThrows(IOException.class, () -> ProviderCoverCacheLoader.open(cache, URI.create(source),
+                    new AudioCancellation(), token -> { throw new AssertionError("Unsupported source created a context"); }));
+        }
+    }
+
+    @Test
+    void pageRedirectUsesExplicitProxyAndCannotReachPrivateDestinationOrImageStage() throws Exception {
+        URI forbidden = URI.create("http://127.0.0.1/private");
+        AtomicInteger opened = new AtomicInteger();
+        AtomicInteger contextsCreated = new AtomicInteger();
+        AudioNetworkPolicy policy = uri -> {
+            if (uri.equals(forbidden)) {
+                throw new RadioTransportException(RadioFailure.Code.BLOCKED_ADDRESS, false, "blocked redirect", null);
+            }
+        };
+        try (TestHttpServer proxyServer = new TestHttpServer()) {
+            proxyServer.handle("/album/test", exchange -> {
+                opened.incrementAndGet();
+                assertEquals("artist.bandcamp.com", exchange.getRequestURI().getHost());
+                exchange.getResponseHeaders().set("Location", forbidden.toString());
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+            });
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new java.net.InetSocketAddress("127.0.0.1", proxyServer.uri("/").getPort()));
+            var cancellation = new AudioCancellation();
+            var cache = new BoundedMediaCache(temporary.resolve("proxy"));
+            assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
+                    () -> ProviderCoverCacheLoader.open(cache, URI.create(BANDCAMP.toString().replace("https:", "http:")),
+                            cancellation, token -> {
+                                assertSame(cancellation, token);
+                                contextsCreated.incrementAndGet();
+                                return new AudioResolveContext(new RadioHttpTransportImpl(proxy, policy,
+                                        Duration.ofSeconds(1), Duration.ofSeconds(1), 5), policy, token, AudioResolveLimits.DEFAULT);
+                            })).code());
+            assertEquals(1, opened.get());
+            assertEquals(1, contextsCreated.get());
+        }
+    }
+
+    @Test
     void bothProvidersResolveMetadataAndReuseOnlyImageBytesWithIndependentLeases() throws Exception {
         byte[] png = png();
         for (URI provider : List.of(BANDCAMP, SOUNDCLOUD)) {
@@ -56,8 +100,8 @@ class ProviderCoverCacheLoaderTest {
             AtomicInteger closed = new AtomicInteger();
             var contexts = contexts(transport(provider, true, png, images, metadata, closed), ALLOW_ALL);
             var cache = new BoundedMediaCache(temporary.resolve(provider.getHost()));
-            try (var first = ProviderCoverCacheLoader.open(cache, provider, new AudioCancellation(), contexts, null).orElseThrow();
-                 var second = ProviderCoverCacheLoader.open(cache, provider, new AudioCancellation(), contexts, null).orElseThrow()) {
+            try (var first = ProviderCoverCacheLoader.open(cache, provider, new AudioCancellation(), contexts).orElseThrow();
+                 var second = ProviderCoverCacheLoader.open(cache, provider, new AudioCancellation(), contexts).orElseThrow()) {
                 assertEquals(png[0] & 0xFF, first.body().read());
                 assertArrayEquals(png, second.body().readAllBytes());
             }
@@ -78,9 +122,9 @@ class ProviderCoverCacheLoaderTest {
             AudioCancellation cancelled = new AudioCancellation();
             cancelled.cancel();
             assertThrows(CancellationException.class,
-                    () -> ProviderCoverCacheLoader.open(cache, provider, cancelled, contexts, null));
+                    () -> ProviderCoverCacheLoader.open(cache, provider, cancelled, contexts));
             assertEquals(0, metadata.get());
-            assertTrue(ProviderCoverCacheLoader.open(cache, provider, new AudioCancellation(), contexts, null).isEmpty());
+            assertTrue(ProviderCoverCacheLoader.open(cache, provider, new AudioCancellation(), contexts).isEmpty());
             assertEquals(0, images.get());
             assertEquals(metadata.get(), closed.get());
         }
@@ -108,10 +152,10 @@ class ProviderCoverCacheLoaderTest {
                 var contexts = contexts(transport(provider, true, png(), images, metadata, closed), policy);
                 if (cancel) {
                     assertThrows(CancellationException.class,
-                            () -> ProviderCoverCacheLoader.open(cache, provider, cancellation, contexts, null));
+                            () -> ProviderCoverCacheLoader.open(cache, provider, cancellation, contexts));
                 } else {
                     assertThrows(RadioTransportException.class,
-                            () -> ProviderCoverCacheLoader.open(cache, provider, cancellation, contexts, null));
+                            () -> ProviderCoverCacheLoader.open(cache, provider, cancellation, contexts));
                 }
                 assertEquals(0, images.get());
             }
@@ -126,7 +170,7 @@ class ProviderCoverCacheLoaderTest {
         AtomicInteger closed = new AtomicInteger();
         var transport = transport(BANDCAMP, true, png(), images, metadata, closed);
         try (var ignored = ProviderCoverCacheLoader.open(cache, BANDCAMP, new AudioCancellation(),
-                contexts(transport, ALLOW_ALL), null).orElseThrow()) {
+                contexts(transport, ALLOW_ALL)).orElseThrow()) {
         }
         AtomicInteger checks = new AtomicInteger();
         AudioNetworkPolicy policy = uri -> {
@@ -135,7 +179,7 @@ class ProviderCoverCacheLoaderTest {
             }
         };
         assertThrows(RadioTransportException.class, () -> ProviderCoverCacheLoader.open(cache, BANDCAMP,
-                new AudioCancellation(), contexts(transport, policy), null));
+                new AudioCancellation(), contexts(transport, policy)));
         assertEquals(1, images.get());
         assertEquals(2, checks.get());
     }
@@ -174,7 +218,7 @@ class ProviderCoverCacheLoaderTest {
             var cache = new BoundedMediaCache(temporary.resolve("v5"));
             CompletableFuture<?> request = CompletableFuture.runAsync(() -> {
                 try {
-                    var cover = ProviderCoverCacheLoader.open(cache, SOUNDCLOUD, cancellation, contexts(transport, ALLOW_ALL), null);
+                    var cover = ProviderCoverCacheLoader.open(cache, SOUNDCLOUD, cancellation, contexts(transport, ALLOW_ALL));
                     if (cover.isPresent()) {
                         cover.get().close();
                     }

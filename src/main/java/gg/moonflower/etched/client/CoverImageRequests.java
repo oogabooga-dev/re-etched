@@ -1,0 +1,135 @@
+package gg.moonflower.etched.client;
+
+import com.mojang.blaze3d.platform.NativeImage;
+import gg.moonflower.etched.client.render.item.CoverDescriptor;
+import gg.moonflower.etched.client.cache.BoundedMediaCache;
+import gg.moonflower.etched.client.cache.ClientMediaCache;
+import gg.moonflower.etched.client.cache.ProviderCoverCacheLoader;
+import gg.moonflower.etched.common.audio.AudioCancellation;
+import gg.moonflower.etched.client.radio.source.AudioResolveContext;
+import gg.moonflower.etched.client.render.item.AlbumCoverItemRenderer;
+import gg.moonflower.etched.client.render.item.AlbumImageProcessor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.ApiStatus;
+
+import java.io.IOException;
+import java.net.Proxy;
+import java.net.URI;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+/** Request-owned built-in cover loading, backed by the v5 namespaced secure cache. */
+@ApiStatus.Internal
+public final class CoverImageRequests {
+
+    private static final Logger LOGGER = LogManager.getLogger();
+    private static final ThreadPoolExecutor WORKERS = workers("Etched cover cache");
+
+    private static ThreadPoolExecutor workers(String name) {
+        return new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32), task -> {
+            Thread thread = new Thread(task, name);
+            thread.setDaemon(true);
+            return thread;
+        }, new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    private CoverImageRequests() {
+    }
+
+    public static boolean supportsProvider(String url) {
+        try {
+            return url != null && ProviderCoverCacheLoader.supports(URI.create(url));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
+    public static CompletableFuture<CoverDescriptor> requestProviderResource(String url, Proxy proxy) {
+        if (!supportsProvider(url)) {
+            return CompletableFuture.completedFuture(CoverDescriptor.EMPTY);
+        }
+        return request(cancellation -> ProviderCoverCacheLoader.open(ClientMediaCache.get(), URI.create(url), cancellation,
+                token -> AudioResolveContext.createDefault(proxy, token)));
+    }
+
+    static CompletableFuture<CoverDescriptor> request(CoverOperation operation) {
+        return request(operation, WORKERS);
+    }
+
+    private static CompletableFuture<CoverDescriptor> request(CoverOperation operation, ThreadPoolExecutor workers) {
+        return request(operation, workers, cover -> AlbumImageProcessor.applyOwnedOverlay(
+                NativeImage.read(cover.body()), AlbumCoverItemRenderer::copyOverlayImage));
+    }
+
+    static CompletableFuture<CoverDescriptor> request(CoverOperation operation, CoverImageFactory images) {
+        return request(operation, WORKERS, images);
+    }
+
+    static CompletableFuture<CoverDescriptor> request(CoverOperation operation, ThreadPoolExecutor workers,
+                                                CoverImageFactory images) {
+        AudioCancellation cancellation = new AudioCancellation();
+        CompletableFuture<CoverDescriptor> result = new CompletableFuture<>();
+        Runnable task = () -> {
+            try {
+                cancellation.throwIfCancelled();
+                Optional<BoundedMediaCache.Lease> resolved = operation.open(cancellation);
+                if (resolved.isEmpty()) {
+                    result.complete(CoverDescriptor.EMPTY);
+                    return;
+                }
+                try (BoundedMediaCache.Lease cover = resolved.get()) {
+                    cancellation.throwIfCancelled();
+                    NativeImage image = java.util.Objects.requireNonNull(images.create(cover), "processed cover image");
+                    boolean delivered = false;
+                    try {
+                        delivered = result.complete(CoverDescriptor.of(image));
+                    } finally {
+                        if (!delivered) {
+                            image.close();
+                        }
+                    }
+                }
+            } catch (Throwable failure) {
+                if (!cancellation.isCancelled()) {
+                    LOGGER.warn("Could not load album cover", failure);
+                }
+                if (failure instanceof Error) {
+                    result.completeExceptionally(failure);
+                } else {
+                    result.complete(CoverDescriptor.EMPTY);
+                }
+            }
+        };
+        result.whenComplete((cover, failure) -> {
+            if (result.isCancelled()) {
+                cancellation.cancel();
+                workers.remove(task);
+            }
+        });
+        try {
+            workers.execute(task);
+            if (result.isCancelled()) {
+                workers.remove(task);
+            }
+        } catch (RejectedExecutionException exception) {
+            result.complete(CoverDescriptor.EMPTY);
+        }
+        return result;
+    }
+
+    @FunctionalInterface
+    interface CoverOperation {
+        Optional<BoundedMediaCache.Lease> open(AudioCancellation cancellation) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface CoverImageFactory {
+        NativeImage create(BoundedMediaCache.Lease cover) throws IOException;
+    }
+
+}

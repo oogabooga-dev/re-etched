@@ -19,8 +19,7 @@
   ],
   "mixins": [
     "JukeboxBlockEntityMixin",
-    "JukeboxBlockMixin",
-    "RecordItemMixin"
+    "JukeboxBlockMixin"
   ],
   "injectors": {
     "defaultRequire": 1

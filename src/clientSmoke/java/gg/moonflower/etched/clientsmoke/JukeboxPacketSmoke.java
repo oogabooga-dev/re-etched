@@ -1,12 +1,15 @@
 package gg.moonflower.etched.clientsmoke;
 
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.client.radio.AudioPlaybackManager;
 import gg.moonflower.etched.client.radio.BoomboxPlayback;
 import gg.moonflower.etched.client.radio.PlaybackOwnerKey;
 import gg.moonflower.etched.common.audio.AudioProgram;
 import gg.moonflower.etched.common.audio.AudioTrack;
 import gg.moonflower.etched.common.audio.PlaybackState;
+import gg.moonflower.etched.common.audio.PlaybackRevision;
+import gg.moonflower.etched.common.audio.RecordContent;
+import gg.moonflower.etched.common.audio.ServerPlaybackClock;
+import gg.moonflower.etched.common.audio.BoomboxServerPlayback;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
@@ -47,6 +50,7 @@ import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.JukeboxBlock;
+import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.level.portal.PortalInfo;
@@ -67,7 +71,8 @@ import java.util.function.Function;
 final class JukeboxPacketSmoke {
 
     private static final String WORLD = "etched-jukebox-smoke-" + UUID.randomUUID();
-    private static final long DEADLINE = System.nanoTime() + 180_000_000_000L;
+    // Includes retracking, dimension round-trip and an actual integrated save/close/reopen.
+    private static final long DEADLINE = System.nanoTime() + 360_000_000_000L;
     private static final ItemStack A = disc("minecraft:music_disc.blocks", "A");
     private static final ItemStack B = disc("minecraft:music_disc.cat", "B");
     private static final ITeleporter SMOKE_TELEPORTER = new ITeleporter() {
@@ -86,6 +91,10 @@ final class JukeboxPacketSmoke {
     private static volatile UUID standId;
     private static UUID travellingPlayerId;
     private static Parrot parrot;
+    private static volatile long serverBRevision;
+    private static volatile long serverActualRevision;
+    private static long clientGeneration;
+    private static PlaybackState stableHeldState;
 
     private JukeboxPacketSmoke() {
     }
@@ -95,6 +104,7 @@ final class JukeboxPacketSmoke {
             throw new AssertionError("Jukebox packet smoke timed out at step " + step);
         }
         if (step == 0 && client.screen instanceof TitleScreen) {
+            gg.moonflower.etched.client.RecordCoverDispatchSmoke.verify(client);
             step = 1;
             // Limit chunks to save when the opt-in test leaves its integrated world.
             client.options.renderDistance().set(2);
@@ -118,7 +128,7 @@ final class JukeboxPacketSmoke {
             step = 3;
             ticks = 0;
             // All four messages traverse the integrated connection in this order. A's
-            // legacy packet is intentionally held until B's start event is in flight.
+            // program packet is intentionally held until B's start event is in flight.
             MinecraftServer server = client.getSingleplayerServer();
             ResourceKey<Level> dimension = client.level.dimension();
             UUID playerId = client.player.getUUID();
@@ -126,10 +136,14 @@ final class JukeboxPacketSmoke {
                 ServerLevel level = server.getLevel(dimension);
                 ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                 int id = Item.getId(A.getItem());
+                var clock = ServerPlaybackClock.get(level);
+                long aRevision = clock.next();
                 level.levelEvent(null, 1010, pos, id);
                 level.levelEvent(null, 1011, pos, 0);
+                clock.next(); // A's server-side stop, whose legacy event is already in flight.
+                serverBRevision = clock.next();
                 level.levelEvent(null, 1010, pos, id);
-                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), new ClientboundPlayMusicPacket(A, pos));
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), ClientboundPlayMusicPacket.fromRecord(dimension, pos, aRevision, A));
             });
         }
         if (step == 3 && ++ticks >= 40) {
@@ -143,7 +157,9 @@ final class JukeboxPacketSmoke {
             UUID playerId = client.player.getUUID();
             server.execute(() -> {
                 ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), new ClientboundPlayMusicPacket(B, pos));
+                // A foreign-dimension payload must neither start playback nor consume B's current-world ticket.
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), ClientboundPlayMusicPacket.fromRecord(Level.NETHER, pos, serverBRevision, B));
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player), ClientboundPlayMusicPacket.fromRecord(player.level().dimension(), pos, serverBRevision, B));
             });
         }
         if (step == 4 && client.level != null) {
@@ -153,18 +169,149 @@ final class JukeboxPacketSmoke {
                 if (!"minecraft:music_disc.cat".equals(source)) {
                     throw new AssertionError("Expected B, got " + source);
                 }
-                step = 5;
-                ticks = 0;
-                var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
-                var track = new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
-                        "minecraft:music_disc.cat", "Minecraft", "Entity sink smoke");
-                if (!AudioPlaybackManager.getInstance().update(entityKey,
-                        new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE,
-                                List.of(track))), true))) {
-                    throw new AssertionError("Entity owner was not admitted to the shared manager");
+                if (state.orElseThrow().revision() != serverBRevision) {
+                    throw new AssertionError("Custom jukebox synthesized a revision instead of applying the server stamp");
                 }
+                step = 40;
+                ticks = 0;
+                clientGeneration = AudioPlaybackManager.getInstance().getSessionSnapshot(
+                        PlaybackOwnerKey.block(client.level.dimension(), pos)).orElseThrow().generation();
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ServerLevel level = player.serverLevel();
+                    // Even matching start events must not retire B before revision admission.
+                    for (ItemStack duplicate : List.of(B, A)) {
+                        level.levelEvent(null, 1010, pos, Item.getId(duplicate.getItem()));
+                        EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                                ClientboundPlayMusicPacket.fromRecord(level.dimension(), pos, serverBRevision, duplicate));
+                    }
+                    EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                            ClientboundPlayMusicPacket.stopped(level.dimension(), pos, serverBRevision - 1L));
+                });
             } else if (++ticks >= 200) {
                 throw new AssertionError("B packet did not start playback after the cancelled A slot");
+            }
+        }
+        if (step == 40 && ++ticks >= 20) {
+            var key = PlaybackOwnerKey.block(client.level.dimension(), pos);
+            var state = AudioPlaybackManager.getInstance().getPlaybackState(key).orElseThrow();
+            if (state.revision() != serverBRevision || !"minecraft:music_disc.cat".equals(state.program().orElseThrow().tracks().get(0).source())
+                    || AudioPlaybackManager.getInstance().getSessionSnapshot(key).orElseThrow().generation() != clientGeneration) {
+                throw new AssertionError("Duplicate/conflicting custom starts or stale stop changed B's session");
+            }
+            step = 41;
+            ticks = 0;
+            MinecraftServer server = client.getSingleplayerServer();
+            ResourceKey<Level> dimension = client.level.dimension();
+            server.execute(() -> {
+                ServerLevel level = server.getLevel(dimension);
+                ((JukeboxBlockEntity) level.getBlockEntity(pos)).setFirstItem(A.copy());
+                serverActualRevision = ServerPlaybackClock.get(level).current();
+            });
+        }
+        if (step == 41) {
+            var state = AudioPlaybackManager.getInstance().getPlaybackState(PlaybackOwnerKey.block(client.level.dimension(), pos));
+            if (state.isPresent() && state.orElseThrow().revision() == serverActualRevision && serverActualRevision != serverBRevision) {
+                if (!"minecraft:music_disc.blocks".equals(state.orElseThrow().program().orElseThrow().tracks().get(0).source())) {
+                    throw new AssertionError("Actual server jukebox insertion did not publish A");
+                }
+                step = 42;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                ResourceKey<Level> dimension = client.level.dimension();
+                server.execute(() -> ((JukeboxBlockEntity) server.getLevel(dimension).getBlockEntity(pos)).popOutRecord());
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Actual server jukebox start did not carry its allocated revision");
+            }
+        }
+        if (step == 42) {
+            if (AudioPlaybackManager.getInstance().getPlaybackState(PlaybackOwnerKey.block(client.level.dimension(), pos)).isEmpty()
+                    && !client.level.getBlockState(pos).getValue(JukeboxBlock.HAS_RECORD)) {
+                step = 43;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ServerLevel level = player.serverLevel();
+                    long staleRevision = serverActualRevision;
+                    ((JukeboxBlockEntity) level.getBlockEntity(pos)).setFirstItem(B.copy());
+                    serverActualRevision = ServerPlaybackClock.get(level).current();
+                    EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                            ClientboundPlayMusicPacket.stopped(level.dimension(), pos, staleRevision));
+                    level.levelEvent(null, 1010, pos, Item.getId(A.getItem()));
+                    EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                            ClientboundPlayMusicPacket.fromRecord(level.dimension(), pos, staleRevision, A));
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Server ejection did not retire the custom owner");
+            }
+        }
+        if (step == 43 && ++ticks >= 20) {
+            var state = AudioPlaybackManager.getInstance().getPlaybackState(PlaybackOwnerKey.block(client.level.dimension(), pos)).orElseThrow();
+            if (state.revision() != serverActualRevision || !"minecraft:music_disc.cat".equals(state.program().orElseThrow().tracks().get(0).source())) {
+                throw new AssertionError("Delayed old start/stop replaced the reinserted server owner");
+            }
+            step = 44;
+            ticks = 0;
+            MinecraftServer server = client.getSingleplayerServer();
+            UUID playerId = client.player.getUUID();
+            server.execute(() -> {
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                ServerLevel level = player.serverLevel();
+                long oldRevision = serverActualRevision;
+                // Prove the state packet stops on its own, with no 1011 and HAS_RECORD still true.
+                serverActualRevision = ServerPlaybackClock.get(level).next();
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                        ClientboundPlayMusicPacket.stopped(level.dimension(), pos, serverActualRevision));
+                level.levelEvent(null, 1010, pos, Item.getId(B.getItem()));
+                EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
+                        ClientboundPlayMusicPacket.fromRecord(level.dimension(), pos, oldRevision, B));
+            });
+        }
+        if (step == 44 && ++ticks >= 20) {
+            if (AudioPlaybackManager.getInstance().getPlaybackState(PlaybackOwnerKey.block(client.level.dimension(), pos)).isPresent()) {
+                throw new AssertionError("Authoritative stop without a level event was undone by a late start");
+            }
+            System.out.println("ETCHED SERVER JUKEBOX REVISION START STOP SMOKE PASSED");
+            step = 45;
+            ticks = 0;
+            MinecraftServer server = client.getSingleplayerServer();
+            ResourceKey<Level> dimension = client.level.dimension();
+            server.execute(() -> {
+                ServerLevel level = server.getLevel(dimension);
+                ((JukeboxBlockEntity) level.getBlockEntity(pos)).startPlaying();
+                serverActualRevision = ServerPlaybackClock.get(level).current();
+            });
+        }
+        if (step == 45) {
+            var state = AudioPlaybackManager.getInstance().getPlaybackState(PlaybackOwnerKey.block(client.level.dimension(), pos));
+            if (state.isEmpty() || state.orElseThrow().revision() != serverActualRevision) {
+                if (++ticks >= 100) {
+                    throw new AssertionError("Jukebox did not resume for the existing unsupported replacement checks");
+                }
+                return;
+            }
+            step = 46;
+            ticks = 0;
+        }
+        if (step == 46) {
+            if (!NativeJukeboxRevisionSmoke.tick(client, pos, B)) {
+                return;
+            }
+            if (!JukeboxTrackingSmoke.tick(client, pos)) {
+                return;
+            }
+            step = 5;
+            ticks = 0;
+            var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
+            var track = new AudioTrack(AudioTrack.SourceType.SOUND_EVENT,
+                    "minecraft:music_disc.cat", "Minecraft", "Entity sink smoke");
+            if (!AudioPlaybackManager.getInstance().update(entityKey,
+                    new PlaybackState(0L, Optional.of(new AudioProgram(AudioProgram.Kind.FINITE, List.of(track))), true))) {
+                throw new AssertionError("Entity owner was not admitted to the shared manager");
             }
         }
         if (step == 5 && client.level != null) {
@@ -189,6 +336,15 @@ final class JukeboxPacketSmoke {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (client.player.getMainHandItem().is(EtchedItems.BOOMBOX.get())
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                if (!BoomboxRevisionSmoke.tick(client)) {
+                    return;
+                }
+                if (!OwnerTrackingSmoke.tick(client, pos)) {
+                    return;
+                }
+                if (stableHeldState == null) {
+                    ticks = 0; // Buffering/helper time is not part of the unchanged-program observation window.
+                }
                 assertPlayingModel(client, client.player, client.player.getMainHandItem(), 1.0F);
                 if (ticks == 0) {
                     assertPlayingArm(client, InteractionHand.MAIN_HAND, true);
@@ -201,7 +357,10 @@ final class JukeboxPacketSmoke {
                 if (!"minecraft:music_disc.cat".equals(program.tracks().get(0).source())) {
                     throw new AssertionError("Boombox did not select the held disc");
                 }
-                if (state.revision() != 0L) {
+                if (ticks == 0) {
+                    stableHeldState = state;
+                }
+                if (state != stableHeldState) {
                     throw new AssertionError("Unchanged boombox record restarted on a later tick");
                 }
                 if (++ticks < 20) {
@@ -225,7 +384,7 @@ final class JukeboxPacketSmoke {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             var state = AudioPlaybackManager.getInstance().getPlaybackState(entityKey);
             if (client.player.getMainHandItem().is(EtchedItems.BOOMBOX.get())
-                    && state.isPresent() && state.orElseThrow().revision() == 1L
+                    && state.isPresent() && PlaybackRevision.isNewer(state.orElseThrow().revision(), stableHeldState.revision())
                     && "minecraft:music_disc.blocks".equals(state.orElseThrow().program()
                     .orElseThrow().tracks().get(0).source())
                     && AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
@@ -305,13 +464,19 @@ final class JukeboxPacketSmoke {
                 }
                 step = 11;
                 ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                UUID id = droppedId;
+                var dimension = client.level.dimension();
+                server.execute(() -> BoomboxServerPlayback.sendSnapshot(server.getPlayerList().getPlayer(playerId),
+                        server.getLevel(dimension).getEntity(id)));
             } else if (++ticks >= 100) {
                 throw new AssertionError("Dropped boombox did not start managed playback");
             }
         }
         if (step == 11 && droppedId != null && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
-            // A still-present owner may start again after clearing the local runtime.
+            // Only a new authoritative snapshot may restore this owner after local cleanup.
             if (AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
                 step = 12;
                 ticks = 0;
@@ -331,8 +496,8 @@ final class JukeboxPacketSmoke {
         if (step == 12 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), droppedId);
             if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
-                Item record = ForgeRegistries.ITEMS.getValue(LegacySmokeRecord.ID);
-                if (!(record instanceof LegacySmokeRecord)
+                Item record = ForgeRegistries.ITEMS.getValue(UnsupportedSmokeRecord.ID);
+                if (!(record instanceof UnsupportedSmokeRecord)
                         || RecordContentResolver.resolve(new ItemStack(record)).isPresent()) {
                     throw new AssertionError("Client smoke unsupported record was not registered as a third-party item");
                 }
@@ -354,7 +519,7 @@ final class JukeboxPacketSmoke {
         if (step == 13 && client.level != null) {
             var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
             if (client.player.getOffhandItem().is(EtchedItems.BOOMBOX.get())
-                    && BoomboxItem.getRecord(client.player.getOffhandItem()).getItem() instanceof LegacySmokeRecord
+                    && BoomboxItem.getRecord(client.player.getOffhandItem()).getItem() instanceof UnsupportedSmokeRecord
                     && !BoomboxItem.isPaused(client.player.getOffhandItem())) {
                 if (BoomboxPlayback.getInstance().isPlaying(client.player)
                         || AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
@@ -366,18 +531,46 @@ final class JukeboxPacketSmoke {
                 if (++ticks < 20) {
                     return;
                 }
-                // Replace a currently admitted first-party owner with the unsupported item.
+                // Equipment updates alone cannot invent a boombox start.
                 BoomboxPlayback.getInstance().update(client.player, new ItemStack(Items.MUSIC_DISC_CAT));
-                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()) {
-                    throw new AssertionError("Supported record was not admitted before the replacement check");
+                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()) {
+                    throw new AssertionError("Client equipment update fabricated boombox authority");
                 }
-                BoomboxPlayback.getInstance().update(client.player, BoomboxItem.getRecord(client.player.getOffhandItem()));
-                if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isPresent()
-                        || BoomboxPlayback.getInstance().isPlaying(client.player)) {
-                    throw new AssertionError("Unsupported replacement left the managed session alive");
-                }
-                BoomboxItem.setPaused(client.player.getOffhandItem(), true);
-                BoomboxPlayback.getInstance().update(client.player, ItemStack.EMPTY);
+                step = 131;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ItemStack boombox = player.getOffhandItem().copy();
+                    BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+                    player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Unsupported third-party record did not reach the held boombox");
+            }
+        }
+        if (step == 131) {
+            var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
+            if (AudioPlaybackManager.getInstance().isPlaying(entityKey)) {
+                step = 132;
+                ticks = 0;
+                MinecraftServer server = client.getSingleplayerServer();
+                UUID playerId = client.player.getUUID();
+                server.execute(() -> {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    ItemStack boombox = player.getOffhandItem().copy();
+                    BoomboxItem.setRecord(boombox, new ItemStack(ForgeRegistries.ITEMS.getValue(UnsupportedSmokeRecord.ID)));
+                    player.setItemInHand(InteractionHand.OFF_HAND, boombox);
+                });
+            } else if (++ticks >= 100) {
+                throw new AssertionError("Valid server boombox was not admitted before replacement");
+            }
+        }
+        if (step == 132) {
+            var entityKey = PlaybackOwnerKey.entity(client.level.dimension(), client.player.getUUID());
+            if (AudioPlaybackManager.getInstance().getPlaybackState(entityKey).isEmpty()
+                    && BoomboxItem.getRecord(client.player.getOffhandItem()).getItem() instanceof UnsupportedSmokeRecord) {
                 step = 14;
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
@@ -396,10 +589,10 @@ final class JukeboxPacketSmoke {
                     ServerLevel level = server.getLevel(dimension);
                     level.levelEvent(null, 1010, pos, Item.getId(unsupported.getItem()));
                     EtchedMessages.PLAY.send(PacketDistributor.PLAYER.with(() -> player),
-                            new ClientboundPlayMusicPacket(unsupported, pos));
+                            ClientboundPlayMusicPacket.fromRecord(level.dimension(), pos, ServerPlaybackClock.get(level).next(), unsupported));
                 });
             } else if (++ticks >= 100) {
-                throw new AssertionError("Unsupported third-party record did not reach the held boombox");
+                throw new AssertionError("Unsupported server replacement left the managed boombox session alive");
             }
         }
         if (step == 14 && client.level != null) {
@@ -413,6 +606,7 @@ final class JukeboxPacketSmoke {
                     return;
                 }
                 step = 15;
+                VanillaRecordStopSmoke.verify(client);
                 ticks = 0;
                 MinecraftServer server = client.getSingleplayerServer();
                 UUID playerId = client.player.getUUID();
@@ -573,51 +767,65 @@ final class JukeboxPacketSmoke {
                 }
                 var state = AudioPlaybackManager.getInstance().getPlaybackState(newKey).orElseThrow();
                 assertPlayingModel(client, client.player, client.player.getOffhandItem(), 1.0F);
-                if (state.revision() != 0L || !"minecraft:music_disc.cat".equals(
+                if (stableTicks == 0) {
+                    stableHeldState = state;
+                }
+                if (state != stableHeldState || !"minecraft:music_disc.cat".equals(
                         state.program().orElseThrow().tracks().get(0).source())) {
                     throw new AssertionError("Nether boombox restarted or selected the wrong record");
                 }
                 if (++stableTicks < 20) {
                     return;
                 }
-                step = 21;
-                var oldPlayer = client.player;
-                var server = client.getSingleplayerServer();
-                client.tell(() -> {
-                    client.level.disconnect();
-                    client.clearLevel(new TitleScreen());
-                    if (client.level != null || !server.isShutdown()
-                            || AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
-                            || AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isPresent()
-                            || BoomboxPlayback.getInstance().isPlaying(oldPlayer)) {
-                        throw new AssertionError("Disconnect left boombox or jukebox playback behind");
-                    }
-                    assertPlayingModel(client, oldPlayer, oldPlayer.getOffhandItem(), 0.0F);
-                    try {
-                        Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
-                    } catch (IOException exception) {
-                        throw new IllegalStateException("Could not record jukebox smoke result", exception);
-                    }
-                    System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
-                    System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
-                    System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
-                    System.out.println("ETCHED UNSUPPORTED BOOMBOX RECORD AND REPLACEMENT SMOKE PASSED");
-                    System.out.println("ETCHED UNSUPPORTED JUKEBOX PACKET REPLACEMENT SMOKE PASSED");
-                    System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
-                    System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
-                    System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
-                    System.out.println("ETCHED INTEGRATED DISCONNECT CLEANUP SMOKE PASSED");
-                    step = 22;
-                    client.stop();
-                });
+                step = 23;
+                ticks = 0;
             } else if (++ticks >= 100) {
                 throw new AssertionError("Client did not enter the Nether after the player transfer");
             }
         }
+        // Reopen must keep progressing while level/player are null and the title/loading screen is active.
+        if (step == 23 && WorldReopenSmoke.tick(client, WORLD)) {
+            finish(client);
+        }
+    }
+
+    private static void finish(Minecraft client) {
+        step = 21;
+        var oldPlayer = client.player;
+        var newKey = PlaybackOwnerKey.entity(client.level.dimension(), oldPlayer.getUUID());
+        var jukeboxKey = PlaybackOwnerKey.block(Level.OVERWORLD, pos);
+        var server = client.getSingleplayerServer();
+        client.tell(() -> {
+            client.level.disconnect();
+            client.clearLevel(new TitleScreen());
+            if (client.level != null || !server.isShutdown()
+                    || AudioPlaybackManager.getInstance().getPlaybackState(newKey).isPresent()
+                    || AudioPlaybackManager.getInstance().getPlaybackState(jukeboxKey).isPresent()
+                    || BoomboxPlayback.getInstance().isPlaying(oldPlayer)) {
+                throw new AssertionError("Disconnect left boombox or jukebox playback behind");
+            }
+            assertPlayingModel(client, oldPlayer, oldPlayer.getOffhandItem(), 0.0F);
+            try {
+                Files.writeString(Path.of("etched-jukebox-packet-smoke-success"), WORLD + "\n");
+            } catch (IOException exception) {
+                throw new IllegalStateException("Could not record jukebox smoke result", exception);
+            }
+            System.out.println("ETCHED JUKEBOX PACKET SMOKE PASSED");
+            System.out.println("ETCHED ENTITY SOUND SINK SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX REPLACEMENT AND OFFHAND SMOKE PASSED");
+            System.out.println("ETCHED DROPPED BOOMBOX CLEANUP SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX CLEAR ALL SMOKE PASSED");
+            System.out.println("ETCHED UNSUPPORTED BOOMBOX RECORD AND REPLACEMENT SMOKE PASSED");
+            System.out.println("ETCHED UNSUPPORTED JUKEBOX PACKET REPLACEMENT SMOKE PASSED");
+            System.out.println("ETCHED LIVING BOOMBOX OWNER DEATH SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX OWNER DIMENSION TRANSFER SMOKE PASSED");
+            System.out.println("ETCHED PLAYER BOOMBOX DIMENSION CHANGE SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX PARROT DANCING SMOKE PASSED");
+            System.out.println("ETCHED BOOMBOX POSE AND TOOLTIP SMOKE PASSED");
+            System.out.println("ETCHED INTEGRATED DISCONNECT CLEANUP SMOKE PASSED");
+            step = 22;
+            client.stop();
+        });
     }
 
     private static UUID spawnStand(ServerLevel level, ServerPlayer player) {
@@ -681,7 +889,8 @@ final class JukeboxPacketSmoke {
 
     private static ItemStack disc(String sound, String title) {
         ItemStack stack = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(stack, new TrackData(sound, "Minecraft", Component.literal(title)));
+        EtchedMusicDiscItem.setContent(stack, new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE,
+                java.util.List.of(new AudioTrack(AudioTrack.SourceType.SOUND_EVENT, sound, "Minecraft", title)))));
         return stack;
     }
 }

@@ -3,9 +3,10 @@ package gg.moonflower.etched.common.audio.provider;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
 import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
@@ -14,7 +15,6 @@ import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.common.audio.net.DefaultRadioNetworkPolicy;
 import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.common.audio.net.RadioTransportException;
-import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
 import java.net.Proxy;
@@ -70,15 +70,23 @@ public final class SoundCloudMetadataResolver {
         this.limits = Objects.requireNonNull(limits, "limits");
     }
 
-    public List<TrackData> resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
+    public RecordContent resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
         JsonObject page = this.fetchPage(input, new Operation(cancellation));
-        List<TrackData> tracks = this.parseTracks(input, page, cancellation);
-        for (TrackData track : tracks) {
+        RecordContent content;
+        try {
+            content = this.parseContent(input, page, cancellation);
+        } catch (IllegalArgumentException exception) {
+            throw invalid("SoundCloud record contains invalid source metadata");
+        }
+        if (content.album().isPresent()) {
+            this.networkPolicy.check(URI.create(content.album().orElseThrow().source()), cancellation);
+        }
+        for (AudioTrack track : content.program().tracks()) {
             cancellation.throwIfCancelled();
-            this.networkPolicy.check(URI.create(track.url()), cancellation);
+            this.networkPolicy.check(URI.create(track.source()), cancellation);
         }
         cancellation.throwIfCancelled();
-        return List.copyOf(tracks);
+        return content;
     }
 
     public Optional<URI> resolveAlbumCover(URI input, AudioCancellation cancellation) throws IOException {
@@ -106,54 +114,6 @@ public final class SoundCloudMetadataResolver {
         return Optional.of(cover);
     }
 
-    /** Resolves one progressive MP3 destination without downloading audio or accepting HLS. */
-    public List<URI> resolveMediaUrls(URI input, AudioCancellation cancellation) throws IOException {
-        Operation operation = new Operation(cancellation);
-        JsonObject page = this.fetchPage(input, operation);
-        if (!field(page, "kind").equals("track") || !requiredBoolean(page, "streamable")) {
-            throw invalid("SoundCloud media URL must resolve to a streamable track");
-        }
-        JsonObject media = object(page.get("media"), "track media");
-        JsonElement value = media.get("transcodings");
-        if (value == null || !value.isJsonArray()) {
-            throw invalid("SoundCloud transcodings is not an array");
-        }
-        JsonArray entries = value.getAsJsonArray();
-        if (entries.size() > this.limits.maxTracks()) {
-            throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud transcodings exceed the entry limit", null);
-        }
-        URI progressive = null;
-        boolean hls = false;
-        boolean other = false;
-        for (JsonElement entry : entries) {
-            cancellation.throwIfCancelled();
-            JsonObject transcoding = object(entry, "transcoding");
-            JsonObject format = object(transcoding.get("format"), "transcoding format");
-            String protocol = field(format, "protocol");
-            String mime = optionalField(format, "mime_type");
-            if (protocol.equals("progressive") && "audio/mpeg".equalsIgnoreCase(mime)) {
-                if (progressive == null) {
-                    progressive = httpUri(field(transcoding, "url"), "SoundCloud transcoding URL");
-                }
-            } else if (protocol.equals("hls")) {
-                hls = true;
-            } else {
-                other = true;
-            }
-        }
-        if (progressive == null) {
-            if (hls && !other) {
-                throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false, "SoundCloud track is only available as HLS", null);
-            }
-            throw invalid("SoundCloud track has no progressive MP3 transcoding");
-        }
-        JsonObject resolved = this.authenticatedJson(progressive, operation, optionalField(page, "track_authorization"));
-        URI destination = httpUri(field(resolved, "url"), "SoundCloud media URL");
-        this.networkPolicy.check(destination, cancellation);
-        cancellation.throwIfCancelled();
-        return List.of(destination);
-    }
-
     private JsonObject fetchPage(URI input, Operation operation) throws IOException {
         AudioCancellation cancellation = operation.cancellation;
         cancellation.throwIfCancelled();
@@ -168,10 +128,10 @@ public final class SoundCloudMetadataResolver {
 
     private JsonObject resolvePage(URI input, Operation operation) throws IOException {
         URI endpoint = SoundCloudPageReader.appendQuery(this.resolveEndpoint, "url", input.toASCIIString());
-        return this.authenticatedJson(endpoint, operation, null);
+        return this.authenticatedJson(endpoint, operation);
     }
 
-    private JsonObject authenticatedJson(URI endpoint, Operation operation, String authorization) throws IOException {
+    private JsonObject authenticatedJson(URI endpoint, Operation operation) throws IOException {
         if (!SoundCloudPageReader.sameOrigin(endpoint, this.resolveEndpoint)) {
             throw failure(RadioFailure.Code.BLOCKED_ADDRESS, false, "SoundCloud returned an untrusted API endpoint", null);
         }
@@ -181,9 +141,6 @@ public final class SoundCloudMetadataResolver {
         while (true) {
             int rejectedStatus;
             URI request = SoundCloudPageReader.appendQuery(endpoint, "client_id", operation.clientId);
-            if (authorization != null) {
-                request = SoundCloudPageReader.appendQuery(request, "track_authorization", authorization);
-            }
             try (AudioHttpResponse response = operation.execute(request)) {
                 if (!SoundCloudPageReader.sameOrigin(response.uri(), this.resolveEndpoint)) {
                     throw failure(RadioFailure.Code.BLOCKED_ADDRESS, false,
@@ -245,15 +202,15 @@ public final class SoundCloudMetadataResolver {
         throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, false, "Could not discover a SoundCloud client ID", null);
     }
 
-    private List<TrackData> parseTracks(URI input, JsonObject page, AudioCancellation cancellation) throws IOException {
+    private RecordContent parseContent(URI input, JsonObject page, AudioCancellation cancellation) throws IOException {
         String kind = field(page, "kind");
-        String artist = field(object(page.get("user"), "user"), "username");
-        String title = field(page, "title");
+        String artist = metadataField(object(page.get("user"), "user"), "username");
+        String title = metadataField(page, "title");
         if (kind.equals("track")) {
             if (!requiredBoolean(page, "streamable")) {
                 throw invalid("SoundCloud track is not streamable");
             }
-            return List.of(new TrackData(input.toString(), artist, Component.literal(title)));
+            return content(List.of(new AudioTrack(AudioTrack.SourceType.REMOTE, input.toString(), artist, title)), Optional.empty());
         }
         if (!kind.equals("playlist") || !requiredBoolean(page, "is_album")) {
             throw invalid("SoundCloud URL is not a track or album");
@@ -263,11 +220,11 @@ public final class SoundCloudMetadataResolver {
             throw invalid("SoundCloud album tracks is not an array");
         }
         JsonArray entries = value.getAsJsonArray();
-        if (entries.size() > this.limits.maxTracks()) {
+        if (entries.size() > Math.min(this.limits.maxTracks(), AudioProgram.MAX_TRACKS)) {
             throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud album exceeds the track limit", null);
         }
-        List<TrackData> tracks = new ArrayList<>(entries.size() + 1);
-        tracks.add(new TrackData(input.toString(), artist, Component.literal(title)));
+        var album = new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE, input.toString(), artist, title);
+        List<AudioTrack> tracks = new ArrayList<>(entries.size());
         for (JsonElement entry : entries) {
             cancellation.throwIfCancelled();
             JsonObject track = object(entry, "album track");
@@ -283,13 +240,30 @@ public final class SoundCloudMetadataResolver {
             }
             requirePage(uri);
             JsonObject user = track.has("user") ? object(track.get("user"), "track user") : null;
-            tracks.add(new TrackData(uri.toString(), user == null ? artist : field(user, "username"),
-                    Component.literal(field(track, "title"))));
+            tracks.add(new AudioTrack(AudioTrack.SourceType.REMOTE, uri.toString(), user == null ? artist : metadataField(user, "username"),
+                    metadataField(track, "title")));
         }
-        if (tracks.size() == 1) {
+        if (tracks.isEmpty()) {
             throw invalid("SoundCloud album has no tracks with a page URL");
         }
-        return tracks;
+        return content(tracks, Optional.of(album));
+    }
+
+    private String metadataField(JsonObject object, String key) throws RadioTransportException {
+        String value = field(object, key);
+        if (value.length() > AudioTrack.MAX_METADATA_LENGTH) {
+            throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud artist/title exceeds the metadata limit", null);
+        }
+        return value;
+    }
+
+    private static RecordContent content(List<AudioTrack> tracks, Optional<RecordContent.AlbumMetadata> album)
+            throws RadioTransportException {
+        try {
+            return new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, tracks), album);
+        } catch (IllegalArgumentException exception) {
+            throw failure(RadioFailure.Code.RESOURCE_LIMIT, false, "SoundCloud record exceeds the content limits", exception);
+        }
     }
 
     private String field(JsonObject object, String key) throws RadioTransportException {
@@ -300,19 +274,6 @@ public final class SoundCloudMetadataResolver {
         String result = value.getAsString();
         requireLength(result);
         return result;
-    }
-
-    private String optionalField(JsonObject object, String key) throws RadioTransportException {
-        JsonElement value = object.get(key);
-        return value == null || value.isJsonNull() ? null : field(object, key);
-    }
-
-    private static URI httpUri(String value, String description) throws RadioTransportException {
-        try {
-            return SoundCloudPageReader.requireHttpUri(URI.create(value), description);
-        } catch (IllegalArgumentException exception) {
-            throw invalid(description + " is invalid");
-        }
     }
 
     private void requireLength(String value) throws RadioTransportException {

@@ -1,9 +1,7 @@
 package gg.moonflower.etched.common.menu;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
-import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
-import gg.moonflower.etched.common.item.VanillaRecordAdapter;
+import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import gg.moonflower.etched.core.registry.EtchedMenus;
 import net.minecraft.world.Container;
@@ -13,7 +11,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.RecordItem;
 
 /**
  * @author Ocelot
@@ -116,15 +113,6 @@ public class AlbumCoverMenu extends AbstractContainerMenu {
     }
 
     public static boolean isValid(ItemStack stack) {
-        if (stack.isEmpty() || stack.is(EtchedItems.ALBUM_COVER.get())) {
-            return false;
-        }
-        if (stack.getItem() instanceof RecordItem record && VanillaRecordAdapter.isVanilla(record)) {
-            return true;
-        }
-        if (stack.getItem() instanceof EtchedMusicDiscItem) {
-            return EtchedMusicDiscItem.hasLegacyMusic(stack);
-        }
-        return PlayableRecord.isPlayableRecord(stack);
+        return RecordContentResolver.isPlayableDisc(stack);
     }
 }

@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SoundCloudMetadataPolicyTest {
 
     @Test
-    void mediaUrlsResolvingToPrivateAddressesAreBlockedAfterClosingTheApiResponse() {
+    void coverUrlsResolvingToPrivateAddressesAreBlockedAfterClosingTheApiResponse() {
         var policy = new DefaultRadioNetworkPolicy(() -> false,
                 host -> new InetAddress[]{InetAddress.getByAddress(host.equals("media.example")
                         ? new byte[]{127, 0, 0, 1} : new byte[]{8, 8, 8, 8})});
@@ -32,10 +32,8 @@ class SoundCloudMetadataPolicyTest {
                 case "/" -> "<script src='/app.js'></script>";
                 case "/app.js" -> "client_id:'test'";
                 case "/resolve" -> """
-                        {"kind":"track","streamable":true,"media":{"transcodings":[
-                        {"url":"https://api-v2.soundcloud.com/transcoding","format":{"protocol":"progressive","mime_type":"audio/mpeg"}}]}}
+                        {"kind":"track","streamable":true,"artwork_url":"https://media.example/cover.jpg"}
                         """;
-                case "/transcoding" -> "{\"url\":\"https://media.example/track.mp3\"}";
                 default -> throw new AssertionError("Unexpected media request " + request.uri());
             };
             var stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)) {
@@ -45,8 +43,8 @@ class SoundCloudMetadataPolicyTest {
         }, policy, URI.create("https://soundcloud.com/"), URI.create("https://api-v2.soundcloud.com/resolve"),
                 SoundCloudMetadataResolver.Limits.DEFAULT);
         assertEquals(RadioFailure.Code.BLOCKED_ADDRESS, assertThrows(RadioTransportException.class,
-                () -> resolver.resolveMediaUrls(URI.create("https://soundcloud.com/artist/track"), new AudioCancellation())).code());
-        assertEquals(4, opened.get());
+                () -> resolver.resolveAlbumCover(URI.create("https://soundcloud.com/artist/track"), new AudioCancellation())).code());
+        assertEquals(3, opened.get());
         assertEquals(opened.get(), closed.get());
     }
 

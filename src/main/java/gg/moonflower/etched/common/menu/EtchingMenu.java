@@ -1,15 +1,10 @@
 package gg.moonflower.etched.common.menu;
 
 import com.mojang.datafixers.util.Pair;
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.TrackData;
-import gg.moonflower.etched.api.sound.download.SoundSourceManager;
 import gg.moonflower.etched.common.audio.AudioCancellation;
-import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
-import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
-import gg.moonflower.etched.common.audio.provider.LegacyTrackMetadataRequests;
-import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
-import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
+import gg.moonflower.etched.common.audio.provider.TrackMetadataRequests;
 import gg.moonflower.etched.common.item.*;
 import gg.moonflower.etched.common.network.EtchedMessages;
 import gg.moonflower.etched.common.network.play.ClientboundEtchingUrlErrorPacket;
@@ -55,6 +50,7 @@ public class EtchingMenu extends AbstractContainerMenu {
     private final Container input;
     private final Container result;
     private final Player player;
+    private final MetadataResolver metadata;
     private String url;
     private long urlId;
     private long lastSoundTime;
@@ -69,7 +65,12 @@ public class EtchingMenu extends AbstractContainerMenu {
     }
 
     public EtchingMenu(int id, Inventory inventory, ContainerLevelAccess containerLevelAccess) {
+        this(id, inventory, containerLevelAccess, TrackMetadataRequests::resolve);
+    }
+
+    EtchingMenu(int id, Inventory inventory, ContainerLevelAccess containerLevelAccess, MetadataResolver metadata) {
         super(EtchedMenus.ETCHING_MENU.get(), id);
+        this.metadata = Objects.requireNonNull(metadata, "metadata");
         this.player = inventory.player;
         this.labelIndex = DataSlot.standalone();
         this.input = new SimpleContainer(2) {
@@ -242,9 +243,9 @@ public class EtchingMenu extends AbstractContainerMenu {
 
             if (discStack.getItem() == EtchedItems.ETCHED_MUSIC_DISC.get() || (!discStack.isEmpty() && !labelStack.isEmpty())) {
                 if (this.url == null && !discStack.isEmpty()) {
-                    this.url = PlayableRecord.getStackAlbum(discStack).map(TrackData::url).orElse(null);
+                    this.url = EtchedMusicDiscItem.readContent(discStack).map(EtchingMetadata::source).orElse(null);
                 }
-                if (!TrackData.isValidURL(this.url)) {
+                if (EtchingMetadata.sourceType(this.url) == null) {
                     return;
                 }
 
@@ -264,57 +265,29 @@ public class EtchingMenu extends AbstractContainerMenu {
                     int discColor = 0x515151;
                     int primaryLabelColor = 0xFFFFFF;
                     int secondaryLabelColor = 0xFFFFFF;
-                    TrackData[] data = new TrackData[]{TrackData.EMPTY};
                     if (requestDisc.getItem() == EtchedItems.ETCHED_MUSIC_DISC.get()) {
                         discColor = EtchedMusicDiscItem.getDiscColor(requestDisc);
                         primaryLabelColor = EtchedMusicDiscItem.getLabelPrimaryColor(requestDisc);
                         secondaryLabelColor = EtchedMusicDiscItem.getLabelSecondaryColor(requestDisc);
-                        data = PlayableRecord.getStackMusic(requestDisc).orElse(data);
                     }
-                    if (data.length == 1 && !requestLabel.isEmpty()) {
-                        data[0] = data[0].withTitle(MusicLabelItem.getTitle(requestLabel)).withArtist(MusicLabelItem.getAuthor(requestLabel));
-                    }
-                    if (!TrackData.isLocalSound(requestUrl) && BandcampPageReader.supports(URI.create(requestUrl))) {
-                        try {
-                            data = new BandcampMetadataResolver(proxy).resolveTracks(
-                                    URI.create(requestUrl), cancellation).toArray(TrackData[]::new);
-                        } catch (Exception e) {
-                            this.sendUrlError(currentId, e.getMessage());
-                            throw new CompletionException(e);
-                        }
-                    } else if (!TrackData.isLocalSound(requestUrl) && SoundCloudPageReader.supports(URI.create(requestUrl))) {
-                        try {
-                            data = new SoundCloudMetadataResolver(proxy).resolveTracks(
-                                    URI.create(requestUrl), cancellation).toArray(TrackData[]::new);
-                        } catch (Exception e) {
-                            this.sendUrlError(currentId, e.getMessage());
-                            throw new CompletionException(e);
-                        }
-                    } else if (SoundSourceManager.isValidUrl(requestUrl)) {
-                        try {
-                            data = LegacyTrackMetadataRequests.await(
-                                    () -> SoundSourceManager.resolveTracks(requestUrl, null, proxy), cancellation);
-                        } catch (Exception e) {
-                            if (!level.isClientSide()) {
-                                Throwable cause = e instanceof CompletionException && e.getCause() != null
-                                        ? e.getCause() : e;
-                                this.sendUrlError(currentId, cause.getMessage());
+                    RecordContent content;
+                    try {
+                        if (EtchingMetadata.sourceType(requestUrl) == AudioTrack.SourceType.REMOTE
+                                && TrackMetadataRequests.supports(URI.create(requestUrl))) {
+                            content = TrackMetadataRequests.await(
+                                    () -> this.metadata.resolve(URI.create(requestUrl), proxy, cancellation), cancellation);
+                        } else {
+                            if (EtchingMetadata.sourceType(requestUrl) == AudioTrack.SourceType.REMOTE) {
+                                new EtchingUrlValidator(proxy).check(requestUrl, cancellation);
                             }
-                            if (e instanceof CompletionException) {
-                                throw (CompletionException) e;
-                            }
-                            throw new CompletionException(e);
+                            content = EtchingMetadata.direct(requestUrl, EtchedMusicDiscItem.readContent(requestDisc),
+                                    !requestLabel.isEmpty(), MusicLabelItem.getAuthor(requestLabel), MusicLabelItem.getTitle(requestLabel));
                         }
-                    } else if (!TrackData.isLocalSound(requestUrl)) {
-                        try {
-                            new EtchingUrlValidator(proxy).check(requestUrl, cancellation);
-                            data = new TrackData[]{data[0].withUrl(requestUrl)};
-                        } catch (Exception e) {
-                            if (!level.isClientSide()) {
-                                this.sendUrlError(currentId, e.getLocalizedMessage());
-                            }
-                            throw new CompletionException("Invalid URL", e);
-                        }
+                        content = EtchingMetadata.fallbackArtist(content, MusicLabelItem.getAuthor(requestLabel));
+                    } catch (Exception e) {
+                        Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
+                        this.sendUrlError(currentId, cause.getMessage());
+                        throw e instanceof CompletionException ? (CompletionException) e : new CompletionException(e);
                     }
                     cancellation.throwIfCancelled();
                     if (requestDisc.getItem() instanceof BlankMusicDiscItem) {
@@ -328,18 +301,7 @@ public class EtchingMenu extends AbstractContainerMenu {
                         secondaryLabelColor = ComplexMusicLabelItem.getSecondaryColor(requestLabel);
                     }
 
-                    for (int i = 0; i < data.length; i++) {
-                        TrackData trackData = data[i];
-                        if (trackData.artist().equals(TrackData.EMPTY.artist())) {
-                            trackData = trackData.withArtist(MusicLabelItem.getAuthor(requestLabel));
-                        }
-                        if (TrackData.isLocalSound(requestUrl)) {
-                            trackData = trackData.withUrl(ResourceLocation.parse(requestUrl).toString());
-                        }
-                        data[i] = trackData;
-                    }
-
-                    EtchedMusicDiscItem.setMusic(resultStack, data);
+                    EtchedMusicDiscItem.setContent(resultStack, content);
                     EtchedMusicDiscItem.setColor(resultStack, discColor, primaryLabelColor, secondaryLabelColor);
                     EtchedMusicDiscItem.setPattern(resultStack, EtchedMusicDiscItem.LabelPattern.values()[requestPattern]);
 
@@ -414,8 +376,13 @@ public class EtchingMenu extends AbstractContainerMenu {
         return true;
     }
 
-    static boolean isValidUrlSubmission(String url) {
+    public static boolean isValidUrlSubmission(String url) {
         return url != null && url.length() <= ServerboundSetEtchingUrlPacket.MAX_URL_LENGTH
-                && (url.isEmpty() || TrackData.isValidURL(url));
+                && (url.isEmpty() || EtchingMetadata.sourceType(url) != null);
+    }
+
+    @FunctionalInterface
+    interface MetadataResolver {
+        CompletableFuture<RecordContent> resolve(URI input, Proxy proxy, AudioCancellation cancellation);
     }
 }

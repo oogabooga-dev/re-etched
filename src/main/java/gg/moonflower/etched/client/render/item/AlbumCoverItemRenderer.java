@@ -4,8 +4,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import gg.moonflower.etched.api.record.AlbumCover;
-import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.client.RecordCoverRequests;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
 import gg.moonflower.etched.core.Etched;
 import net.minecraft.client.Minecraft;
@@ -162,13 +161,11 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
         }
         ModelData model = stack.getTagElement("CoverRecord") == null ? this.data.defaultCover : this.covers.computeIfAbsent(stack.getTagElement("CoverRecord"), __ -> {
             ItemStack coverStack = AlbumCoverItem.getCoverStack(stack).orElse(ItemStack.EMPTY);
-            if (!coverStack.isEmpty() && coverStack.getItem() instanceof PlayableRecord) {
-                return ((PlayableRecord) coverStack.getItem()).getAlbumCover(coverStack, Minecraft.getInstance().getProxy(), Minecraft.getInstance().getResourceManager()).thenApply(cover -> ModelData.of(cover).orElse(this.data.defaultCover)).exceptionally(e -> {
-                    e.printStackTrace();
-                    return this.data.defaultCover;
-                });
-            }
-            return CompletableFuture.completedFuture(this.data.defaultCover);
+            return RecordCoverRequests.request(coverStack, Minecraft.getInstance().getProxy(), Minecraft.getInstance().getResourceManager())
+                    .thenApply(cover -> ModelData.of(cover).orElse(this.data.defaultCover)).exceptionally(e -> {
+                        e.printStackTrace();
+                        return this.data.defaultCover;
+                    });
         }).getNow(this.data.defaultCover);
 
         poseStack.pushPose();
@@ -291,7 +288,7 @@ public class AlbumCoverItemRenderer extends BlockEntityWithoutLevelRenderer impl
     @ApiStatus.Internal
     public interface ModelData {
 
-        static Optional<ModelData> of(AlbumCover cover) {
+        static Optional<ModelData> of(CoverDescriptor cover) {
             if (cover instanceof ModelAlbumCover) {
                 return Optional.of(new BakedModelData(((ModelAlbumCover) cover).model()));
             }

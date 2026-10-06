@@ -1,7 +1,8 @@
 package gg.moonflower.etched.gametest;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
-import gg.moonflower.etched.api.record.TrackData;
+import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.block.RadioBlock;
 import gg.moonflower.etched.common.blockentity.RadioBlockEntity;
 import gg.moonflower.etched.common.item.AlbumCoverItem;
@@ -9,6 +10,10 @@ import gg.moonflower.etched.common.item.BoomboxItem;
 import gg.moonflower.etched.common.item.EtchedMusicDiscItem;
 import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.common.network.play.ClientboundPlayMusicPacket;
+import gg.moonflower.etched.common.audio.ServerPlaybackClock;
+import gg.moonflower.etched.common.audio.BoomboxServerPlayback;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.Level;
 import gg.moonflower.etched.core.Etched;
 import gg.moonflower.etched.core.registry.EtchedBlocks;
 import gg.moonflower.etched.core.registry.EtchedItems;
@@ -18,7 +23,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
@@ -77,7 +81,15 @@ public final class EtchedGameTests {
                 "The removed Album Jukebox menu was registered");
         helper.assertTrue(helper.getLevel().getRecipeManager().byKey(albumJukeboxId).isEmpty(),
                 "The removed Album Jukebox recipe was loaded");
-        helper.assertTrue(Items.MUSIC_DISC_13 instanceof PlayableRecord, "Etched common mixins were not applied");
+        helper.assertTrue(RecordContentResolver.resolve(new ItemStack(Items.MUSIC_DISC_13)).isPresent(),
+                "Vanilla managed content requires the removed record API mixin");
+        for (String type : List.of("gg.moonflower.etched.api.record.AlbumCover", "gg.moonflower.etched.api.record.PlayableRecord",
+                "gg.moonflower.etched.api.record.PlayableRecordItem", "gg.moonflower.etched.api.record.TrackData",
+                "gg.moonflower.etched.core.mixin.RecordItemMixin", "gg.moonflower.etched.client.AlbumCoverCache")) {
+            // Mixin packages reject direct class loading even for absent classes; inspect class resources instead.
+            helper.assertTrue(EtchedGameTests.class.getClassLoader().getResource(type.replace('.', '/') + ".class") == null,
+                    "Retired class remains in the transformed server: " + type);
+        }
         try {
             Files.writeString(Path.of("etched-gametest-success"), "passed\n");
         } catch (IOException exception) {
@@ -122,9 +134,9 @@ public final class EtchedGameTests {
 
         ItemStack etchedDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         etchedDisc.getOrCreateTag().putString("CharacterizationMarker", "nested-record-data");
-        EtchedMusicDiscItem.setMusic(etchedDisc,
-                new TrackData("https://audio.example/first.mp3", "Artist", Component.literal("First")),
-                new TrackData("https://audio.example/second.mp3", "Artist", Component.literal("Second")));
+        EtchedMusicDiscItem.setContent(etchedDisc, content(null,
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/first.mp3", "Artist", "First"),
+                new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/second.mp3", "Artist", "Second")));
 
         ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
         albumCover.getOrCreateTag().putString("CharacterizationMarker", "album-data");
@@ -182,39 +194,33 @@ public final class EtchedGameTests {
         BlockPos absoluteJukeboxPos = helper.absolutePos(jukeboxPos);
         helper.setBlock(jukeboxPos, Blocks.JUKEBOX);
 
-        TrackData first = track("first");
-        TrackData second = track("second");
-        TrackData third = track("third");
+        AudioTrack first = track("first");
+        AudioTrack second = track("second");
+        AudioTrack third = track("third");
         ItemStack multiTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(multiTrackDisc, track("album"), first, second);
+        EtchedMusicDiscItem.setContent(multiTrackDisc, content(track("album"), first, second));
         ItemStack singleTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(singleTrackDisc, third);
+        EtchedMusicDiscItem.setContent(singleTrackDisc, content(null, third));
         ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(albumCover, List.of(multiTrackDisc, singleTrackDisc));
 
         JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(jukeboxPos);
         jukebox.setFirstItem(albumCover);
         ClientboundPlayMusicPacket sentPacket =
-                new ClientboundPlayMusicPacket(jukebox.getFirstItem().copy(), absoluteJukeboxPos);
+                ClientboundPlayMusicPacket.fromRecord(helper.getLevel().dimension(), absoluteJukeboxPos,
+                        ServerPlaybackClock.get(helper.getLevel()).current(), jukebox.getFirstItem());
 
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             sentPacket.writePacketData(buffer);
             ClientboundPlayMusicPacket receivedPacket = new ClientboundPlayMusicPacket(buffer);
-            var tracks = RecordContentResolver.resolve(receivedPacket.record()).orElseThrow().program().tracks();
+            var tracks = receivedPacket.program().orElseThrow().tracks();
 
             helper.assertTrue(receivedPacket.pos().equals(absoluteJukeboxPos),
                     "The jukebox playback packet changed its position");
-            helper.assertTrue(ItemStack.matches(receivedPacket.record(), sentPacket.record()),
-                    "The jukebox playback packet changed the record NBT");
+            helper.assertTrue(receivedPacket.equals(sentPacket), "The jukebox packet changed its typed dimension/program/discriminator");
             helper.assertTrue(tracks.size() == 3, "The Album Cover packet did not contain every track");
-            TrackData[] expected = {first, second, third};
-            for (int i = 0; i < expected.length; i++) {
-                helper.assertTrue(tracks.get(i).source().equals(expected[i].url())
-                                && tracks.get(i).artist().equals(expected[i].artist())
-                                && tracks.get(i).title().equals(expected[i].title().getString()),
-                        "The Album Cover track changed order or metadata at index " + i);
-            }
+            helper.assertTrue(tracks.equals(List.of(first, second, third)), "The Album Cover track changed order or metadata");
         } finally {
             buffer.release();
         }
@@ -222,34 +228,156 @@ public final class EtchedGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void albumCoverKeepsLegacyVanillaAndEtchedTrackMetadata(GameTestHelper helper) {
+    public static void albumCoverKeepsManagedVanillaAndEtchedTrackMetadata(GameTestHelper helper) {
         ItemStack vanilla = new ItemStack(Items.MUSIC_DISC_CAT);
         ItemStack etchedDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        TrackData custom = track("custom");
-        EtchedMusicDiscItem.setMusic(etchedDisc, custom);
+        AudioTrack custom = track("custom");
+        EtchedMusicDiscItem.setContent(etchedDisc, content(null, custom));
         ItemStack album = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(album, List.of(vanilla, etchedDisc));
 
-        TrackData[] vanillaMusic = PlayableRecord.getStackMusic(vanilla).orElseThrow();
-        TrackData[] albumMusic = ((AlbumCoverItem) album.getItem()).getMusic(album).orElseThrow();
-        helper.assertTrue(albumMusic.length == 2, "The mixed Album Cover changed its legacy track count");
-        helper.assertTrue(albumMusic[0].equals(vanillaMusic[0]),
-                "Vanilla disc legacy metadata changed after adapting it internally");
-        helper.assertTrue(albumMusic[1].equals(custom), "Etched disc legacy metadata changed");
-        helper.assertTrue(((AlbumCoverItem) album.getItem()).getTrackCount(album) == 2,
-                "The mixed Album Cover changed its legacy track count API");
+        var vanillaMusic = RecordContentResolver.resolve(vanilla).orElseThrow().program().tracks();
+        var albumMusic = RecordContentResolver.resolve(album).orElseThrow().program().tracks();
+        helper.assertTrue(albumMusic.equals(List.of(vanillaMusic.get(0), custom)),
+                "The mixed Album Cover changed managed metadata or track order");
         helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
+    public static void customJukeboxStartStopRestoreAndReplacementAdvanceTheServerClock(GameTestHelper helper) {
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        helper.assertTrue(clock == ServerPlaybackClock.get(helper.getLevel().getServer().overworld()),
+                "Playback clocks were not shared with the overworld");
+        var nether = helper.getLevel().getServer().getLevel(Level.NETHER);
+        helper.assertTrue(nether != null && clock == ServerPlaybackClock.get(nether),
+                "Playback clocks were not shared across dimensions");
+        BlockPos pos = BlockPos.ZERO;
+        helper.setBlock(pos, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(pos);
+        ItemStack disc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
+        EtchedMusicDiscItem.setContent(disc, content(null, track("server-clock")));
+        long before = clock.current();
+        jukebox.setFirstItem(disc);
+        helper.assertTrue(clock.current() == before + 1L, "Custom start did not allocate exactly one revision");
+
+        CompoundTag saved = jukebox.saveWithoutMetadata();
+        jukebox.removeFirstItem(); // Vanilla clears the inventory before invoking stopPlaying.
+        helper.assertTrue(clock.current() == before + 2L, "Ejection lost the custom owner before allocating its stop");
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 2L, "Repeated empty removal allocated another stop");
+
+        JukeboxBlockEntity restored = new JukeboxBlockEntity(helper.absolutePos(pos), helper.getBlockState(pos));
+        restored.setLevel(helper.getLevel());
+        restored.load(saved);
+        restored.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 3L, "Disk-restored custom owner did not allocate its stop");
+        helper.setBlock(pos, Blocks.AIR);
+        helper.setBlock(pos, Blocks.JUKEBOX);
+        JukeboxBlockEntity replacement = (JukeboxBlockEntity) helper.getBlockEntity(pos);
+        replacement.setFirstItem(disc.copy());
+        helper.assertTrue(clock.current() == before + 4L, "Replacement block entity reset its owner revision");
+        helper.assertTrue(clock.isDirty(), "Playback clock allocations were not marked for persistence");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void vanillaJukeboxStartStopAndRestoredStopAllocateServerRevisions(GameTestHelper helper) {
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long before = clock.current();
+        helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(BlockPos.ZERO);
+        jukebox.setFirstItem(new ItemStack(Items.MUSIC_DISC_CAT));
+        helper.assertTrue(clock.current() == before + 1L, "Vanilla disc start did not allocate a server revision");
+        CompoundTag saved = jukebox.saveWithoutMetadata();
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 2L, "Vanilla disc stop did not allocate a server revision");
+        jukebox.load(saved);
+        jukebox.removeFirstItem();
+        helper.assertTrue(clock.current() == before + 3L, "Restored vanilla disc lost its authoritative stop owner");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void vanillaDiscNaturalServerStopAllocatesTheNextRevision(GameTestHelper helper) {
+        helper.setBlock(BlockPos.ZERO, Blocks.JUKEBOX);
+        JukeboxBlockEntity jukebox = (JukeboxBlockEntity) helper.getBlockEntity(BlockPos.ZERO);
+        jukebox.setFirstItem(new ItemStack(Items.MUSIC_DISC_CAT));
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long startRevision = clock.current();
+        CompoundTag saved = jukebox.saveWithoutMetadata();
+        saved.putLong("TickCount", 1_000_000L);
+        saved.putLong("RecordStartTick", 0L);
+        jukebox.load(saved);
+        helper.runAfterDelay(2, () -> {
+            helper.assertTrue(!jukebox.isRecordPlaying(), "Vanilla disc did not reach its native server stop");
+            helper.assertTrue(gg.moonflower.etched.common.audio.PlaybackRevision.isNewer(clock.current(), startRevision),
+                    "Natural vanilla disc stop did not advance its server revision");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void heldBoomboxIntentAllocatesOnlyServerProgramTransitions(GameTestHelper helper) {
+        var stand = EntityType.ARMOR_STAND.create(helper.getLevel());
+        stand.setPos(Vec3.atCenterOf(helper.absolutePos(BlockPos.ZERO)));
+        helper.getLevel().addFreshEntity(stand);
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+        stand.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, boombox);
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long before = clock.current();
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 1L, "Held boombox did not allocate its server start");
+        BoomboxServerPlayback.observe(stand);
+        boombox.getOrCreateTag().putString("Cosmetic", "unchanged-program");
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 1L, "Unchanged held program allocated another revision");
+        BoomboxItem.setPaused(boombox, true);
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 2L, "Pause did not allocate its authoritative stop");
+        BoomboxItem.setPaused(boombox, false);
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 3L, "Resume did not allocate a fresh server revision");
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.PAPER));
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 4L, "Unsupported replacement did not stop the server owner");
+        BoomboxServerPlayback.observe(stand);
+        helper.assertTrue(clock.current() == before + 4L, "Unsupported record repeatedly allocated revisions");
+        stand.discard();
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void droppedNonBoomboxReplacementIsRetiredByTheServerTick(GameTestHelper helper) {
+        ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
+        BoomboxItem.setRecord(boombox, new ItemStack(Items.MUSIC_DISC_CAT));
+        Vec3 pos = Vec3.atCenterOf(helper.absolutePos(BlockPos.ZERO));
+        ItemEntity dropped = new ItemEntity(helper.getLevel(), pos.x, pos.y, pos.z, boombox);
+        helper.getLevel().addFreshEntity(dropped);
+        BoomboxServerPlayback.observe(dropped);
+        var clock = ServerPlaybackClock.get(helper.getLevel());
+        long started = clock.current();
+        dropped.setItem(new ItemStack(Items.STONE));
+        helper.runAfterDelay(2, () -> {
+            helper.assertTrue(gg.moonflower.etched.common.audio.PlaybackRevision.isNewer(clock.current(), started),
+                    "Non-boombox replacement did not emit an authoritative stop");
+            long before = clock.current();
+            BoomboxServerPlayback.observe(dropped);
+            helper.assertTrue(clock.current() == before, "Server tick did not retire the dropped owner before the Item hook disappeared");
+            dropped.discard();
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
     public static void boomboxStackPreservesAlbumTrackSequence(GameTestHelper helper) {
-        TrackData first = track("first");
-        TrackData second = track("second");
-        TrackData third = track("third");
+        AudioTrack first = track("first");
+        AudioTrack second = track("second");
+        AudioTrack third = track("third");
         ItemStack multiTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(multiTrackDisc, track("album"), first, second);
+        EtchedMusicDiscItem.setContent(multiTrackDisc, content(track("album"), first, second));
         ItemStack singleTrackDisc = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
-        EtchedMusicDiscItem.setMusic(singleTrackDisc, third);
+        EtchedMusicDiscItem.setContent(singleTrackDisc, content(null, third));
         ItemStack albumCover = new ItemStack(EtchedItems.ALBUM_COVER.get());
         AlbumCoverItem.setRecords(albumCover, List.of(multiTrackDisc, singleTrackDisc));
         ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
@@ -260,14 +388,11 @@ public final class EtchedGameTests {
             buffer.writeItem(boombox);
             ItemStack receivedBoombox = buffer.readItem();
             ItemStack receivedAlbumCover = BoomboxItem.getRecord(receivedBoombox);
-            TrackData[] tracks = PlayableRecord.getStackMusic(receivedAlbumCover).orElseGet(() -> new TrackData[0]);
+            var tracks = RecordContentResolver.resolve(receivedAlbumCover).orElseThrow().program().tracks();
 
             helper.assertTrue(receivedAlbumCover.is(EtchedItems.ALBUM_COVER.get()),
                     "The synchronized boombox did not retain its Album Cover");
-            helper.assertTrue(tracks.length == 3, "The boombox Album Cover did not contain every track");
-            helper.assertTrue(tracks[0].equals(first), "The first boombox track changed order");
-            helper.assertTrue(tracks[1].equals(second), "The second boombox track changed order");
-            helper.assertTrue(tracks[2].equals(third), "The third boombox track changed order");
+            helper.assertTrue(tracks.equals(List.of(first, second, third)), "The boombox Album Cover lost tracks or their order");
         } finally {
             buffer.release();
         }
@@ -278,10 +403,10 @@ public final class EtchedGameTests {
     public static void boomboxPauseAndRecordReplacementSurviveSynchronization(GameTestHelper helper) {
         ItemStack firstRecord = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         firstRecord.getOrCreateTag().putString("CharacterizationMarker", "first-record");
-        EtchedMusicDiscItem.setMusic(firstRecord, track("first"));
+        EtchedMusicDiscItem.setContent(firstRecord, content(null, track("first")));
         ItemStack replacementRecord = new ItemStack(EtchedItems.ETCHED_MUSIC_DISC.get());
         replacementRecord.getOrCreateTag().putString("CharacterizationMarker", "replacement-record");
-        EtchedMusicDiscItem.setMusic(replacementRecord, track("replacement"));
+        EtchedMusicDiscItem.setContent(replacementRecord, content(null, track("replacement")));
 
         ItemStack boombox = new ItemStack(EtchedItems.BOOMBOX.get());
         BoomboxItem.setRecord(boombox, firstRecord);
@@ -344,7 +469,13 @@ public final class EtchedGameTests {
         helper.succeed();
     }
 
-    private static TrackData track(String name) {
-        return new TrackData("https://audio.example/" + name + ".mp3", "Artist", Component.literal(name));
+    private static AudioTrack track(String name) {
+        return new AudioTrack(AudioTrack.SourceType.REMOTE, "https://audio.example/" + name + ".mp3", "Artist", name);
+    }
+
+    private static RecordContent content(AudioTrack album, AudioTrack... tracks) {
+        var program = new AudioProgram(AudioProgram.Kind.FINITE, List.of(tracks));
+        return new RecordContent(program, java.util.Optional.ofNullable(album).map(data -> new RecordContent.AlbumMetadata(
+                data.sourceType(), data.source(), data.artist(), data.title())));
     }
 }

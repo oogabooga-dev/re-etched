@@ -3,9 +3,10 @@ package gg.moonflower.etched.common.audio.provider;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import gg.moonflower.etched.api.record.TrackData;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.AudioProgram;
+import gg.moonflower.etched.common.audio.AudioTrack;
+import gg.moonflower.etched.common.audio.RecordContent;
 import gg.moonflower.etched.common.audio.RadioFailure;
 import gg.moonflower.etched.common.audio.net.AudioHttpRequest;
 import gg.moonflower.etched.common.audio.net.AudioHttpResponse;
@@ -14,7 +15,6 @@ import gg.moonflower.etched.common.audio.net.AudioNetworkPolicy;
 import gg.moonflower.etched.common.audio.net.DefaultRadioNetworkPolicy;
 import gg.moonflower.etched.common.audio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.common.audio.net.RadioTransportException;
-import net.minecraft.network.chat.Component;
 import org.apache.commons.lang3.StringEscapeUtils;
 
 import java.io.IOException;
@@ -58,67 +58,19 @@ public final class BandcampMetadataResolver {
         this.limits = Objects.requireNonNull(limits, "limits");
     }
 
-    public List<TrackData> resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
+    public RecordContent resolveTracks(URI input, AudioCancellation cancellation) throws IOException {
         Page page = this.fetchPage(input, cancellation);
-        List<TrackData> tracks = this.parseTracks(input, page.uri(), page.data(), cancellation);
+        RecordContent content = this.parseContent(input, page.uri(), page.data(), cancellation);
         // Release the page before potentially slow DNS checks on stored service-page destinations.
-        for (TrackData track : tracks) {
+        if (content.album().isPresent()) {
+            this.networkPolicy.check(URI.create(content.album().orElseThrow().source()), cancellation);
+        }
+        for (AudioTrack track : content.program().tracks()) {
             cancellation.throwIfCancelled();
-            this.networkPolicy.check(URI.create(track.url()), cancellation);
+            this.networkPolicy.check(URI.create(track.source()), cancellation);
         }
         cancellation.throwIfCancelled();
-        return List.copyOf(tracks);
-    }
-
-    /** Legacy URL projection only: validates destinations without opening media responses. */
-    public List<URI> resolveMediaUrls(URI input, AudioCancellation cancellation) throws IOException {
-        Page page = this.fetchPage(input, cancellation);
-        List<URI> media = new ArrayList<>();
-        try {
-            String type = field(page.data().getAsJsonObject("current"), "type");
-            if (!type.equals("track") && !type.equals("album")) {
-                throw new JsonParseException("current.type is not track or album");
-            }
-            JsonArray entries = page.data().getAsJsonArray("trackinfo");
-            if (entries == null || entries.isEmpty()) {
-                throw new JsonParseException("trackinfo is missing or empty");
-            }
-            if (entries.size() > this.limits.maxTracks()) {
-                throw failure(RadioFailure.Code.RESOURCE_LIMIT, "Bandcamp page exceeds the track limit", null);
-            }
-            for (int i = 0; i < entries.size(); i++) {
-                cancellation.throwIfCancelled();
-                JsonObject entry = entries.get(i).getAsJsonObject();
-                if (!entry.has("file") || entry.get("file").isJsonNull()) {
-                    continue;
-                }
-                JsonObject files = entry.getAsJsonObject("file");
-                if (!files.has("mp3-128") || files.get("mp3-128").isJsonNull()) {
-                    continue;
-                }
-                URI uri = URI.create(field(files, "mp3-128"));
-                String scheme = uri.getScheme();
-                if (!uri.isAbsolute() || uri.getHost() == null || uri.getRawUserInfo() != null
-                        || scheme == null || !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
-                    throw new JsonParseException("mp3-128 is not an absolute HTTP(S) URL without user info");
-                }
-                media.add(uri);
-            }
-            if (media.isEmpty()) {
-                throw new JsonParseException("trackinfo contains no mp3-128 files");
-            }
-        } catch (CancellationException exception) {
-            throw exception;
-        } catch (JsonParseException | IllegalStateException | IllegalArgumentException
-                 | NullPointerException | ClassCastException exception) {
-            throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, "Bandcamp page contains invalid media metadata", exception);
-        }
-        for (URI uri : media) {
-            cancellation.throwIfCancelled();
-            this.networkPolicy.check(uri, cancellation);
-        }
-        cancellation.throwIfCancelled();
-        return List.copyOf(media);
+        return content;
     }
 
     public Optional<URI> resolveAlbumCover(URI input, AudioCancellation cancellation) throws IOException {
@@ -172,15 +124,15 @@ public final class BandcampMetadataResolver {
         return page;
     }
 
-    private List<TrackData> parseTracks(URI input, URI pageUri, JsonObject page, AudioCancellation cancellation)
+    private RecordContent parseContent(URI input, URI pageUri, JsonObject page, AudioCancellation cancellation)
             throws IOException {
         try {
             JsonObject current = page.getAsJsonObject("current");
             String type = field(current, "type");
-            String artist = field(page, "artist");
-            String title = field(current, "title");
+            String artist = metadataField(page, "artist");
+            String title = metadataField(current, "title");
             if (type.equals("track")) {
-                return List.of(new TrackData(input.toString(), artist, Component.literal(title)));
+                return content(List.of(new AudioTrack(AudioTrack.SourceType.REMOTE, input.toString(), artist, title)), Optional.empty());
             }
             if (!type.equals("album")) {
                 throw new JsonParseException("current.type is not track or album");
@@ -189,12 +141,11 @@ public final class BandcampMetadataResolver {
             if (entries == null || entries.isEmpty()) {
                 throw new JsonParseException("trackinfo is missing or empty");
             }
-            if (entries.size() > this.limits.maxTracks()) {
+            if (entries.size() > Math.min(this.limits.maxTracks(), AudioProgram.MAX_TRACKS)) {
                 throw failure(RadioFailure.Code.RESOURCE_LIMIT, "Bandcamp album exceeds the track limit", null);
             }
-            // Legacy disc metadata puts the album descriptor before its ordered track descriptors.
-            List<TrackData> tracks = new ArrayList<>(entries.size() + 1);
-            tracks.add(new TrackData(input.toString(), artist, Component.literal(title)));
+            var album = new RecordContent.AlbumMetadata(AudioTrack.SourceType.REMOTE, input.toString(), artist, title);
+            List<AudioTrack> tracks = new ArrayList<>(entries.size());
             for (int i = 0; i < entries.size(); i++) {
                 cancellation.throwIfCancelled();
                 JsonObject entry = entries.get(i).getAsJsonObject();
@@ -202,15 +153,32 @@ public final class BandcampMetadataResolver {
                 requirePage(trackUri);
                 requireLength(trackUri.toString());
                 String trackArtist = entry.has("artist") && !entry.get("artist").isJsonNull()
-                        ? field(entry, "artist") : artist;
-                tracks.add(new TrackData(trackUri.toString(), trackArtist, Component.literal(field(entry, "title"))));
+                        ? metadataField(entry, "artist") : artist;
+                tracks.add(new AudioTrack(AudioTrack.SourceType.REMOTE, trackUri.toString(), trackArtist, metadataField(entry, "title")));
             }
-            return tracks;
+            return content(tracks, Optional.of(album));
         } catch (CancellationException exception) {
             throw exception;
         } catch (JsonParseException | IllegalStateException | IllegalArgumentException
                  | NullPointerException | ClassCastException exception) {
             throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, "Bandcamp page contains invalid metadata", exception);
+        }
+    }
+
+    private String metadataField(JsonObject object, String name) throws IOException {
+        String value = field(object, name);
+        if (value.length() > AudioTrack.MAX_METADATA_LENGTH) {
+            throw failure(RadioFailure.Code.RESOURCE_LIMIT, "Bandcamp artist/title exceeds the metadata limit", null);
+        }
+        return value;
+    }
+
+    private static RecordContent content(List<AudioTrack> tracks, Optional<RecordContent.AlbumMetadata> album)
+            throws RadioTransportException {
+        try {
+            return new RecordContent(new AudioProgram(AudioProgram.Kind.FINITE, tracks), album);
+        } catch (IllegalArgumentException exception) {
+            throw failure(RadioFailure.Code.RESOURCE_LIMIT, "Bandcamp record exceeds the content limits", exception);
         }
     }
 

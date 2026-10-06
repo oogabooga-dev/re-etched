@@ -1,15 +1,11 @@
 package gg.moonflower.etched.client.cache;
 
-import gg.moonflower.etched.api.util.DownloadProgressListener;
 import gg.moonflower.etched.client.radio.source.AudioResolveContext;
 import gg.moonflower.etched.common.audio.AudioCancellation;
 import gg.moonflower.etched.common.audio.provider.BandcampMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.BandcampPageReader;
 import gg.moonflower.etched.common.audio.provider.SoundCloudMetadataResolver;
 import gg.moonflower.etched.common.audio.provider.SoundCloudPageReader;
-import gg.moonflower.etched.core.Etched;
-import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.net.URI;
@@ -29,8 +25,7 @@ public final class ProviderCoverCacheLoader {
 
     public static Optional<BoundedMediaCache.Lease> open(BoundedMediaCache cache, URI input,
                                                         AudioCancellation cancellation,
-                                                        Function<AudioCancellation, AudioResolveContext> contexts,
-                                                        @Nullable DownloadProgressListener listener) throws IOException {
+                                                        Function<AudioCancellation, AudioResolveContext> contexts) throws IOException {
         Objects.requireNonNull(cache, "cache");
         Objects.requireNonNull(contexts, "contexts");
         cancellation.throwIfCancelled();
@@ -39,10 +34,6 @@ public final class ProviderCoverCacheLoader {
         }
         AudioResolveContext context = contexts.apply(cancellation);
         boolean bandcamp = BandcampPageReader.supports(input);
-        if (listener != null) {
-            listener.progressStartRequest(Component.translatable("sound_source." + Etched.MOD_ID + ".requesting",
-                    bandcamp ? "Bandcamp" : "SoundCloud"));
-        }
         Optional<URI> cover = bandcamp
                 ? new BandcampMetadataResolver(context.transport(), context.networkPolicy(), BandcampMetadataResolver.Limits.DEFAULT)
                     .resolveAlbumCover(input, cancellation)

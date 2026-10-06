@@ -20,6 +20,7 @@ public final class TestAudioHttpResponse {
     public static AudioHttpResponse owned(URI uri, int status, Map<String, List<String>> headers,
                                           InputStream body, AudioCancellation cancellation) {
         var exchange = new RadioHttpTransportImpl.ActiveExchange();
+        cancellation.onCancel(exchange::cancelTerminal);
         exchange.installBody(null, body);
         return new AudioHttpResponse(uri, status, headers, body, 0, cancellation, exchange);
     }

@@ -1,6 +1,6 @@
 package gg.moonflower.etched.common.menu;
 
-import gg.moonflower.etched.api.record.PlayableRecord;
+import gg.moonflower.etched.common.item.RecordContentResolver;
 import gg.moonflower.etched.core.registry.EtchedItems;
 import gg.moonflower.etched.core.registry.EtchedMenus;
 import net.minecraft.world.Container;
@@ -29,7 +29,7 @@ public class BoomboxMenu extends AbstractContainerMenu {
         this.addSlot(new Slot(this.boomboxInventory, 0, 80, 20) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return stack.getItem() instanceof PlayableRecord;
+                return RecordContentResolver.resolve(stack).isPresent();
             }
 
             @Override

@@ -1,13 +1,17 @@
 package gg.moonflower.etched.client.radio;
 
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Correlates custom jukebox 1010 events and legacy item packets in send order.
- * The server sends one legacy item packet immediately after each custom 1010;
+ * Correlates first-party jukebox 1010 events and bounded program packets in send order.
+ * The server sends one program packet immediately after each first-party 1010;
  * both use the same ordered Minecraft connection. Stop events invalidate slots
  * but cannot remove them until their packets arrive.
  */
@@ -61,6 +65,14 @@ final class JukeboxStartGate {
 
     void clearAll() {
         this.owners.clear();
+    }
+
+    void unloadChunk(ResourceKey<Level> dimension, ChunkPos pos) {
+        this.owners.forEach((key, pending) -> {
+            if (key.dimension().equals(dimension) && new ChunkPos(key.pos()).equals(pos)) {
+                pending.tickets.forEach(ticket -> ticket.valid = false);
+            }
+        }); // Preserve send-order slots until the matching packets arrive.
     }
 
     private static final class Pending {
