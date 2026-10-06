@@ -1,5 +1,6 @@
 package gg.moonflower.etched.clientsmoke;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;
 import gg.moonflower.etched.common.block.RadioBlock;
 import gg.moonflower.etched.core.Etched;
@@ -9,8 +10,11 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.client.model.data.ModelData;
+
+import java.io.IOException;
 
 /** Actual Forge model baking/atlas check; no world or playback session is needed. */
 final class RadioAssetSmoke {
@@ -43,7 +47,29 @@ final class RadioAssetSmoke {
         require(item != client.getModelManager().getMissingModel(), "Missing radio item model");
         require(!item.getQuads(null, null, RandomSource.create(0), ModelData.EMPTY, null).isEmpty(), "Empty radio item mesh");
         require(item.getParticleIcon(ModelData.EMPTY).contents().name().equals(id("item/radio")), "Missing radio item sprite");
-        LogUtils.getLogger().info("Radio asset smoke passed: 32 block states, one item model and replacement atlas sprites");
+        verifySpritePixels(client);
+        LogUtils.getLogger().info("Radio asset smoke passed: 32 block states, one item model and 1536 exact manual image pixels");
+    }
+
+    private static void verifySpritePixels(Minecraft client) {
+        for (String path : new String[]{"block/radio", "block/radio_particle", "item/radio"}) {
+            var sprite = client.getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(id(path));
+            // The atlas sprite is engine-owned; close only our independently decoded reference.
+            try (var input = client.getResourceManager().open(id("textures/" + path + ".png"));
+                 var reference = NativeImage.read(input)) {
+                require(reference.getWidth() == sprite.contents().width()
+                                && reference.getHeight() == sprite.contents().height(),
+                        "Sprite dimensions differ from the manual PNG: " + path);
+                for (int y = 0; y < reference.getHeight(); y++) {
+                    for (int x = 0; x < reference.getWidth(); x++) {
+                        require(reference.getPixelRGBA(x, y) == sprite.getPixelRGBA(0, x, y),
+                                "Sprite pixels differ from the manual PNG: " + path + " at " + x + "," + y);
+                    }
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("Could not check the manual radio sprite " + path, exception);
+            }
+        }
     }
 
     private static ResourceLocation id(String path) {

@@ -42,10 +42,27 @@ public final class EtchedClientSmoke {
             JukeboxPacketSmoke.tick(client);
             return;
         }
-        if (complete || !(client.screen instanceof TitleScreen)) {
+        if (complete) {
             return;
         }
+        if (client.screen instanceof RadioAssetPreviewScreen preview) {
+            if (preview.readyForCapture()) {
+                preview.capture(client);
+                finish(client);
+            }
+            return;
+        }
+        if (!(client.screen instanceof TitleScreen)) {
+            return;
+        }
+        if ("1".equals(System.getenv("ETCHED_CLIENT_SMOKE_RADIO_PREVIEW"))) {
+            client.setScreen(new RadioAssetPreviewScreen());
+            return;
+        }
+        finish(client);
+    }
 
+    private static void finish(Minecraft client) {
         complete = true;
         try {
             Files.writeString(Path.of("etched-client-smoke-success"), "passed\n");

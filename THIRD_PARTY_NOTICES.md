@@ -23,16 +23,21 @@ inherited models, textures, sounds, translations, and data files as
 reserved while their status is clarified. Re-Etched does not claim ownership
 of them, and this notice does not grant additional rights to them.
 
-Stage 9 independently replaces resources in bounded slices. The ordinary Radio
-block/item visuals listed in `assets-src/radio/manifest.json` are new
-AI-assisted procedural designs generated from numeric primitives, not edits of
-upstream art. Their generator, design notes and exact current hashes are in
-`scripts/generate-radio-models.py` and `assets-src/radio/`. Those newly authored
-outputs follow GPL-3.0-only. This exception applies only to the manifest's current
-files/hashes, not earlier versions, radio GUI/data/translations or other inherited
-resources. The replacement-resource audit and publication gate remain open.
-The maintainer has not accepted the remaining procedural PNGs for release and is
-preparing hand-drawn replacements. The current generator never writes image files.
+Stage 9 independently replaces resources in bounded slices. The ordinary radio
+icon and block atlas recorded in `assets-src/radio/artwork.json` were drawn from
+scratch in Aseprite by the Re-Etched maintainer, as declared by the author. The
+particle texture is an exact crop of the manual atlas. The maintainer explicitly
+approved GPL-3.0-only distribution and modification on 2026-10-06. Editable
+Aseprite originals have not yet been supplied in the repository.
+
+The radio JSON geometry is separately AI-assisted, generated from numeric
+primitives rather than inherited geometry. Its model-only generator never writes
+PNG files. `assets-src/radio/manifest.json` pins the nine current image/JSON hashes;
+design notes and the generator are in `assets-src/radio/` and
+`scripts/generate-radio-models.py`. These new images and JSONs follow GPL-3.0-only.
+This exception does not cover historical files, radio GUI/data/translations or
+other inherited resources. The replacement-resource audit and publication gate,
+including applicable AI-code/model disclosures and fork review, remain open.
 
 The Re-Etched logo and icon are original fork branding and are not inherited
 from Etched. They were drawn manually in GIMP by the Re-Etched maintainer,

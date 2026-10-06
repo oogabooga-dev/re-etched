@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "author": "Re-Etched maintainer",
+  "license": "GPL-3.0-only",
+  "permission": "Maintainer explicitly approved GPL-3.0-only distribution and modification on 2026-10-06",
+  "editable_source": null,
+  "editable_source_status": "Aseprite originals have not been supplied in this repository",
+  "files": [
+    {
+      "path": "src/main/resources/assets/etched/textures/block/radio.png",
+      "sha256": "efe3c41c13804e8023189b9dac8876df3c16a2710307a32d0e55413ba00278b8",
+      "origin": "hand-drawn",
+      "tool": "Aseprite",
+      "authorship_basis": "Maintainer states this atlas was drawn from scratch; not an edit of the earlier procedural image",
+      "size": [32, 32]
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/block/radio_particle.png",
+      "sha256": "d44ad4482af0d8fc7282854fb79ccd739211c989c7c60c6277244618ee26a350",
+      "origin": "exact-crop",
+      "source": "src/main/resources/assets/etched/textures/block/radio.png",
+      "rectangle": [0, 0, 16, 16],
+      "processing": "Assistant mechanically copied source RGBA pixels; no generated artwork, resampling or palette changes",
+      "size": [16, 16]
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/item/radio.png",
+      "sha256": "5a1b6141be567624036f83a43c6f15ee856c224fbb85c5e25003491840564cdb",
+      "origin": "hand-drawn",
+      "tool": "Aseprite",
+      "authorship_basis": "Maintainer states this replacement icon was drawn from scratch; not the earlier edited procedural draft",
+      "size": [16, 16]
+    }
+  ]
+}

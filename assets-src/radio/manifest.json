@@ -1,9 +1,10 @@
 {
   "schema": 1,
   "generator": "scripts/generate-radio-models.py",
-  "authorship": "AI-assisted geometry and existing procedural PNGs; hand-drawn images pending",
+  "artwork_provenance": "assets-src/radio/artwork.json",
+  "authorship": "Hand-drawn images by Re-Etched maintainer; AI-assisted JSON geometry",
   "license": "GPL-3.0-only",
-  "scope": "Ordinary radio block/item visuals only; existing PNGs not accepted for release; GUI and other resources remain unaudited",
+  "scope": "Ordinary radio block/item visuals only; other resources and overall publication eligibility remain unaudited",
   "files": [
     {
       "path": "src/main/resources/assets/etched/blockstates/radio.json",
@@ -31,15 +32,15 @@
     },
     {
       "path": "src/main/resources/assets/etched/textures/block/radio.png",
-      "sha256": "b4b70f74cb9d2677e457094349acf4eeeebc45235bd98af517f045509cea3ccb"
+      "sha256": "efe3c41c13804e8023189b9dac8876df3c16a2710307a32d0e55413ba00278b8"
     },
     {
       "path": "src/main/resources/assets/etched/textures/block/radio_particle.png",
-      "sha256": "c5c307b52f6a4bd0e5a0a7be9c1bab63d32583ccdc95c60a366d63360be16ac4"
+      "sha256": "d44ad4482af0d8fc7282854fb79ccd739211c989c7c60c6277244618ee26a350"
     },
     {
       "path": "src/main/resources/assets/etched/textures/item/radio.png",
-      "sha256": "9fbb9a404c7f718a0ecd6a0bed192ff174425df181f6e17fd62c5c87d68f7393"
+      "sha256": "5a1b6141be567624036f83a43c6f15ee856c224fbb85c5e25003491840564cdb"
     }
   ]
 }

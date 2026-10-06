@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate/check ordinary radio JSON models and provenance, never image pixels.
 
-The three existing PNGs are read only for hashes. They await hand-drawn replacement.
+The hand-drawn PNGs are read only and checked against reviewed artwork provenance.
 This AI-assisted geometry is not a claim of Modrinth publication eligibility.
 """
 
@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = "src/main/resources/assets/etched/"
 MANIFEST = "assets-src/radio/manifest.json"
+ARTWORK = "assets-src/radio/artwork.json"
 
 
 def json_bytes(value):
@@ -64,15 +65,25 @@ def outputs():
         variants[f"rotation={rotation}"] = {"model": f"etched:block/radio{suffix}", "y": y}
     result[ASSETS + "blockstates/radio.json"] = json_bytes({"variants": variants})
     files = {path: hashlib.sha256(data).hexdigest() for path, data in result.items()}
-    for texture in ("block/radio", "block/radio_particle", "item/radio"):
-        path = ASSETS + f"textures/{texture}.png"
-        files[path] = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+    artwork = json.loads((ROOT / ARTWORK).read_text(encoding="utf-8"))
+    image_paths = {ASSETS + f"textures/{texture}.png"
+                   for texture in ("block/radio", "block/radio_particle", "item/radio")}
+    records = artwork["files"]
+    if len(records) != 3 or {record["path"] for record in records} != image_paths:
+        raise ValueError("Artwork provenance must list exactly the three ordinary radio PNGs")
+    for record in records:
+        path = record["path"]
+        actual = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+        if actual != record["sha256"]:
+            raise ValueError(f"Artwork changed: {path}; review and update artwork.json before regenerating JSON")
+        files[path] = actual
     result[MANIFEST] = json_bytes({
         "schema": 1,
         "generator": "scripts/generate-radio-models.py",
-        "authorship": "AI-assisted geometry and existing procedural PNGs; hand-drawn images pending",
+        "artwork_provenance": ARTWORK,
+        "authorship": "Hand-drawn images by Re-Etched maintainer; AI-assisted JSON geometry",
         "license": "GPL-3.0-only",
-        "scope": "Ordinary radio block/item visuals only; existing PNGs not accepted for release; GUI and other resources remain unaudited",
+        "scope": "Ordinary radio block/item visuals only; other resources and overall publication eligibility remain unaudited",
         "files": [{"path": path, "sha256": digest} for path, digest in sorted(files.items())]})
     return result
 

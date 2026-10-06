@@ -43,6 +43,7 @@ class RadioAssetsTest {
         var manifest = json(Path.of("assets-src/radio/manifest.json"));
         assertEquals(1, manifest.get("schema").getAsInt());
         assertEquals("GPL-3.0-only", manifest.get("license").getAsString());
+        assertEquals("assets-src/radio/artwork.json", manifest.get("artwork_provenance").getAsString());
         Set<String> expected = new HashSet<>();
         expected.add(ASSETS.resolve("blockstates/radio.json").toString());
         for (String suffix : new String[]{"", "_225", "_45", "_675"}) {
@@ -179,7 +180,6 @@ class RadioAssetsTest {
                 assertEquals(size, image.getHeight());
                 boolean transparent = false;
                 boolean opaque = false;
-                Set<Integer> colors = new HashSet<>();
                 for (int y = 0; y < size; y++) {
                     for (int x = 0; x < size; x++) {
                         int color = image.getRGB(x, y);
@@ -187,12 +187,56 @@ class RadioAssetsTest {
                         assertTrue(alpha == 0 || alpha == 255);
                         transparent |= alpha == 0;
                         opaque |= alpha == 255;
-                        colors.add(color);
                     }
                 }
                 assertEquals(path.startsWith("item/"), transparent);
                 assertTrue(opaque);
-                assertTrue(colors.size() >= 3);
+            }
+        }
+    }
+
+    @Test
+    void artworkRecordsHumanImagesSeparatelyFromMechanicalExtraction() throws Exception {
+        var artwork = json(Path.of("assets-src/radio/artwork.json"));
+        assertEquals(1, artwork.get("schema").getAsInt());
+        assertEquals("Re-Etched maintainer", artwork.get("author").getAsString());
+        assertEquals("GPL-3.0-only", artwork.get("license").getAsString());
+        Set<String> actual = new HashSet<>();
+        for (var value : artwork.getAsJsonArray("files")) {
+            var record = value.getAsJsonObject();
+            String path = record.get("path").getAsString();
+            assertTrue(actual.add(path));
+            assertEquals(record.get("sha256").getAsString(), HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(Path.of(path)))));
+            var image = ImageIO.read(Path.of(path).toFile());
+            assertNotNull(image);
+            assertEquals(record.getAsJsonArray("size").get(0).getAsInt(), image.getWidth());
+            assertEquals(record.getAsJsonArray("size").get(1).getAsInt(), image.getHeight());
+            if (path.endsWith("/radio_particle.png")) {
+                assertEquals("exact-crop", record.get("origin").getAsString());
+                assertEquals(ASSETS.resolve("textures/block/radio.png").toString(), record.get("source").getAsString());
+                assertEquals(JsonParser.parseString("[0,0,16,16]"), record.get("rectangle"));
+            } else {
+                assertEquals("hand-drawn", record.get("origin").getAsString());
+                assertEquals("Aseprite", record.get("tool").getAsString());
+            }
+        }
+        assertEquals(Set.of(ASSETS.resolve("textures/block/radio.png").toString(),
+                ASSETS.resolve("textures/block/radio_particle.png").toString(),
+                ASSETS.resolve("textures/item/radio.png").toString()), actual);
+    }
+
+    @Test
+    void particlePixelsExactlyMatchTheManualShellTile() throws IOException {
+        var atlas = ImageIO.read(ASSETS.resolve("textures/block/radio.png").toFile());
+        var particle = ImageIO.read(ASSETS.resolve("textures/block/radio_particle.png").toFile());
+        assertNotNull(atlas);
+        assertNotNull(particle);
+        assertEquals(16, particle.getWidth());
+        assertEquals(16, particle.getHeight());
+        for (int y = 0; y < 16; y++) {
+            for (int x = 0; x < 16; x++) {
+                assertEquals(atlas.getRGB(x, y), particle.getRGB(x, y), "Particle crop changed pixel " + x + "," + y);
             }
         }
     }
