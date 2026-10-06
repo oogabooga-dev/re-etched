@@ -88,7 +88,20 @@ JSONs follow GPL-3.0-only. Historical `LICENSE` terms and upstream credit remain
 The manifest applies only to its listed current hashes; editing/replacing files
 requires renewed provenance review. It does not grant rights to earlier assets.
 
-**Not replaced/cleared by this slice:** radio GUI textures, translations, recipes,
+## Existing maintainer-drawn radio GUI images
+
+`gui-artwork.json` separately records the maintainer's manual authorship and
+explicit GPL-3.0-only permission for all three existing GUI PNGs on 2026-10-06:
+`radio_background.png` (256x180), `radio_url_active.png` (240x14) and
+`radio_url_inactive.png` (240x14). Their bytes match the local 4.x branch at review
+time; no image or radio-screen code changes were needed. The drawing tool and
+editable originals have not been supplied/identified here. Hashes establish file
+identity, not human authorship, which is based on the author's declaration.
+`RadioGuiAssetsTest` checks their exact paths, hashes, image decoding and dimensions.
+This separate record does not expand the model adapter's nine-resource manifest
+or its write scope, and does not grant permission for other GUI resources.
+
+**Not replaced/cleared by these records:** translations, recipes,
 advancements, loot, other feature art, sound or metadata. The Stage 9 resource
 audit and release publication gate remain open. Structural tests/builds do not
 establish in-game visual quality or a completed client/server release matrix.

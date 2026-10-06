@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "author": "Re-Etched maintainer",
+  "origin": "hand-drawn",
+  "authorship_basis": "Maintainer explicitly identified all three radio GUI images as their own manually drawn work",
+  "license": "GPL-3.0-only",
+  "permission": "Maintainer explicitly approved GPL-3.0-only distribution and modification for all three GUI images on 2026-10-06",
+  "editable_source": null,
+  "editable_source_status": "Editable drawing originals and drawing tool have not been supplied or identified in this repository",
+  "processing": "No image modifications; current PNG bytes match the local 4.x branch at the time of review",
+  "files": [
+    {
+      "path": "src/main/resources/assets/etched/textures/gui/radio_background.png",
+      "sha256": "84e16b67e874ea6b71b14a8cfadfec711dca66e4c5fd4ebe14d1ce4479fde0fa",
+      "size": [256, 180]
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/gui/radio_url_active.png",
+      "sha256": "f73149ed92d24ef68e84b305e276ac6bd63fb194f057f3d6b0d41d103c089eb1",
+      "size": [240, 14]
+    },
+    {
+      "path": "src/main/resources/assets/etched/textures/gui/radio_url_inactive.png",
+      "sha256": "00aeb3bc849fd9efacc4a2778f89d355a6b49f434dc1a4aec7a78f919bb09108",
+      "size": [240, 14]
+    }
+  ]
+}

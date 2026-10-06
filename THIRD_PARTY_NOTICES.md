@@ -41,9 +41,20 @@ geometry is no longer the current radio model, but remains in Git history.
 `assets-src/radio/manifest.json` pins the nine current image/JSON hashes. Source
 notes and adaptation scripts are in `assets-src/radio/` and `scripts/`.
 These new images and model outputs follow GPL-3.0-only.
-This exception does not cover historical files, radio GUI/data/translations or
-other inherited resources. The replacement-resource audit and publication gate,
+This block/item exception does not cover historical files, radio data/translations
+or other inherited resources. Radio GUI artwork is recorded separately below.
+The replacement-resource audit and publication gate,
 including applicable AI-code/tooling disclosures and fork review, remain open.
+
+The three radio GUI images `radio_background.png`, `radio_url_active.png` and
+`radio_url_inactive.png` under `assets/etched/textures/gui/` were drawn manually
+by the Re-Etched maintainer, as explicitly declared by the author. On 2026-10-06
+the maintainer approved GPL-3.0-only distribution and modification for all three.
+Their exact hashes and dimensions are recorded in `assets-src/radio/gui-artwork.json`.
+The PNGs are unchanged from the reviewed local 4.x branch; this notice records
+permission, not a new redraw. Editable drawing originals have not yet been
+supplied in this repository. The exception applies only to those recorded images,
+not all resources used by the radio screen or historical versions of the files.
 
 The Re-Etched logo and icon are original fork branding and are not inherited
 from Etched. They were drawn manually in GIMP by the Re-Etched maintainer,
