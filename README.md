@@ -5,12 +5,11 @@
 > with or endorsed by Moonflower Studio.
 
 Re-Etched is based on Etched 3.0.4 for Minecraft 1.20.1. It retains Etched's
-game content and compatibility identifiers while replacing the client-side
-internet radio path with a bounded, cancellable, and security-hardened
-implementation.
+game content and compatibility identifiers while improving client-side radio,
+boombox, and album jukebox playback with bounded, cancellable online audio.
 
 Re-Etched has independent versioning beginning with `4.0.0`. The current stable
-release is `4.1.0`.
+release is `4.2.0`.
 
 ## Development Lines
 
@@ -41,7 +40,7 @@ decoder, so no separate library mod is required.
 1. Back up the world before replacing Etched.
 2. Stop Minecraft and the dedicated server.
 3. Remove the original Etched JAR and any older Re-Etched JAR.
-4. Put `re-etched-4.1.0.jar` in the client and server `mods` directories.
+4. Put `re-etched-4.2.0.jar` in the client and server `mods` directories.
 5. Start Minecraft with Java 17 and Forge 47.4.10.
 
 Do not install Etched and Re-Etched in the same Minecraft instance. Both use
@@ -83,7 +82,30 @@ Re-Etched clients retain the 20 most recently accepted stations separately for
 each singleplayer world and multiplayer server. Five entries are visible at a
 time in the scrollable radio screen. Selecting an entry fills the URL editor but
 does not start playback until Play is pressed. History can be cleared from the
-radio screen and is not synchronized to the server.
+radio screen and is not synchronized to the server. Right-click an entry to
+remove just that station from history; left-click still fills the URL editor.
+
+## Disc Playback
+
+Boomboxes and album jukeboxes now use the radio transport, independent input
+buffers and MP3/Ogg decoders for online discs. PCM WAV discs remain supported.
+SoundCloud discs use the radio's progressive-MP3 resolver, including refreshed
+client IDs and expired media URLs. HLS-only SoundCloud tracks remain unsupported.
+Etching-table metadata discovery also accepts current application-script URLs
+and resolves abbreviated playlist entries.
+
+Existing disc NBT, boombox inventory playback, album-jukebox controls and the
+Etched 3.0.4 network protocol are retained. Each device has its own read cursor;
+stopping or replacing a disc cancels its pending work. A failed online track
+stops rather than repeatedly restarting the album. Toggle playback or select a
+track again to retry. Up to eight online disc streams can be active per client,
+separately from the radio limit.
+
+Online disc playback uses the same private-network option and destination checks
+as radio. Local sound events and third-party download adapters retain their
+existing loading paths. Etching-table metadata still uses the server-side
+provider path; upgrading only the client cannot fix metadata lookup on an old
+server.
 
 ## Network Security And Privacy
 
@@ -162,7 +184,7 @@ local server configuration files.
 The distributable is:
 
 ```text
-build/libs/re-etched-4.1.0.jar
+build/libs/re-etched-4.2.0.jar
 ```
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.
