@@ -71,6 +71,14 @@ public final class RadioClientRuntime implements RadioClientBridge.Listener {
         return changed;
     }
 
+    public boolean removeCurrentHistoryEntry(String url) {
+        boolean changed = this.currentContextKey().map(context -> this.history.remove(context, url)).orElse(false);
+        if (changed) {
+            this.storage.requestSaveAndReplaceBackup();
+        }
+        return changed;
+    }
+
     public synchronized void expectStation(ResourceKey<Level> dimension, BlockPos pos, String url) {
         this.currentContextKey().ifPresent(context -> this.pendingStations.put(
                 new RadioKey(dimension, pos), new PendingStation(context, url,

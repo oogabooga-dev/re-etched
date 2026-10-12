@@ -97,7 +97,11 @@ public class RadioScreen extends AbstractContainerScreen<RadioMenu> {
         List<String> history = this.radioRuntime.currentEntries();
         this.historyList = new RadioHistoryList(this.minecraft, this.font,
                 this.leftPos + HISTORY_X, this.topPos + HISTORY_Y, HISTORY_WIDTH, HISTORY_HEIGHT,
-                history, this.url::setValue);
+                history, this.url::setValue, station -> {
+                    if (this.radioRuntime.removeCurrentHistoryEntry(station)) {
+                        this.refreshHistory();
+                    }
+                });
         this.historyList.setActive(this.editState.loaded());
         this.historyList.restoreView(selectedHistory, historyScroll);
         this.addRenderableWidget(this.historyList);

@@ -21,13 +21,15 @@ final class RadioHistoryList extends ObjectSelectionList<RadioHistoryList.Entry>
 
     private final Font font;
     private final Consumer<String> stationSelected;
+    private final Consumer<String> stationRemoved;
     private boolean active;
 
     RadioHistoryList(Minecraft minecraft, Font font, int x, int y, int width, int height,
-                     List<String> stations, Consumer<String> stationSelected) {
+                     List<String> stations, Consumer<String> stationSelected, Consumer<String> stationRemoved) {
         super(minecraft, width, height, y, y + height, ROW_HEIGHT);
         this.font = font;
         this.stationSelected = stationSelected;
+        this.stationRemoved = stationRemoved;
         this.setLeftPos(x);
         this.setRenderBackground(false);
         this.setRenderTopAndBottom(false);
@@ -38,6 +40,7 @@ final class RadioHistoryList extends ObjectSelectionList<RadioHistoryList.Entry>
         String selectedUrl = this.getSelected() == null ? null : this.getSelected().url;
         double scroll = this.getScrollAmount();
         this.setFocused((GuiEventListener) null);
+        this.setSelected(null);
         this.clearEntries();
         for (String station : stations) {
             Entry entry = new Entry(station);
@@ -110,6 +113,15 @@ final class RadioHistoryList extends ObjectSelectionList<RadioHistoryList.Entry>
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // AbstractSelectionList only dispatches left clicks to entries.
+        if (this.active && button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && this.isMouseOver(mouseX, mouseY)) {
+            Entry entry = this.getEntryAtPosition(mouseX, mouseY);
+            if (entry != null) {
+                this.stationRemoved.accept(entry.url);
+                return true;
+            }
+            return false;
+        }
         return this.active && super.mouseClicked(mouseX, mouseY, button);
     }
 
