@@ -11,9 +11,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RadioClientRuntimeTest {
@@ -76,6 +79,38 @@ class RadioClientRuntimeTest {
 
         assertTrue(history.entries(CONTEXT).isEmpty());
         assertEquals(1, playback.removals);
+    }
+
+    @Test
+    void deletingOneStationPersistsWithoutChangingPlaybackOrOtherContexts() throws Exception {
+        TestListener playback = new TestListener();
+        RadioStationHistory history = new RadioStationHistory();
+        RadioClientRuntime runtime = this.runtime(playback, history);
+        String otherContext = "mp:" + "b".repeat(64);
+        String removed = "https://radio.example/remove";
+        String retained = "https://radio.example/retain";
+        history.record(CONTEXT, removed);
+        history.record(CONTEXT, retained);
+        history.record(otherContext, removed);
+
+        assertTrue(runtime.removeCurrentHistoryEntry(removed));
+        assertFalse(runtime.removeCurrentHistoryEntry(removed));
+        assertEquals(List.of(retained), runtime.currentEntries());
+        assertEquals(List.of(removed), history.entries(otherContext));
+        assertEquals(0, playback.updates + playback.removals + playback.ticks);
+
+        Path file = this.temporaryDirectory.resolve("radio-history.json");
+        RadioStationHistory restored = new RadioStationHistory();
+        new RadioHistoryStorage(restored, file, Runnable::run).load();
+        assertEquals(List.of(retained), restored.entries(CONTEXT));
+        assertEquals(List.of(removed), restored.entries(otherContext));
+
+        // Recovery from backup must not resurrect an explicitly deleted station.
+        Files.writeString(file, "invalid json");
+        new RadioHistoryStorage(restored, file, Runnable::run).load();
+        assertEquals(List.of(retained), restored.entries(CONTEXT));
+        assertTrue(runtime.removeCurrentHistoryEntry(retained));
+        assertTrue(runtime.currentEntries().isEmpty());
     }
 
     private RadioClientRuntime runtime(TestListener playback, RadioStationHistory history) {

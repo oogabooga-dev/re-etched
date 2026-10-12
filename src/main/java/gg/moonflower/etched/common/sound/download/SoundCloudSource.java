@@ -21,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.FilterInputStream;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -52,6 +53,8 @@ public class SoundCloudSource implements SoundDownloadSource {
         try {
             URL uRL = requiresId ? appendUri(url, "client_id=" + SoundCloudIdTracker.fetch(proxy)) : new URL(url);
             httpURLConnection = (HttpURLConnection) uRL.openConnection(proxy);
+            httpURLConnection.setConnectTimeout(10_000);
+            httpURLConnection.setReadTimeout(15_000);
             httpURLConnection.setInstanceFollowRedirects(true);
             Map<String, String> map = SoundDownloadSource.getDownloadHeaders();
 
@@ -63,15 +66,29 @@ public class SoundCloudSource implements SoundDownloadSource {
             if (requiresId && attempt == 0 && (response == 401 || response == 403)) { // Authenticate if required and bad auth response
                 LOGGER.info("Attempting to authenticate");
                 SoundCloudIdTracker.invalidate();
+                httpURLConnection.disconnect();
                 return this.get(url, progressListener, proxy, 1, true);
             }
 
             long size = httpURLConnection.getContentLengthLong();
             if (response != 200) {
-                throw new IOException(response + " " + httpURLConnection.getResponseMessage());
+                String message = httpURLConnection.getResponseMessage();
+                httpURLConnection.disconnect();
+                throw new IOException(response + " " + message);
             }
 
-            return size != -1 && progressListener != null ? new ProgressTrackingInputStream(httpURLConnection.getInputStream(), size, progressListener) : httpURLConnection.getInputStream();
+            HttpURLConnection owned = httpURLConnection;
+            InputStream body = new FilterInputStream(httpURLConnection.getInputStream()) {
+                @Override
+                public void close() throws IOException {
+                    try {
+                        super.close();
+                    } finally {
+                        owned.disconnect();
+                    }
+                }
+            };
+            return size != -1 && progressListener != null ? new ProgressTrackingInputStream(body, size, progressListener) : body;
         } catch (IOException e) {
             throw e;
         } catch (Throwable e) {
@@ -94,9 +111,6 @@ public class SoundCloudSource implements SoundDownloadSource {
             }
             if ("track".equals(kind) && !GsonHelper.getAsBoolean(json, "streamable")) {
                 throw new IOException("URL is not streamable");
-            }
-            if ("playlist".equals(kind) && !GsonHelper.getAsBoolean(json, "is_album")) {
-                throw new IOException("URL is not a track or album");
             }
 
             return function.process(json);
@@ -152,7 +166,19 @@ public class SoundCloudSource implements SoundDownloadSource {
                 for (int i = 0; i < tracksJson.size(); i++) {
                     try {
                         JsonObject trackJson = GsonHelper.convertToJsonObject(tracksJson.get(i), "tracks[" + i + "]");
-                        if (!trackJson.has("permalink_url")) { // Paid song
+                        if (!GsonHelper.getAsBoolean(trackJson, "streamable", true)
+                                || "BLOCK".equalsIgnoreCase(GsonHelper.getAsString(trackJson, "policy", ""))) {
+                            continue;
+                        }
+                        if (!trackJson.has("permalink_url") && trackJson.has("id")) {
+                            try (InputStreamReader reader = new InputStreamReader(this.get(
+                                    "https://api-v2.soundcloud.com/tracks/" + GsonHelper.getAsLong(trackJson, "id"),
+                                    progressListener, proxy, 0, true), StandardCharsets.UTF_8)) {
+                                trackJson = JsonParser.parseReader(reader).getAsJsonObject();
+                            }
+                        }
+                        if (!GsonHelper.getAsBoolean(trackJson, "streamable", true)
+                                || "BLOCK".equalsIgnoreCase(GsonHelper.getAsString(trackJson, "policy", ""))) {
                             continue;
                         }
                         JsonObject trackUser = GsonHelper.getAsJsonObject(trackJson, "user", user);
@@ -165,6 +191,9 @@ public class SoundCloudSource implements SoundDownloadSource {
                     }
                 }
 
+                if (tracks.size() == 1) {
+                    throw new IOException("SoundCloud playlist has no available tracks");
+                }
                 return tracks;
             }
 
@@ -187,7 +216,8 @@ public class SoundCloudSource implements SoundDownloadSource {
         return this.validCache.computeIfAbsent(url, key -> {
             try {
                 String host = new URI(key).getHost();
-                return host != null && host.endsWith("soundcloud.com");
+                return host != null && (host.equalsIgnoreCase("soundcloud.com")
+                        || host.toLowerCase(Locale.ROOT).endsWith(".soundcloud.com"));
             } catch (URISyntaxException e) {
                 return false;
             }

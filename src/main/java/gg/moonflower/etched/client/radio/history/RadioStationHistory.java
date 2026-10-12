@@ -61,6 +61,19 @@ public final class RadioStationHistory {
         return this.contexts.remove(contextKey) != null;
     }
 
+    public synchronized boolean remove(String contextKey, String url) {
+        ContextData context = this.contexts.get(contextKey);
+        if (context == null || !context.stations.remove(url)) {
+            return false;
+        }
+        if (context.stations.isEmpty()) {
+            this.contexts.remove(contextKey);
+        } else {
+            context.modified = this.clock.millis();
+        }
+        return true;
+    }
+
     synchronized Snapshot snapshot() {
         List<ContextSnapshot> snapshots = this.contexts.entrySet().stream()
                 .map(entry -> new ContextSnapshot(entry.getKey(), entry.getValue().modified,

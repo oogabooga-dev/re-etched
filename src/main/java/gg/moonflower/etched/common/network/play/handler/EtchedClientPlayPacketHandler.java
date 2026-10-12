@@ -43,6 +43,9 @@ public class EtchedClientPlayPacketHandler {
             SoundInstance soundInstance = playingRecords.get(pos);
 
             if (soundInstance != null) {
+                if (soundInstance instanceof StopListeningSound record) {
+                    record.stopListening();
+                }
                 client.getSoundManager().stop(soundInstance);
                 playingRecords.remove(pos);
             }
@@ -64,12 +67,12 @@ public class EtchedClientPlayPacketHandler {
         }
 
         ctx.enqueueWork(() -> {
+            if (client.level != level) {
+                return;
+            }
             int entityId = pkt.getEntityId();
             SoundInstance soundInstance = SoundTracker.getEntitySound(entityId);
             if (soundInstance != null) {
-                if (soundInstance instanceof StopListeningSound) {
-                    ((StopListeningSound) soundInstance).stopListening();
-                }
                 if (pkt.getAction() == ClientboundPlayEntityMusicPacket.Action.RESTART && client.getSoundManager().isActive(soundInstance)) {
                     return;
                 }
@@ -92,18 +95,7 @@ public class EtchedClientPlayPacketHandler {
                 return;
             }
 
-            Optional<? extends SoundInstance> sound = ((PlayableRecord) record.getItem()).createEntitySound(record, entity, 0);
-            if (sound.isEmpty()) {
-                LOGGER.error("Server sent invalid music disc: " + record);
-                return;
-            }
-
-            SoundInstance entitySound = StopListeningSound.create(sound.get(), () -> client.tell(() -> {
-                SoundTracker.setEntitySound(entityId, null);
-                SoundTracker.playEntityRecord(record, entityId, 1, false);
-            }));
-
-            SoundTracker.setEntitySound(entityId, entitySound);
+            SoundTracker.playEntityRecord(record, entityId, 0, false);
         });
     }
 

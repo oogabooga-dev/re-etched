@@ -19,6 +19,16 @@ import java.util.Set;
 public final class DirectRadioSourceResolver implements RadioSourceProgramResolver {
 
     private static final int MINIMUM_SNIFF_BYTES = 4;
+    private final boolean allowWave;
+
+    public DirectRadioSourceResolver() {
+        this(false);
+    }
+
+    /** Disc playback also accepts the legacy WAV format; radio keeps its existing format policy. */
+    public DirectRadioSourceResolver(boolean allowWave) {
+        this.allowWave = allowWave;
+    }
 
     @Override
     public boolean supports(URI input) {
@@ -77,15 +87,17 @@ public final class DirectRadioSourceResolver implements RadioSourceProgramResolv
             RadioHttpStatus.requireSuccess(response, "Radio host");
             byte[] prefix = readPrefix(response, input, context);
             SourceKind kind = classify(response, input, prefix);
+            if (kind == SourceKind.WAV && !this.allowWave) {
+                throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, false, "WAV radio is not supported", null);
+            }
             switch (kind) {
                 case HLS -> throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false,
                         "HLS radio playlists are not supported", null);
                 case AAC -> throw failure(RadioFailure.Code.UNSUPPORTED_AAC, false,
                         "AAC radio streams are not supported", null);
-                case MP3, OGG -> {
+                case MP3, OGG, WAV -> {
                     RadioResolvedSource resolved = new RadioResolvedSource(response,
-                            kind == SourceKind.MP3
-                                    ? RadioResolvedSource.Format.MP3 : RadioResolvedSource.Format.OGG,
+                            RadioResolvedSource.Format.valueOf(kind.name()),
                             prefix, stationEndpoints, context.cancellation());
                     transferred = true;
                     return resolved;
@@ -256,6 +268,9 @@ public final class DirectRadioSourceResolver implements RadioSourceProgramResolv
         if (startsWith(prefix, "OggS")) {
             return SourceKind.OGG;
         }
+        if (startsWith(prefix, "RIFF")) {
+            return SourceKind.WAV;
+        }
         if (hasAdtsSignature(prefix)) {
             return SourceKind.AAC;
         }
@@ -338,7 +353,7 @@ public final class DirectRadioSourceResolver implements RadioSourceProgramResolv
         if (prefix.length == 0) {
             return false;
         }
-        if (startsWith(prefix, "ID3") || startsWith(prefix, "OggS")
+        if (startsWith(prefix, "ID3") || startsWith(prefix, "OggS") || startsWith(prefix, "RIFF")
                 || hasAdtsSignature(prefix) || hasMpegAudioSignature(prefix)) {
             return false;
         }
@@ -421,6 +436,7 @@ public final class DirectRadioSourceResolver implements RadioSourceProgramResolv
     private enum SourceKind {
         MP3,
         OGG,
+        WAV,
         M3U,
         PLS,
         HLS,

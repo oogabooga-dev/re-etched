@@ -36,7 +36,7 @@ import java.util.Optional;
 
 public class BoomboxItem extends Item implements ContainerItem {
 
-    private static final Map<Integer, ItemStack> PLAYING_RECORDS = new Int2ObjectArrayMap<>();
+    private static final Map<Integer, PlayingRecord> PLAYING_RECORDS = new Int2ObjectArrayMap<>();
     private static final Component PAUSE = Component.translatable("item." + Etched.MOD_ID + ".boombox.pause", Component.keybind("key.sneak"), Component.keybind("key.use")).withStyle(ChatFormatting.GRAY);
     private static final Component RECORDS = Component.translatable("item." + Etched.MOD_ID + ".boombox.records");
     public static final Component PAUSED = Component.translatable("item." + Etched.MOD_ID + ".boombox.paused").withStyle(ChatFormatting.YELLOW);
@@ -68,14 +68,37 @@ public class BoomboxItem extends Item implements ContainerItem {
     }
 
     private static void updatePlaying(Entity entity, ItemStack record) {
-        if (!ItemStack.matches(PLAYING_RECORDS.getOrDefault(entity.getId(), ItemStack.EMPTY), record)) {
+        PlayingRecord previous = PLAYING_RECORDS.get(entity.getId());
+        if (previous == null ? !record.isEmpty()
+                : previous.entity != entity || !ItemStack.matches(previous.record, record)) {
             SoundTracker.playBoombox(entity.getId(), record);
             if (record.isEmpty()) {
                 PLAYING_RECORDS.remove(entity.getId());
             } else {
-                PLAYING_RECORDS.put(entity.getId(), record);
+                PLAYING_RECORDS.put(entity.getId(), new PlayingRecord(entity, record.copy()));
             }
         }
+    }
+
+    public static void prunePlayingRecords() {
+        var level = Minecraft.getInstance().level;
+        PLAYING_RECORDS.entrySet().removeIf(entry -> {
+            Entity entity = entry.getValue().entity;
+            boolean removed = level == null || entity.level() != level || !entity.isAlive()
+                    || entity.isRemoved() || level.getEntity(entity.getId()) != entity
+                    || entity instanceof ItemEntity item && !(item.getItem().getItem() instanceof BoomboxItem);
+            if (removed) {
+                SoundTracker.setEntitySound(entry.getKey(), null);
+            }
+            return removed;
+        });
+    }
+
+    public static void clearPlayingRecords() {
+        PLAYING_RECORDS.clear();
+    }
+
+    private record PlayingRecord(Entity entity, ItemStack record) {
     }
 
     @Override
@@ -184,15 +207,15 @@ public class BoomboxItem extends Item implements ContainerItem {
      */
     @Nullable
     public static InteractionHand getPlayingHand(LivingEntity entity) {
-        if (!PLAYING_RECORDS.containsKey(entity.getId())) {
+        if (!PLAYING_RECORDS.containsKey(entity.getId()) || PLAYING_RECORDS.get(entity.getId()).entity != entity) {
             return null;
         }
         ItemStack stack = entity.getMainHandItem();
-        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack)) {
+        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack) && !isPaused(stack)) {
             return InteractionHand.MAIN_HAND;
         }
         stack = entity.getOffhandItem();
-        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack)) {
+        if (stack.getItem() instanceof BoomboxItem && hasRecord(stack) && !isPaused(stack)) {
             return InteractionHand.OFF_HAND;
         }
         return null;

@@ -45,6 +45,14 @@ public final class SoundSourceManager {
         SOURCES.add(source);
     }
 
+    /** Third-party download adapters retain their existing playback contract. */
+    public static synchronized boolean hasCustomSource(String url) {
+        return SOURCES.stream().anyMatch(source ->
+                source.getClass() != gg.moonflower.etched.common.sound.download.SoundCloudSource.class
+                        && source.getClass() != gg.moonflower.etched.common.sound.download.BandcampSource.class
+                        && source.isValidUrl(url));
+    }
+
     /**
      * Retrieves an {@link AudioSource} from the specified URL.
      *

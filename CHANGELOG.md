@@ -3,6 +3,46 @@
 Notable Re-Etched changes are documented here. Re-Etched uses independent
 versioning beginning with version 4.0.0 and is based on Etched 3.0.4.
 
+## [4.2.0] - 2026-10-12
+
+### Added
+
+- Right-click a radio history entry to delete that station from the current
+  world/server history. Deletions also update the backup and leave playback
+  and the URL editor unchanged.
+
+### Changed
+
+- Routed online discs in boomboxes and album jukeboxes through the radio's
+  bounded HTTP transport, independent buffers, and MP3/Ogg decoders.
+- Reused the radio's SoundCloud progressive-MP3 and Bandcamp resolvers for disc
+  playback, including refreshed SoundCloud client IDs and expired media URLs.
+- Retained PCM WAV discs, local sound events, third-party download adapters,
+  boombox inventory playback, and existing album-jukebox controls.
+- Limited concurrent online disc loads/playback to eight per client, separately
+  from radio sessions; online discs use the radio's destination policy and
+  private-network setting.
+
+### Fixed
+
+- Avoided shared read cursors between devices playing the same online track and
+  reused the corrected MP3 sample-count and streaming-buffer handling.
+- Cancelled pending disc work on stop, replacement, owner removal, world unload,
+  logout, and game shutdown; ignored stale track-advance callbacks.
+- Prevented failed online tracks and global sound stops from repeatedly
+  restarting albums.
+- Updated etching-table SoundCloud client-ID discovery for current script URLs,
+  added abbreviated playlist-entry resolution, and rejected empty/unavailable
+  playlists instead of creating an unusable disc.
+- Preserved the Etched 3.0.4 network protocol, registry identifiers, and disc NBT.
+
+### Known Limitations
+
+- SoundCloud playback still requires progressive MP3; HLS-only tracks are not
+  supported. Provider availability depends on external service formats.
+- Etching-table metadata lookup runs on the server, so its fixes require a
+  server update. Playback and radio-history improvements run on the client.
+
 ## [4.1.0] - 2026-09-19
 
 ### Added
