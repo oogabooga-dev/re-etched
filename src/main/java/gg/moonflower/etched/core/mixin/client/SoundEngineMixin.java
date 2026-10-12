@@ -1,6 +1,7 @@
 package gg.moonflower.etched.core.mixin.client;
 
 import gg.moonflower.etched.api.sound.SoundStopListener;
+import gg.moonflower.etched.api.sound.StopListeningSound;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.ChannelAccess;
 import net.minecraft.client.sounds.SoundEngine;
@@ -25,6 +26,9 @@ public abstract class SoundEngineMixin {
     @Inject(method = "stopAll", at = @At("HEAD"))
     private void onAllSoundsStopped(CallbackInfo ci) {
         for (SoundInstance soundInstance : this.instanceToChannel.keySet()) {
+            if (soundInstance instanceof StopListeningSound record) {
+                record.stopListening();
+            }
             if (soundInstance instanceof SoundStopListener listener) {
                 listener.onStop();
             }

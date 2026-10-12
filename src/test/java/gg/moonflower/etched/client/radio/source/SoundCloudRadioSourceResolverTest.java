@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import gg.moonflower.etched.client.radio.RadioCancellation;
 import gg.moonflower.etched.client.radio.RadioFailure;
 import gg.moonflower.etched.client.radio.RadioSession;
+import gg.moonflower.etched.client.radio.RecordStreamLoader;
 import gg.moonflower.etched.client.radio.net.RadioHttpTransportImpl;
 import gg.moonflower.etched.client.radio.net.RadioNetworkPolicy;
 import gg.moonflower.etched.client.radio.net.TestHttpServer;
@@ -33,6 +34,49 @@ class SoundCloudRadioSourceResolverTest {
     };
     private static final Duration TIMEOUT = Duration.ofSeconds(2);
     private static final URI TRACK = URI.create("https://soundcloud.com/artist/track");
+
+    @Test
+    void discPlaybackDecodesProgressiveAudioIndependentlyForBothDevices() throws Exception {
+        byte[] mp3;
+        try (var input = getClass().getResourceAsStream("/gg/moonflower/etched/client/radio/audio/mono.mp3")) {
+            mp3 = input.readAllBytes();
+        }
+        AtomicInteger requests = new AtomicInteger();
+        try (Fixture fixture = new Fixture()) {
+            fixture.installDiscovery("disc-client");
+            fixture.server.handle("/resolve", exchange -> respondJson(exchange, 200,
+                    trackJson(fixture.server.uri("/hls"), fixture.server.uri("/progressive"))));
+            fixture.server.handle("/progressive", exchange -> respondJson(exchange, 200,
+                    "{\"url\":\"" + fixture.server.uri("/media.mp3") + "\"}"));
+            fixture.server.handle("/media.mp3", exchange -> {
+                requests.incrementAndGet();
+                respondAudio(exchange, 200, mp3);
+            });
+            var loader = new RecordStreamLoader(fixture.resolver, fixture::context,
+                    java.util.concurrent.Executors.newFixedThreadPool(2),
+                    java.util.concurrent.Executors.newFixedThreadPool(2),
+                    java.util.concurrent.Executors.newFixedThreadPool(2));
+            try (var boombox = loader.open(TRACK.toString(), true);
+                 var jukebox = loader.open(TRACK.toString(), false)) {
+                var a = boombox.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
+                var b = jukebox.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
+                assertTrue(boombox.transfer(a));
+                assertTrue(jukebox.transfer(b));
+                try (a; b) {
+                    var first = a.read(64 * 1024);
+                    var second = b.read(64 * 1024);
+                    assertTrue(first.remaining() > 4_000);
+                    assertEquals(first, second);
+                    assertFalse(a.read(64 * 1024).hasRemaining());
+                    boombox.close();
+                    assertFalse(b.read(64 * 1024).hasRemaining());
+                }
+                assertEquals(2, requests.get());
+            } finally {
+                loader.shutdown();
+            }
+        }
+    }
 
     @Test
     void supportsOnlyRealHttpSoundCloudHostsWithoutUserinfo() {

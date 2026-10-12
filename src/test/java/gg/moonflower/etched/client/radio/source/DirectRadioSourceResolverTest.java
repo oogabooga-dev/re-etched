@@ -40,6 +40,20 @@ class DirectRadioSourceResolverTest {
     };
 
     @Test
+    void waveSupportIsOptInForDiscsAndDoesNotChangeRadioPolicy() throws Exception {
+        byte[] wave = bytes("RIFF0000WAVEfmt ");
+        try (TestHttpServer server = new TestHttpServer()) {
+            server.handle("/audio", exchange -> respond(exchange, 200, wave));
+            try (var source = new DirectRadioSourceResolver(true).resolve(server.uri("/audio"), context())) {
+                assertEquals(RadioResolvedSource.Format.WAV, source.format());
+                assertArrayEquals(wave, source.body().readAllBytes());
+            }
+            assertEquals(RadioFailure.Code.UNSUPPORTED_AUDIO, assertThrows(RadioSourceException.class,
+                    () -> resolver().resolve(server.uri("/audio"), context())).code());
+        }
+    }
+
+    @Test
     void returnsTheOriginalMp3ResponseWithSniffedBytesRestored() throws Exception {
         byte[] audio = "ID3-complete-audio-body".getBytes(StandardCharsets.US_ASCII);
         AtomicInteger requests = new AtomicInteger();

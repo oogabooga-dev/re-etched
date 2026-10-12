@@ -72,7 +72,8 @@ public final class RadioResolvedSource implements AutoCloseable {
 
     public enum Format {
         MP3,
-        OGG
+        OGG,
+        WAV
     }
 
     private static final class ReplayBody extends InputStream {
