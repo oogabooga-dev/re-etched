@@ -37,6 +37,16 @@ public final class RadioResolvedSource implements AutoCloseable {
         this.body = new ReplayBody(prefix, response, cancellation);
     }
 
+    RadioResolvedSource(URI uri, Format format, InputStream body) {
+        this.response = null;
+        this.uri = Objects.requireNonNull(uri);
+        this.format = Objects.requireNonNull(format);
+        this.body = Objects.requireNonNull(body);
+        this.headers = Map.of();
+        this.contentLength = OptionalLong.empty();
+        this.stationEndpoints = List.of(uri);
+    }
+
     public URI uri() {
         return this.uri;
     }
@@ -66,14 +76,15 @@ public final class RadioResolvedSource implements AutoCloseable {
         try {
             this.body.close();
         } catch (IOException ignored) {
-            this.response.close();
+            if (this.response != null) this.response.close();
         }
     }
 
     public enum Format {
         MP3,
         OGG,
-        WAV
+        WAV,
+        AAC
     }
 
     private static final class ReplayBody extends InputStream {

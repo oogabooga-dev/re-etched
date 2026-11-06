@@ -90,7 +90,7 @@ public final class SoundCloudRadioSourceResolver implements RadioSourceProgramRe
         String kind = requiredString(page, "kind", "SoundCloud response");
         if ("track".equals(kind)) {
             requireStreamable(page);
-            selectProgressive(page);
+            selectTranscoding(page);
             context.budget().consumeEntries(1);
             TrackReference track = trackReference(page, input, 0);
             return new RadioSourceProgram(RadioSourceProgram.Kind.SERVICE_TRACKS, input, List.of(
@@ -140,13 +140,13 @@ public final class SoundCloudRadioSourceResolver implements RadioSourceProgramRe
                     "The SoundCloud album entry no longer resolves to a track", null);
         }
         requireStreamable(track);
-        Transcoding transcoding = selectProgressive(track);
+        Transcoding transcoding = selectTranscoding(track);
         JsonObject transcodingResponse = this.authenticatedJson(
                 transcoding.uri(), context, auth, transcoding.authorization());
         URI media = parseHttpUri(requiredString(transcodingResponse, "url",
                 "SoundCloud transcoding response"), "SoundCloud media URL");
         try {
-            return this.direct.resolve(media, context);
+            return transcoding.hls() ? SoundCloudHlsSource.open(media, context) : this.direct.resolve(media, context);
         } catch (RadioSourceException exception) {
             if (!mediaRetried && exception.code() == RadioFailure.Code.HTTP_STATUS
                     && (exception.httpStatus() == 401 || exception.httpStatus() == 403
@@ -341,10 +341,12 @@ public final class SoundCloudRadioSourceResolver implements RadioSourceProgramRe
                 "Could not discover a SoundCloud client ID", null);
     }
 
-    private static Transcoding selectProgressive(JsonObject track) throws RadioSourceException {
+    private static Transcoding selectTranscoding(JsonObject track) throws RadioSourceException {
         JsonObject media = requiredObject(track, "media", "SoundCloud track");
         JsonArray transcodings = requiredArray(media, "transcodings", "SoundCloud track media");
         URI progressive = null;
+        URI aac = null;
+        int aacRank = -1;
         String authorization = optionalString(track, "track_authorization");
         boolean hls = false;
         boolean other = false;
@@ -363,19 +365,30 @@ public final class SoundCloudRadioSourceResolver implements RadioSourceProgramRe
                 }
             } else if ("hls".equals(protocol)) {
                 hls = true;
+                String preset = optionalString(transcoding, "preset");
+                if (mimeType != null && mimeType.toLowerCase(Locale.ROOT).startsWith("audio/mp4")
+                        && ("aac_160k".equals(preset) || "aac_96k".equals(preset))
+                        && !optionalBoolean(transcoding, "snipped", false)) {
+                    int rank = "aac_160k".equals(preset) ? 2 : 1;
+                    if (rank > aacRank) {
+                        aac = parseHttpUri(requiredString(transcoding, "url", "SoundCloud AAC"), "SoundCloud AAC URL");
+                        aacRank = rank;
+                    }
+                }
             } else {
                 other = true;
             }
         }
         if (progressive != null) {
-            return new Transcoding(progressive, authorization);
+            return new Transcoding(progressive, authorization, false);
         }
+        if (aac != null) return new Transcoding(aac, authorization, true);
         if (hls && !other) {
             throw failure(RadioFailure.Code.UNSUPPORTED_HLS, false,
-                    "This SoundCloud track is only available as HLS", null);
+                    "This SoundCloud track has no supported AAC-LC HLS rendition", null);
         }
         throw failure(RadioFailure.Code.UNSUPPORTED_AUDIO, false,
-                "The SoundCloud track has no progressive MP3 transcoding", null);
+                "The SoundCloud track has no supported MP3 or AAC-LC HLS transcoding", null);
     }
 
     private static void requireStreamable(JsonObject track) throws RadioSourceException {
@@ -672,6 +685,6 @@ public final class SoundCloudRadioSourceResolver implements RadioSourceProgramRe
     private record TrackReference(URI source, @Nullable String title, boolean apiTrack) {
     }
 
-    private record Transcoding(URI uri, @Nullable String authorization) {
+    private record Transcoding(URI uri, @Nullable String authorization, boolean hls) {
     }
 }

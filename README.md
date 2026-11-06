@@ -8,8 +8,8 @@ Re-Etched is based on Etched 3.0.4 for Minecraft 1.20.1. It retains Etched's
 game content and compatibility identifiers while improving client-side radio,
 boombox, and album jukebox playback with bounded, cancellable online audio.
 
-Re-Etched has independent versioning beginning with `4.0.0`. The current stable
-release is `4.2.0`.
+Re-Etched has independent versioning beginning with `4.0.0`. The current project
+version is `4.3.0`.
 
 ## Development Lines
 
@@ -32,15 +32,15 @@ target line: `release/4.*` targets `4.x`, while `release/5.*` targets `master`.
 | Environment | Client and dedicated server |
 
 Forge releases other than the tested baseline should be considered unverified.
-Fabric and NeoForge are not supported. The production JAR embeds its MP3
-decoder, so no separate library mod is required.
+Fabric and NeoForge are not supported. The production JAR embeds its MP3 and AAC
+decoders, so no separate library mod is required.
 
 ## Installation And Migration
 
 1. Back up the world before replacing Etched.
 2. Stop Minecraft and the dedicated server.
 3. Remove the original Etched JAR and any older Re-Etched JAR.
-4. Put `re-etched-4.2.0.jar` in the client and server `mods` directories.
+4. Put `re-etched-4.3.0.jar` in the client and server `mods` directories.
 5. Start Minecraft with Java 17 and Forge 47.4.10.
 
 Do not install Etched and Re-Etched in the same Minecraft instance. Both use
@@ -66,7 +66,7 @@ The Re-Etched radio accepts absolute HTTP or HTTPS URLs for:
 - direct Ogg/Vorbis streams;
 - M3U and PLS playlists, including relative entries, nested playlists, and
   ordered fallback stations;
-- SoundCloud tracks and playlists when SoundCloud exposes progressive MP3;
+- SoundCloud tracks and playlists exposing progressive MP3 or AAC-LC HLS/fMP4;
 - Bandcamp tracks and albums containing `mp3-128` audio;
 - ICY streams, including bounded `StreamTitle` metadata when supplied.
 
@@ -87,10 +87,11 @@ remove just that station from history; left-click still fills the URL editor.
 
 ## Disc Playback
 
-Boomboxes and album jukeboxes now use the radio transport, independent input
-buffers and MP3/Ogg decoders for online discs. PCM WAV discs remain supported.
-SoundCloud discs use the radio's progressive-MP3 resolver, including refreshed
-client IDs and expired media URLs. HLS-only SoundCloud tracks remain unsupported.
+Boomboxes and album jukeboxes use the radio transport and independent input
+buffers for online discs, with MP3, Ogg/Vorbis, and SoundCloud AAC-LC decoding.
+PCM WAV discs remain supported.
+SoundCloud discs use the radio's MP3/AAC resolver, including refreshed client IDs
+and media URLs. AAC uses the bundled pure Java JAAD decoder.
 Etching-table metadata discovery also accepts current application-script URLs
 and resolves abbreviated playlist entries.
 
@@ -152,7 +153,13 @@ hostnames remotely must enforce an equivalent destination policy itself.
 
 ## Known Limitations
 
-- AAC, AAC+, and HLS streams are not supported.
+- SoundCloud HLS support is limited to clear, finite AAC-LC mono/stereo fMP4
+  media playlists (160k preferred, 96k if that is the available rendition).
+  Encrypted streams, live HLS, master playlists, byte ranges, discontinuities,
+  HE-AAC/AAC+, and general direct AAC/HLS URLs are not supported.
+- HLS limits: 4096 segments, 6 hours, 512 MiB per track, 1 MiB initialization,
+  4 MiB per segment, 60 seconds per segment, and 5 redirects per media request.
+  Media requests retain the existing proxy, timeouts, and destination checks.
 - Radio inputs are limited to absolute HTTP(S) URLs.
 - SoundCloud, Bandcamp, and station availability are outside the project's
   control.
@@ -184,7 +191,7 @@ local server configuration files.
 The distributable is:
 
 ```text
-build/libs/re-etched-4.2.0.jar
+build/libs/re-etched-4.3.0.jar
 ```
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.

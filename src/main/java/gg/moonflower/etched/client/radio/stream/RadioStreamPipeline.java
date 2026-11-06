@@ -107,6 +107,7 @@ public final class RadioStreamPipeline {
                 case MP3 -> new RadioMp3AudioStream(audioBody);
                 case OGG -> new RadioOggAudioStream(audioBody);
                 case WAV -> new RadioWaveAudioStream(audioBody);
+                case AAC -> new RadioAacAudioStream(audioBody);
             };
             cancellation.throwIfCancelled();
             return forceStereo ? decoded : new RadioMonoAudioStream(decoded);
