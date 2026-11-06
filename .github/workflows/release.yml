@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -75,6 +79,24 @@ jobs:
       - name: Clean, test, and build
         run: ./gradlew clean test build --no-daemon
 
+      - name: Extract version changelog for CurseForge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ['GITHUB_REF_NAME'].removeprefix('v')
+          changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          pattern = rf'^## \[{re.escape(version)}\][^\n]*\n(?P<body>.*?)(?=^## |\Z)'
+          sections = list(re.finditer(pattern, changelog, re.MULTILINE | re.DOTALL))
+          if len(sections) != 1 or not sections[0]['body'].strip():
+              raise SystemExit(f'Expected one non-empty CHANGELOG.md section for {version}')
+          Path('CURSEFORGE_CHANGELOG.md').write_text(
+              sections[0].group().rstrip() + '\n', encoding='utf-8')
+          PY
+
       - name: Prepare release assets
         id: assets
         shell: bash
@@ -111,6 +133,7 @@ jobs:
           path: |
             release
             RELEASE_NOTES.md
+            CURSEFORGE_CHANGELOG.md
           if-no-files-found: error
 
   publish:
@@ -143,3 +166,77 @@ jobs:
             --title "Re-Etched ${{ needs.build.outputs.version }} for Forge 1.20.1" \
             --notes-file staging/RELEASE_NOTES.md \
             "${prerelease[@]}"
+
+  publish-curseforge:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check CurseForge credentials
+        shell: bash
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          if [[ -z "$CURSEFORGE_TOKEN" ]]; then
+            printf '::error::Add the CURSEFORGE_TOKEN repository secret to enable CurseForge uploads.\n'
+            exit 1
+          fi
+
+      - name: Download verified release inputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-inputs
+          path: staging
+
+      - name: Verify CurseForge upload
+        id: curseforge
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cd staging/release
+          jar_name="re-etched-$VERSION.jar"
+          test -f "$jar_name"
+          sha256sum --check "$jar_name.sha256"
+          test -s ../CURSEFORGE_CHANGELOG.md
+
+          case "$VERSION" in
+            *-alpha*) release_type=alpha ;;
+            *-*) release_type=beta ;;
+            *) release_type=release ;;
+          esac
+          printf 'release_type=%s\n' "$release_type" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to CurseForge
+        id: upload
+        uses: Kira-NT/mc-publish@c23376546a97f5ba7984e94445da359459b14419 # v3.3.2
+        with:
+          curseforge-id: '1740768'
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          files: staging/release/re-etched-${{ needs.build.outputs.version }}.jar
+          name: Re-Etched ${{ needs.build.outputs.version }} — Forge 1.20.1
+          version: ${{ needs.build.outputs.version }}
+          version-type: ${{ steps.curseforge.outputs.release_type }}
+          changelog-file: staging/CURSEFORGE_CHANGELOG.md
+          loaders: forge
+          game-versions: '1.20.1'
+          java: '17'
+          environment: client | server
+          # A lost upload response is ambiguous; inspect CurseForge before retrying.
+          retry-attempts: 1
+          fail-mode: fail
+
+      - name: Record CurseForge file
+        shell: bash
+        env:
+          FILE_ID: ${{ steps.upload.outputs.curseforge-version }}
+        run: |
+          if [[ ! "$FILE_ID" =~ ^[0-9]+$ ]]; then
+            printf '::error::CurseForge upload did not return a file ID.\n'
+            exit 1
+          fi
+          printf 'CurseForge upload accepted: [file %s](https://www.curseforge.com/minecraft/mc-mods/re-etched/files/%s). Availability depends on CurseForge processing and moderation.\n' \
+            "$FILE_ID" "$FILE_ID" >> "$GITHUB_STEP_SUMMARY"

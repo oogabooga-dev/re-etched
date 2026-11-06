@@ -196,6 +196,9 @@ build/libs/re-etched-4.3.0.jar
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.
 
+For tagged GitHub and CurseForge releases, see
+[release publishing setup and recovery](RELEASE_PUBLISHING.md).
+
 ## Attribution And Licensing
 
 Etched was originally developed by Moonflower Studio. Original credits
