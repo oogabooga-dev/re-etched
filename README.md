@@ -87,8 +87,9 @@ remove just that station from history; left-click still fills the URL editor.
 
 ## Disc Playback
 
-Boomboxes and album jukeboxes now use the radio transport, independent input
-buffers and MP3/Ogg decoders for online discs. PCM WAV discs remain supported.
+Boomboxes and album jukeboxes use the radio transport and independent input
+buffers for online discs, with MP3, Ogg/Vorbis, and SoundCloud AAC-LC decoding.
+PCM WAV discs remain supported.
 SoundCloud discs use the radio's MP3/AAC resolver, including refreshed client IDs
 and media URLs. AAC uses the bundled pure Java JAAD decoder.
 Etching-table metadata discovery also accepts current application-script URLs
