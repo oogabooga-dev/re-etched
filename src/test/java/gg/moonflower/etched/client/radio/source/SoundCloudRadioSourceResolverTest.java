@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class SoundCloudRadioSourceResolverTest {
 
@@ -75,6 +76,55 @@ class SoundCloudRadioSourceResolverTest {
             } finally {
                 loader.shutdown();
             }
+        }
+    }
+
+    @Test
+    void playsAacHlsThroughTheRecordPipelineAndPrefers160k() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.installDiscovery("aac-client");
+            fixture.server.handle("/resolve", exchange -> respondJson(exchange, 200, """
+                    {"kind":"track","title":"AAC track","streamable":true,
+                     "track_authorization":"fixture-token","media":{"transcodings":[
+                      {"url":"%s","preset":"aac_96k","format":{"protocol":"hls","mime_type":"audio/mp4"}},
+                      {"url":"%s","preset":"aac_160k","format":{"protocol":"hls","mime_type":"audio/mp4"}}
+                     ]}}
+                    """.formatted(fixture.server.uri("/96"), fixture.server.uri("/160"))));
+            AtomicInteger lowQuality = new AtomicInteger();
+            AtomicInteger highQuality = new AtomicInteger();
+            fixture.server.handle("/96", exchange -> {
+                lowQuality.incrementAndGet(); respondJson(exchange, 500, "{}");
+            });
+            fixture.server.handle("/160", exchange -> {
+                assertEquals("fixture-token", query(exchange.getRequestURI()).get("track_authorization"));
+                highQuality.incrementAndGet();
+                respondJson(exchange, 200, "{\"url\":\"" + fixture.server.uri("/playlist.m3u8") + "\"}");
+            });
+            for (String file : new String[]{"playlist.m3u8", "init.mp4", "segment0.m4s", "segment1.m4s", "segment2.m4s"}) {
+                byte[] body = SoundCloudHlsSourceTest.fixture(file);
+                fixture.server.handle("/" + file, exchange -> {
+                    assertNull(exchange.getRequestURI().getQuery(), "API authorization must not leak to media requests");
+                    respond(exchange, 200, body);
+                });
+            }
+            var loader = new RecordStreamLoader(fixture.resolver, fixture::context,
+                    java.util.concurrent.Executors.newFixedThreadPool(2),
+                    java.util.concurrent.Executors.newFixedThreadPool(2),
+                    java.util.concurrent.Executors.newFixedThreadPool(2));
+            try (var stereo = loader.open(TRACK.toString(), true);
+                 var mono = loader.open(TRACK.toString(), false)) {
+                var a = stereo.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
+                var b = mono.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
+                assertTrue(stereo.transfer(a)); assertTrue(mono.transfer(b));
+                try (a; b) {
+                    assertEquals(2, a.getFormat().getChannels()); assertEquals(1, b.getFormat().getChannels());
+                    int bytes = 0;
+                    for (var pcm = a.read(65536); pcm.hasRemaining(); pcm = a.read(65536)) bytes += pcm.remaining();
+                    assertEquals(88 * 1024 * 4, bytes);
+                    assertTrue(b.read(65536).hasRemaining());
+                }
+                assertEquals(2, highQuality.get()); assertEquals(0, lowQuality.get());
+            } finally { loader.shutdown(); }
         }
     }
 

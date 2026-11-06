@@ -49,20 +49,25 @@ def normalizeMixinRefmap = tasks.register("normalizeMixinRefmap") {
     }
 }
 
-def verifyJlayerBinary = tasks.register("verifyJlayerBinary") {
+def verifyAudioLibraries = tasks.register("verifyAudioLibraries") {
     inputs.files(configurations.shadowCommon)
 
     doLast {
         def files = configurations.shadowCommon.files
-        if (files.size() != 1) {
-            throw new GradleException("Expected one JLayer binary, found ${files.size()}")
+        if (files.size() != 2) {
+            throw new GradleException("Expected two audio libraries, found ${files.size()}")
         }
 
-        def actual = java.util.HexFormat.of().formatHex(
-                java.security.MessageDigest.getInstance("SHA-256").digest(files.first().bytes))
-        def expected = "850508c837454a1b06017c32a36876fae516de1e89a829f725fee1e6dcc52000"
-        if (actual != expected) {
-            throw new GradleException("JLayer 1.0.1 SHA-256 mismatch: ${actual}")
+        def expectedHashes = [
+            'jlayer-1.0.1.jar': '850508c837454a1b06017c32a36876fae516de1e89a829f725fee1e6dcc52000',
+            'jaad-0.8.7.jar': 'f6a179169c390e939d737435268406ff6d681af6c6e50a219ce473318174037f'
+        ]
+        files.each { file ->
+            def actual = java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(file.bytes))
+            if (actual != expectedHashes[file.name]) {
+                throw new GradleException("Audio library SHA-256 mismatch: ${file.name}")
+            }
         }
     }
 }
@@ -93,6 +98,7 @@ loom {
 }
 
 repositories {
+    mavenCentral()
     mavenLocal()
 }
 
@@ -108,6 +114,9 @@ dependencies {
 
     shadowCommon(implementation("javazoom:jlayer:1.0.1"))
     forgeRuntimeLibrary("javazoom:jlayer:1.0.1")
+
+    shadowCommon(implementation("de.sfuhrm:jaad:0.8.7"))
+    forgeRuntimeLibrary("de.sfuhrm:jaad:0.8.7")
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -142,9 +151,12 @@ processResources {
 }
 
 shadowJar {
-    dependsOn verifyJlayerBinary
+    dependsOn verifyAudioLibraries
     configurations = [project.configurations.shadowCommon]
     relocate "javazoom", "gg.moonflower.etched.javazoom"
+    relocate "net.sourceforge.jaad", "gg.moonflower.etched.jaad"
+    // Use the decoder directly; do not register bundled codecs in global Java Sound discovery.
+    exclude "META-INF/services/javax.sound.sampled.spi.*"
     archiveClassifier = "dev-shadow"
 }
 

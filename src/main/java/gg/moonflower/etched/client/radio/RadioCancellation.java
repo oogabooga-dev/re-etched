@@ -26,7 +26,8 @@ public final class RadioCancellation {
         this.cancelled.thenRun(action);
     }
 
-    boolean cancel() {
+    /** Cancels this owned scope and closes its registered resources. */
+    public boolean cancel() {
         return this.cancelled.complete(null);
     }
 }

@@ -104,3 +104,22 @@ verifies its distribution SHA-256 before use.
 
 - Project: https://github.com/gradle/gradle
 - Wrapper JAR SHA-256: `e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637`
+
+## JAAD 0.8.7
+
+Re-Etched includes the pure Java AAC decoder from `de.sfuhrm:jaad:0.8.7`.
+The upstream project declares this work Public Domain. The dedication is
+included as `META-INF/licenses/JAAD-Public-Domain.txt`.
+
+- Original author: in-somnia; fork contributors include Austin Keener,
+  Henry (offbeatwitch), and Stephan Fuhrmann.
+- Source repository/tag: https://github.com/sfuhrm/JAADec/tree/jaad-0.8.7
+- Artifact: https://repo.maven.apache.org/maven2/de/sfuhrm/jaad/0.8.7/jaad-0.8.7.jar
+- Sources: https://repo.maven.apache.org/maven2/de/sfuhrm/jaad/0.8.7/jaad-0.8.7-sources.jar
+- Binary SHA-256: `f6a179169c390e939d737435268406ff6d681af6c6e50a219ce473318174037f`
+- Source SHA-256: `8fd4e834b74144201ade7bf5d008934ad0988f4cb5786e28432ba7e9b3de0fff`
+
+The build verifies the binary hash and relocates `net.sourceforge.jaad` to
+`gg.moonflower.etched.jaad`. Upstream sources are not modified. Java Sound SPI
+service registration is excluded: Re-Etched invokes the AAC decoder directly.
+HLS transport and the bounded fragmented-MP4 demuxer are implemented in Re-Etched.
