@@ -1,4 +1,4 @@
-# Re-Etched 4.2.0 for Forge 1.20.1
+# Re-Etched 4.3.0 for Forge 1.20.1
 
 Re-Etched is an unofficial, community-maintained fork of
 [Etched 3.0.4](https://github.com/jacksonhardaway/etched). It is not affiliated
@@ -6,19 +6,12 @@ with or endorsed by Moonflower Studio.
 
 ## Highlights
 
-- Improved online-disc playback in boomboxes and album jukeboxes by reusing the
-  radio's buffering, independent audio streams, and corrected MP3/Ogg decoders.
-- Connected disc playback to the radio's SoundCloud progressive-MP3 resolver,
-  including refreshed client IDs and expired media URLs. Updated SoundCloud
-  metadata discovery and playlist entries when recording new discs.
-- Fixed cancellation and cleanup when stopping or replacing discs, removing
-  their owners, and leaving the world. Failed tracks no longer loop endlessly.
-- Added right-click deletion of individual radio-history entries, saved to both
-  the history file and its backup. Left-click still fills the URL editor.
-- Retained PCM WAV support, vanilla discs, boombox inventory playback, and
-  existing album-jukebox controls.
-- Preserved the Etched 3.0.4 mod ID, network protocol, registry namespace, and
-  radio NBT contract for mixed client/server compatibility.
+- Restores SoundCloud playback for finite AAC-LC HLS/fMP4 tracks using bundled
+  JAAD 0.8.7. This path is shared by the radio, boombox, and album jukebox.
+- Prefers progressive MP3 where still available; otherwise selects AAC 160k,
+  or 96k when 160k is absent. No separate codec mod or native library is needed.
+- Retains network destination checks, proxy handling, cancellation, independent
+  playback streams, and the 4.x network/NBT compatibility contract.
 
 ## Requirements
 
@@ -34,7 +27,7 @@ recommended configuration.
 ## Installation
 
 Back up the world before replacing Etched. Remove the original Etched JAR and
-any older Re-Etched JAR before adding `re-etched-4.2.0.jar` to the client and
+any older Re-Etched JAR before adding `re-etched-4.3.0.jar` to the client and
 server `mods` directories. Etched and Re-Etched cannot be installed together
 because both use the `etched` mod ID.
 
@@ -44,8 +37,11 @@ the server too.
 
 ## Known Limitations
 
-- AAC, AAC+, and HLS streams are not supported.
-- SoundCloud tracks must expose progressive MP3; HLS-only tracks cannot play.
+- AAC/HLS is supported only for clear, finite SoundCloud AAC-LC fMP4 media
+  playlists. Live streams, encryption, master playlists, byte ranges,
+  discontinuities, HE-AAC/AAC+, and general direct AAC/HLS URLs are unsupported.
+- Limits: 4096 segments, 6 hours, 512 MiB per track, 1 MiB initialization,
+  4 MiB and 60 seconds per segment, at most 5 redirects per media request.
 - SoundCloud and Bandcamp support depends on external service formats.
 - Up to eight online disc streams can be active per client, separately from
   radio sessions. Failed online tracks stop; toggle playback or select a track
@@ -58,5 +54,5 @@ the server too.
 - Recent station URLs are stored in plaintext in the client's local history
   file because they must remain reusable.
 
-See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.2.0/CHANGELOG.md)
-and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.2.0).
+See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.3.0/CHANGELOG.md)
+and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.3.0).

@@ -3,6 +3,37 @@
 Notable Re-Etched changes are documented here. Re-Etched uses independent
 versioning beginning with version 4.0.0 and is based on Etched 3.0.4.
 
+## [4.3.0] - 2026-11-06
+
+### Added
+
+- Added SoundCloud AAC-LC playback over finite HLS/fMP4 media playlists using
+  the bundled pure Java JAAD 0.8.7 decoder, with no separate codec mod or
+  native library required.
+- Added bounded HLS segment loading and fragmented-MP4 demultiplexing shared
+  by radios, boomboxes, and album jukeboxes.
+
+### Changed
+
+- Prefer progressive MP3 when available; otherwise select SoundCloud AAC at
+  160 kbit/s, or 96 kbit/s when the 160 kbit/s rendition is absent.
+- Apply the existing destination checks, proxy handling, timeouts, and
+  cancellation to initialization files, segments, and their redirects.
+- Bound playlist size, segment count, media size, and decoded track duration;
+  retain independent streams for devices playing the same track.
+
+### Fixed
+
+- Restored playback of SoundCloud tracks that no longer expose progressive
+  MP3 and previously failed with an unsupported audio format error.
+
+### Known Limitations
+
+- The new path supports clear, finite AAC-LC fMP4 media playlists from
+  SoundCloud. Live or encrypted HLS, master playlists, byte ranges,
+  discontinuities, HE-AAC/AAC+, and general direct AAC/HLS URLs are unsupported.
+- Provider availability still depends on external service formats.
+
 ## [4.2.0] - 2026-10-12
 
 ### Added
