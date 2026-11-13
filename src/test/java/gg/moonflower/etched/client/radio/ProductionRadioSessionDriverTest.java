@@ -332,7 +332,7 @@ class ProductionRadioSessionDriverTest {
     }
 
     @Test
-    void normalStopLeavesTransferredAudioOwnedBySoundEngine() throws Exception {
+    void normalStopCancelsPcmWorkerAndSoundEngineCanStillCloseFacade() throws Exception {
         RadioSourceProgram program = this.program(RadioSourceProgram.Kind.STATION,
                 List.of(this.track("one")));
         FakeSoundOutput sounds = new FakeSoundOutput(false);
@@ -348,7 +348,8 @@ class ProductionRadioSessionDriverTest {
         driver.stop(KEY, session);
 
         assertEquals(1, sounds.stops.get());
-        assertFalse(audio.termination().toCompletableFuture().isDone());
+        assertEquals(RadioAudioStream.TerminalState.CANCELLED,
+                audio.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         audio.close();
         driver.shutdown();
     }
@@ -385,22 +386,20 @@ class ProductionRadioSessionDriverTest {
             await(() -> sounds.audio.size() == 1);
             assertTrue(bodySent.await(5, TimeUnit.SECONDS));
             RadioAudioStream audio = sounds.audio.get(0);
-            Future<Throwable> read = soundExecutor.submit(() -> {
-                try {
-                    while (true) {
-                        audio.read(64 * 1024);
-                    }
-                } catch (Throwable failure) {
-                    return failure;
-                }
+            // Exhaust available data without letting a stalled read hold the
+            // SoundEngine executor. A queued UI sound task must keep progressing.
+            Future<?> read = soundExecutor.submit(() -> {
+                for (int i = 0; i < 100; i++) audio.read(64 * 1024);
+                return null;
             });
-            Thread.sleep(100L);
-            assertFalse(read.isDone());
+            read.get(2, TimeUnit.SECONDS);
+            assertEquals(42, soundExecutor.submit(() -> 42).get(2, TimeUnit.SECONDS));
+            assertEquals(1, releaseBody.getCount());
 
             session.stop();
             driver.stop(KEY, session);
 
-            assertInstanceOf(IOException.class, read.get(2, TimeUnit.SECONDS));
+            assertFalse(audio.read(1024).hasRemaining());
             assertEquals(RadioAudioStream.TerminalState.CANCELLED,
                     audio.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
             assertEquals(1, sounds.stops.get());
@@ -430,7 +429,7 @@ class ProductionRadioSessionDriverTest {
         session.stop();
         driver.stop(KEY, session);
 
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(RadioAudioStream.TerminalState.CANCELLED,
                 audio.termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         driver.shutdown();
     }
@@ -555,7 +554,7 @@ class ProductionRadioSessionDriverTest {
         await(() -> events.unavailableOwners.get() == 1);
 
         assertEquals(0, sounds.stops.get());
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(RadioAudioStream.TerminalState.CANCELLED,
                 sounds.audio.get(0).termination().toCompletableFuture().get(2, TimeUnit.SECONDS).state());
         driver.shutdown();
     }

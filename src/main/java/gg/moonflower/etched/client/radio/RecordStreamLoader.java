@@ -167,6 +167,6 @@ public final class RecordStreamLoader {
                 new CompositeRadioSourceResolver(List.of(new SoundCloudRadioSourceResolver(),
                         new BandcampRadioSourceResolver(), new DirectRadioSourceResolver(true))),
                 RadioResolveContext::createDefault, executor("Etched disc resolver", 2),
-                executor("Etched disc producer", 8), executor("Etched disc decoder", 2));
+                executor("Etched disc producer", 8), executor("Etched disc decoder", 8));
     }
 }

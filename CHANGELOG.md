@@ -3,6 +3,25 @@
 Notable Re-Etched changes are documented here. Re-Etched uses independent
 versioning beginning with version 4.0.0 and is based on Etched 3.0.4.
 
+## [4.3.1] - 2026-11-13
+
+### Fixed
+
+- Prevent stalled or slow online audio from blocking Minecraft's sound executor
+  and freezing the whole client when another sound (including a UI click) starts.
+- Decode audio on background workers into bounded PCM queues. Short underruns
+  produce silence without blocking; playback resumes when audio arrives.
+- Keep stop/cancellation independent of blocked decoder reads and close calls.
+  Stop streams that produce no audio for 15 seconds after their PCM queue empties.
+- Preserve queued audio at normal end-of-stream and independent playback cursors.
+  The fix covers the shared radio and online-disc pipeline.
+
+### Verification
+
+- Added deterministic blocked-decoder, cancellation, failure, recovery and EOF tests.
+- Added an isolated Forge/OpenAL client check using a local stalled MP3 response
+  and measured UI-click/client-tick latency.
+
 ## [4.3.0] - 2026-11-06
 
 ### Added

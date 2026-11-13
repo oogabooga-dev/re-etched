@@ -4,6 +4,12 @@ plugins {
     id "maven-publish"
 }
 
+sourceSets {
+    clientSmoke
+}
+sourceSets.clientSmoke.compileClasspath = sourceSets.main.output + sourceSets.main.compileClasspath
+sourceSets.clientSmoke.runtimeClasspath = sourceSets.clientSmoke.output + sourceSets.main.output + sourceSets.main.runtimeClasspath
+
 base {
     archivesName = project.archives_base_name
 }
@@ -85,6 +91,22 @@ tasks.withType(Jar).configureEach {
 }
 
 loom {
+    runs {
+        clientSmoke {
+            environment "client"
+            forgeTemplate "client"
+            source sourceSets.main
+            runDir "build/run-client-smoke"
+            property "fabric.dli.env", "client"
+            mods {
+                "${project.mod_id}" {
+                    sourceSet sourceSets.main
+                    sourceSet sourceSets.clientSmoke
+                }
+            }
+        }
+    }
+
     accessWidenerPath = file("src/main/resources/${project.mod_id}.accesswidener")
 
     forge {
@@ -173,5 +195,24 @@ jar {
 components.java {
     withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
         skip()
+    }
+}
+
+// Isolated native regression check; fixtures never enter the distributable JAR.
+tasks.named("runClientSmoke", JavaExec) {
+    group = "verification"
+    dependsOn tasks.named("clientSmokeClasses")
+    doFirst {
+        def directory = layout.buildDirectory.dir("run-client-smoke").get().asFile
+        directory.mkdirs()
+        delete(new File(directory, "radio-stall-result.txt"))
+        new File(directory, "options.txt").text = "version:3465\nonboardAccessibility:false\nnarrator:0\npauseOnLostFocus:false\nenableVsync:false\nmaxFps:60\n"
+    }
+    doLast {
+        def result = layout.buildDirectory.file("run-client-smoke/radio-stall-result.txt").get().asFile
+        if (!result.isFile() || !result.text.startsWith("PASS")) {
+            throw new GradleException("Radio stall client regression did not pass: " + (result.isFile() ? result.text : "no result"))
+        }
+        logger.lifecycle(result.text)
     }
 }
