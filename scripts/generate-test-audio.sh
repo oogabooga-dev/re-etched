@@ -34,3 +34,10 @@ sha256sum \
   "${OUTPUT_DIR}/stereo-vbr-id3.mp3" \
   "${OUTPUT_DIR}/stereo-long.mp3" \
   "${OUTPUT_DIR}/stereo.ogg"
+
+# Native SoundEngine stall regression: 64 KiB is only ~2 s at 256 kbit/s.
+mkdir -p "${ROOT_DIR}/src/clientSmoke/resources"
+"${FFMPEG}" -hide_banner -loglevel error -y \
+  -f lavfi -i "sine=frequency=440:duration=8:sample_rate=44100" \
+  -map_metadata -1 -ac 2 -c:a libmp3lame -b:a 256k \
+  "${ROOT_DIR}/src/clientSmoke/resources/stall-test.mp3"

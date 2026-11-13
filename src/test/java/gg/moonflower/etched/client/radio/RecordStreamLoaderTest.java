@@ -70,6 +70,10 @@ class RecordStreamLoaderTest {
             assertTrue(first.transfer(a));
             assertTrue(second.transfer(b));
             assertFalse(first.transfer(a));
+            // This finite fixture fits in the PCM queue. Wait for prefetch so
+            // comparison checks media bytes, not scheduling-dependent underrun silence.
+            this.decoders.shutdown();
+            assertTrue(this.decoders.awaitTermination(5, TimeUnit.SECONDS));
             try (a; b) {
                 byte[] expected = drain(a);
                 assertTrue(expected.length > 100_000);
@@ -88,7 +92,7 @@ class RecordStreamLoaderTest {
         RadioAudioStream audio = load.stream().get(5, TimeUnit.SECONDS);
         load.close();
         assertFalse(load.transfer(audio));
-        assertEquals(RadioAudioStream.TerminalState.CLOSED,
+        assertEquals(RadioAudioStream.TerminalState.CANCELLED,
                 audio.termination().toCompletableFuture().get(5, TimeUnit.SECONDS).state());
     }
 

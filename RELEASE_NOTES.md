@@ -1,4 +1,4 @@
-# Re-Etched 4.3.0 for Forge 1.20.1
+# Re-Etched 4.3.1 for Forge 1.20.1
 
 Re-Etched is an unofficial, community-maintained fork of
 [Etched 3.0.4](https://github.com/jacksonhardaway/etched). It is not affiliated
@@ -6,12 +6,13 @@ with or endorsed by Moonflower Studio.
 
 ## Highlights
 
-- Restores SoundCloud playback for finite AAC-LC HLS/fMP4 tracks using bundled
-  JAAD 0.8.7. This path is shared by the radio, boombox, and album jukebox.
-- Prefers progressive MP3 where still available; otherwise selects AAC 160k,
-  or 96k when 160k is absent. No separate codec mod or native library is needed.
-- Retains network destination checks, proxy handling, cancellation, independent
-  playback streams, and the 4.x network/NBT compatibility contract.
+- Fixes whole-client freezes caused by stalled or slow radio streams when
+  Minecraft starts another sound, including menu clicks.
+- Decodes online audio in the background and feeds the sound engine from a
+  bounded PCM buffer. Temporary underruns produce short silence; playback
+  resumes when data arrives. Stopping playback does not wait for the network.
+- Applies to the shared radio and online-disc pipeline. Retains SoundCloud
+  AAC-LC support and the existing 4.x network/NBT compatibility contract.
 
 ## Requirements
 
@@ -27,7 +28,7 @@ recommended configuration.
 ## Installation
 
 Back up the world before replacing Etched. Remove the original Etched JAR and
-any older Re-Etched JAR before adding `re-etched-4.3.0.jar` to the client and
+any older Re-Etched JAR before adding `re-etched-4.3.1.jar` to the client and
 server `mods` directories. Etched and Re-Etched cannot be installed together
 because both use the `etched` mod ID.
 
@@ -54,5 +55,5 @@ the server too.
 - Recent station URLs are stored in plaintext in the client's local history
   file because they must remain reusable.
 
-See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.3.0/CHANGELOG.md)
-and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.3.0).
+See the full [changelog](https://github.com/oogabooga-dev/re-etched/blob/v4.3.1/CHANGELOG.md)
+and [release source](https://github.com/oogabooga-dev/re-etched/tree/v4.3.1).

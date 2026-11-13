@@ -68,7 +68,7 @@ public final class ProductionRadioSessionDriver implements RadioPlaybackManager.
                 RadioResolveContext::createDefault,
                 boundedExecutor("Etched radio resolver", 2),
                 boundedExecutor("Etched radio producer", 8),
-                boundedExecutor("Etched radio decoder", 2),
+                boundedExecutor("Etched radio decoder", 8),
                 command -> Minecraft.getInstance().execute(command),
                 new MinecraftSoundOutput(),
                 () -> Etched.CLIENT_CONFIG.forceStereo.get(),

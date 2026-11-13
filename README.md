@@ -9,7 +9,7 @@ game content and compatibility identifiers while improving client-side radio,
 boombox, and album jukebox playback with bounded, cancellable online audio.
 
 Re-Etched has independent versioning beginning with `4.0.0`. The current project
-version is `4.3.0`.
+version is `4.3.1`.
 
 ## Development Lines
 
@@ -40,7 +40,7 @@ decoders, so no separate library mod is required.
 1. Back up the world before replacing Etched.
 2. Stop Minecraft and the dedicated server.
 3. Remove the original Etched JAR and any older Re-Etched JAR.
-4. Put `re-etched-4.3.0.jar` in the client and server `mods` directories.
+4. Put `re-etched-4.3.1.jar` in the client and server `mods` directories.
 5. Start Minecraft with Java 17 and Forge 47.4.10.
 
 Do not install Etched and Re-Etched in the same Minecraft instance. Both use
@@ -191,7 +191,7 @@ local server configuration files.
 The distributable is:
 
 ```text
-build/libs/re-etched-4.3.0.jar
+build/libs/re-etched-4.3.1.jar
 ```
 
 Do not distribute the `-dev.jar` or `-dev-shadow.jar` intermediates.
@@ -223,3 +223,22 @@ directories as reserved; those resources were later consolidated under
 reserved while their status is clarified and does not claim ownership of them.
 See [LICENSE](LICENSE) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+### Radio stall regression check
+
+`./gradlew runClientSmoke` launches an isolated Forge client at the title screen
+without opening a world. A local synthetic MP3 response sends 64 KiB, stalls
+for eight seconds, and then resumes. The check plays UI clicks during the stall,
+measures client tick/click latency, and stops the radio while input is blocked.
+Its result is written to `build/run-client-smoke/radio-stall-result.txt`.
+The local-address allowance belongs only to this fixture; production destination
+checks are unchanged. Fixture sources and audio are excluded from release JARs.
+
+On Linux with Wayland, use an existing X11/XWayland display and Java 17:
+
+```sh
+env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 ALSOFT_DRIVERS=null ./gradlew runClientSmoke --no-daemon --offline
+```
+
+`ALSOFT_DRIVERS=null` still exercises OpenAL and the real Minecraft sound
+executor; it does not verify audible output on physical speakers.

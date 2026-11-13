@@ -55,9 +55,20 @@ public final class RadioStreamPipeline {
         FutureTask<Void> decoderTask = new FutureTask<>(() -> {
             RadioAudioStream audio = null;
             try {
-                audio = decode(source, buffer, cancellation, forceStereo, streamTitleListener);
-                if (!stream.complete(audio)) {
-                    closeQuietly(audio);
+                RadioAudioStream decoder = decode(source, buffer, cancellation, forceStereo, streamTitleListener);
+                RadioPcmBuffer pcm;
+                try {
+                    pcm = new RadioPcmBuffer(decoder, buffer::close);
+                } catch (RuntimeException failure) {
+                    closeQuietly(decoder);
+                    throw failure;
+                }
+                audio = pcm;
+                cancellation.onCancel(pcm::cancel);
+                if (stream.complete(audio)) {
+                    pcm.produce();
+                } else {
+                    pcm.close();
                 }
             } catch (Throwable failure) {
                 buffer.close();

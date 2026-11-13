@@ -53,16 +53,19 @@ class SoundCloudRadioSourceResolverTest {
                 requests.incrementAndGet();
                 respondAudio(exchange, 200, mp3);
             });
+            var decoders = java.util.concurrent.Executors.newFixedThreadPool(2);
             var loader = new RecordStreamLoader(fixture.resolver, fixture::context,
                     java.util.concurrent.Executors.newFixedThreadPool(2),
                     java.util.concurrent.Executors.newFixedThreadPool(2),
-                    java.util.concurrent.Executors.newFixedThreadPool(2));
+                    decoders);
             try (var boombox = loader.open(TRACK.toString(), true);
                  var jukebox = loader.open(TRACK.toString(), false)) {
                 var a = boombox.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
                 var b = jukebox.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
                 assertTrue(boombox.transfer(a));
                 assertTrue(jukebox.transfer(b));
+                decoders.shutdown();
+                assertTrue(decoders.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
                 try (a; b) {
                     var first = a.read(64 * 1024);
                     var second = b.read(64 * 1024);
@@ -107,15 +110,20 @@ class SoundCloudRadioSourceResolverTest {
                     respond(exchange, 200, body);
                 });
             }
+            var decoders = java.util.concurrent.Executors.newFixedThreadPool(2);
             var loader = new RecordStreamLoader(fixture.resolver, fixture::context,
                     java.util.concurrent.Executors.newFixedThreadPool(2),
                     java.util.concurrent.Executors.newFixedThreadPool(2),
-                    java.util.concurrent.Executors.newFixedThreadPool(2));
+                    decoders);
             try (var stereo = loader.open(TRACK.toString(), true);
                  var mono = loader.open(TRACK.toString(), false)) {
                 var a = stereo.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
                 var b = mono.stream().get(5, java.util.concurrent.TimeUnit.SECONDS);
                 assertTrue(stereo.transfer(a)); assertTrue(mono.transfer(b));
+                // Finish finite prefetch before counting exact media bytes;
+                // underrun silence is deliberately timing-dependent.
+                decoders.shutdown();
+                assertTrue(decoders.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
                 try (a; b) {
                     assertEquals(2, a.getFormat().getChannels()); assertEquals(1, b.getFormat().getChannels());
                     int bytes = 0;
